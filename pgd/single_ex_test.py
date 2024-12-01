@@ -36,14 +36,14 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-data_train = MNIST('../data/mnist',
+data_train = MNIST('./data/mnist',
                   train=True,
                   download=True,
                   transform=transforms.Compose([
                       # transforms.Resize((32, 32)),
                       transforms.ToTensor()]))
 
-data_test = MNIST('../data/mnist',
+data_test = MNIST('./data/mnist',
                   train=False,
                   download=True,
                   transform=transforms.Compose([
@@ -224,6 +224,9 @@ def fc_main(args):
     res_path = args.res_path
     model_path = args.model_path
     metric = args.metric
+    
+    if not os.path.exists(res_path):
+        os.makedirs(res_path)
     
     # build model
     for layer_num in [2,4]:

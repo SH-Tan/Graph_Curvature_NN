@@ -13,10 +13,6 @@ sys.path.append("..")
 
 from pgd.single_ex_test import fc_main
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device} device")
-
 
 import warnings
 
@@ -51,6 +47,7 @@ if __name__=='__main__':
     args = parse_args()
     
     model_type = args.model_type
+    
     
     if model_type.lower() == "fc":
         fc_main(args)
