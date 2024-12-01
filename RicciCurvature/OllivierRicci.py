@@ -856,51 +856,7 @@ class OllivierRicci:
                 
         # self.G.remove_edges_from(zero_e)
         
-        
-    def recal_qexp_nodes(self, q, node_v = None, weight="weight"):
-        assert(node_v != None)
-        q_exp = q_exponential(q)
-        zero_e = []
-        
-        # check if needs to flip the sign
-        Gk = nk.nxadapter.nx2nk(self.G, weightAttr=weight)
-        
-        for n in list(self.G.nodes()):
-            neighbors = list(Gk.iterInNeighbors(n))
-            
-            if not neighbors:
-                continue
-            
-            sum = 0.
-            
-            for nbr in neighbors:
-                w = node_v[0][nbr].cpu().item()*self.G[nbr][n]['weight']
-                sum += w
-                
-            if (sum <= 0):
-                for nbr in neighbors:
-                    self.G[nbr][n][weight] = -self.G[nbr][n][weight]
-        
-        # for n in list(self.G.nodes()):
-        #     if (node_v[0][n].cpu().item() <= 0):
-        #         neighbors = list(Gk.iterInNeighbors(n))
-        #         if not neighbors:
-        #             continue
-        #         for nbr in neighbors:
-        #             self.G[nbr][n][weight] = -self.G[nbr][n][weight]
-        
-        # apply q exponential
-        for (v1, v2) in self.G.edges():
-            w = self.G[v1][v2][weight] * node_v[0][v1].cpu().item()
-            # self.G[v1][v2][weight] = 1.0/abs(q_exp.q_exponential_series(w))
-            
-            if w <= -30:
-                zero_e.append((v1,v2))
-                
-            else:
-                self.G[v1][v2][weight] = 1.0/abs(q_exp.q_exponential_series(w))
-                
-        self.G.remove_edges_from(zero_e)
+    
                     
                     
                     
