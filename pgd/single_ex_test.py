@@ -126,10 +126,6 @@ def test(n, loader, eps, alpha, iters):
             adv_img = standard_PGD(n, images, labels, eps, alpha, iters)
             adv_out = n(adv_img)
             adv_pred = adv_out.detach().max(1)[1]
-            
-            # adv_img1 = standard_PGD(n, images, labels, 0.05, alpha, iters)
-            # adv_out1 = n(adv_img1)
-            # adv_pred1 = adv_out1.detach().max(1)[1]
  
             robust_l = pred.eq(labels.view_as(pred)) & adv_pred.eq(labels.view_as(pred))
             
@@ -145,7 +141,6 @@ def test(n, loader, eps, alpha, iters):
 
 
 def build_adjm(img, net, nodes_num, dims, device, metric):
-    
     img = img.to(device)
     edge_array, nodes, _ = net.edge_w_batch(img)
     edge_array = edge_array.cpu().detach().numpy() 
@@ -217,13 +212,16 @@ def fc_main(args):
 
     sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)
     
-    eps = [0.03, 0.05, 0.07, 0.1, 0.15, 0.2]
+    eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
     
+    model_type = args.model_type
     model_pre_name = args.model_name
     res_path = args.res_path
     model_path = args.model_path
     metric = args.metric
+    
+    model_full_n = model_type.lower() + model_pre_name.lower()
     
     if not os.path.exists(res_path):
         os.makedirs(res_path)
@@ -346,13 +344,13 @@ def fc_main(args):
                     print(f'Finish {i} graphs....')
                             
                     
-                with open(res_path + str(e) + metric + str(q) + '_' + str(layer_num) + "frac_robust.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "frac_robust.pkl", 'wb') as file:
                     pickle.dump(rob_fraction, file)
-                with open(res_path + str(e) + metric + str(q) + '_' + str(layer_num) + "frac_norobust.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "frac_norobust.pkl", 'wb') as file:
                     pickle.dump(non_fraction, file)
                     
-                with open(res_path + str(e) + metric + str(q) + '_' + str(layer_num) + "curv_robust.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "curv_robust.pkl", 'wb') as file:
                     pickle.dump(robust_c, file)
-                with open(res_path + str(e) + metric + str(q) + '_' + str(layer_num) + "curv_norobust.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "curv_norobust.pkl", 'wb') as file:
                     pickle.dump(nonrobust_c, file)
                         

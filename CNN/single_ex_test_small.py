@@ -22,7 +22,6 @@ sys.path.append("..")
 
 import tools.utils as utils
 from RicciCurvature.OllivierRicci import OllivierRicci
-# from tools.LeNet5_small import LeNet as LeNet
 from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
 
 
@@ -37,14 +36,14 @@ warnings.filterwarnings("ignore")
 
 
 
-data_train = MNIST('../data/mnist',
+data_train = MNIST('./data/mnist',
                   train=True,
                   download=True,
                   transform=transforms.Compose([
                       # transforms.Resize((32, 32)),
                       transforms.ToTensor()]))
 
-data_test = MNIST('../data/mnist',
+data_test = MNIST('./data/mnist',
                   train=False,
                   download=True,
                   transform=transforms.Compose([
@@ -81,12 +80,12 @@ def show_results(G, curvature="ricciCurvature"):
         weights.append(c["weight"])
         curvatures.append(c[curvature])
         # edge_set.add((n1, n2))
-        if n1 >= 1648:
-            if (c[curvature] < 0):
-                neg_e += 1
-                edge_set.add((n1, n2))
-            else:
-                remain_edges.add((n1, n2))
+
+        if (c[curvature] < 0):
+            neg_e += 1
+            edge_set.add((n1, n2))
+        else:
+            remain_edges.add((n1, n2))
 
 
     return edge_set, remain_edges, weights, curvatures
@@ -156,31 +155,47 @@ def single_test(n, im, l, eps, alpha, iters):
     return adv_pred.cpu().item()
 
 
-def cal_edge_v(net, im, device, metric):     
-    net.eval()
-    img = im.to(device)
+# def cal_edge_v(net, im, device, metric):     
+#     net.eval()
+#     d = im.to(device)
     
-    edge_array, nodes = net.edge_w_batch(img)
+#     edge_array, nodes = net.edge_w_batch(d)
+#     edge_array = edge_array.cpu().detach().numpy() 
+    
+#     if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+#         output = net.get_weights(d)
+#         output = output.cpu().detach().numpy() 
+#         output[edge_array == 0] = 0.
+        
+#     elif metric.lower() == "q_exp":
+#         output = edge_array
+#     else:
+#         raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+    
+#     w_avg = np.mean(output, axis=0)
+    
+#     return w_avg, nodes
+    
+
+def build_cnn_adj(nodes_num, model_dims, net, im, device, metric):
+    # raw value: edge weights
+    net.eval()
+    d = im.to(device)
+    
+    edge_array, nodes = net.edge_w_batch(d)
     edge_array = edge_array.cpu().detach().numpy() 
     
     if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
-        output = net.get_weights(img)
+        output = net.get_weights(d)
         output = output.cpu().detach().numpy() 
-        
         output[edge_array == 0] = 0.
+        
     elif metric.lower() == "q_exp":
         output = edge_array
     else:
         raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
     
     w_avg = np.mean(output, axis=0)
-    
-    return w_avg, nodes
-    
-
-def build_cnn_adj(nodes_num, model_dims, net, im, device, metric):
-    # raw value: edge weights
-    w_avg, nodes = cal_edge_v(net, im, device, metric)
     
     # build adjacent matrix
     adjacent_m = np.zeros((nodes_num, nodes_num), dtype=np.float32)
@@ -300,11 +315,15 @@ def cnn_main(args):
 
     sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)
     
+    model_type = args.model_type
     model_pre_name = args.model_name
     res_path = args.res_path
     model_path = args.model_path
     metric = args.metric
+    sample_size = args.sample_num
     
+    model_full_n = model_type.lower() + model_pre_name.lower()
+
     if not os.path.exists(res_path):
         os.makedirs(res_path)
     
@@ -315,30 +334,40 @@ def cnn_main(args):
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
     
-    eps = [0.03, 0.05, 0.07, 0.1, 0.15, 0.2]
+    eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
     
     for q in Q:
         for e in eps:
             succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40)
-                
-            sample_size = args.sample_num
-            
+    
             robust_c = defaultdict(list)
             nonrobust_c = defaultdict(list)
             non_fraction = defaultdict(list)
             rob_fraction = defaultdict(list)
             
             for l in selected_classes:
+                print(f'For label {l}....\n')
                 # nonrobust images
                 count = 0
                 for (ori_im, adv_im) in succ_pair[l]:
                     for im in ori_im:
-                        adj_m_ori, nodes_ori = build_cnn_adj(nodes_num, model_dims, net_H, im[np.newaxis,:], device)
+                        adj_m_ori, nodes_ori = build_cnn_adj(nodes_num, model_dims, net_H, im[np.newaxis,:], device, metric)
                   
                         G = nx.from_numpy_array(adj_m_ori, create_using=nx.DiGraph)
                         orf = OllivierRicci(G, alpha=0., method="OTD")
-                        orf.recal_graph_weight_w2(nodes_ori)
+                        
+                        if metric.lower() == "q_ngr":
+                            orf.recal_graph_weight(nodes_ori)
+                            
+                        elif metric.lower() == "q_inv":
+                            orf.recal_graph_weight_w2(nodes_ori)
+            
+                        elif metric.lower() == "q_exp":
+                            orf.recal_qexp(q, nodes_ori)
+                        else:
+                            raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+    
                         orf.compute_ricci_curvature()
                         G1 = orf.G.copy()
                         
@@ -356,11 +385,22 @@ def cnn_main(args):
                 count = 0
                 for (ori_im, adv_im) in robust_pair[l]:
                     for im in ori_im:
-                        adj_m_ori, nodes_ori = build_cnn_adj(nodes_num, model_dims, net_H, im[np.newaxis,:], device)
+                        adj_m_ori, nodes_ori = build_cnn_adj(nodes_num, model_dims, net_H, im[np.newaxis,:], device, metric)
        
                         G = nx.from_numpy_array(adj_m_ori, create_using=nx.DiGraph)
                         orf = OllivierRicci(G, alpha=0., method="OTD")
-                        orf.recal_graph_weight_w2(nodes_ori)
+                        
+                        if metric.lower() == "q_ngr":
+                            orf.recal_graph_weight(nodes_ori)
+                            
+                        elif metric.lower() == "q_inv":
+                            orf.recal_graph_weight_w2(nodes_ori)
+            
+                        elif metric.lower() == "q_exp":
+                            orf.recal_qexp(q, nodes_ori)
+                        else:
+                            raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+    
                         orf.compute_ricci_curvature()
                         G1 = orf.G.copy()
                         
@@ -378,12 +418,12 @@ def cnn_main(args):
                             break
                         
                 
-            with open(res_path + str(e) + metric + str(q) + "frac_robust_cnn.pkl", 'wb') as file:
+            with open(res_path + model_full_n + str(e) + metric + str(q) + "frac_robust_cnn.pkl", 'wb') as file:
                 pickle.dump(rob_fraction, file)
-            with open(res_path + str(e) + metric + str(q) +  "frac_norobust_cnn.pkl", 'wb') as file:
+            with open(res_path + model_full_n + str(e) + metric + str(q) +  "frac_norobust_cnn.pkl", 'wb') as file:
                 pickle.dump(non_fraction, file)
                 
-            with open(res_path + str(e) + metric + str(q) + "curv_robust_cnn.pkl", 'wb') as file:
+            with open(res_path + model_full_n + str(e) + metric + str(q) + "curv_robust_cnn.pkl", 'wb') as file:
                 pickle.dump(robust_c, file)
-            with open(res_path + str(e) + metric + str(q) + "curv_norobust_cnn.pkl", 'wb') as file:
+            with open(res_path + model_full_n + str(e) + metric + str(q) + "curv_norobust_cnn.pkl", 'wb') as file:
                 pickle.dump(nonrobust_c, file)
