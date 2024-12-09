@@ -11,9 +11,8 @@ import argparse
 import sys
 sys.path.append("..")
 
-from pgd.single_ex_test import fc_main
-from pgd.single_test_linear import fc_linear_main
-from CNN.single_ex_test_small import cnn_main
+from slope import cal_slope
+from avg_fraction import avg_f_cal
 
 
 import warnings
@@ -38,6 +37,7 @@ def parse_args():
     parse.add_argument('--model_name', type=str, required=True, help='Name of test model')
     parse.add_argument('--model_path', type=str, required=True, help='Path of test model')
     parse.add_argument('--res_path', type=str, required=True, help='Result path')
+    parse.add_argument('--data_path', type=str, required=True, help='Data path')
     parse.add_argument('--sample_num', type=int, default=50, required=False, help='Number of test examples')
     args = parse.parse_args() 
     return args
@@ -48,16 +48,9 @@ def parse_args():
 if __name__=='__main__':
     args = parse_args()
     
-    model_type = args.model_type
+    print(f'Start calculate slopes...\n')
+    cal_slope(args)
     
-    
-    if model_type.lower() == "fc":
-        fc_main(args)
-    elif model_type.lower() == "fc_linear":
-        fc_linear_main(args)
-    elif model_type.lower() == "cnn":
-        cnn_main(args)
-    else:
-        raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
-    
+    print(f'Start calculate average fraction per label...\n')
+    avg_f_cal(args)
         

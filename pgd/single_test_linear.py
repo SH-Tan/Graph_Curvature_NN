@@ -36,14 +36,14 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-data_train = MNIST('../data/mnist',
+data_train = MNIST('./data/mnist',
                   train=True,
                   download=True,
                   transform=transforms.Compose([
                       # transforms.Resize((32, 32)),
                       transforms.ToTensor()]))
 
-data_test = MNIST('../data/mnist',
+data_test = MNIST('./data/mnist',
                   train=False,
                   download=True,
                   transform=transforms.Compose([
@@ -163,9 +163,8 @@ def single_test(n, im, l, eps, alpha, iters):
 
 
 def build_adjm(img, net, nodes_num, dims, device, metric):
-    
     img = img.to(device)
-    edge_array, nodes, _ = net.edge_w_batch(img)
+    edge_array, nodes = net.edge_w_batch(img)
     edge_array = edge_array.cpu().detach().numpy() 
     
     if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
@@ -235,13 +234,16 @@ def fc_linear_main(args):
 
     sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)
     
-    eps = [0.03, 0.05, 0.07, 0.1, 0.15, 0.2]
+    eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
     
+    model_type = args.model_type
     model_pre_name = args.model_name
     res_path = args.res_path
     model_path = args.model_path
     metric = args.metric
+    
+    model_full_n = model_type.lower() + model_pre_name.lower()
     
     if not os.path.exists(res_path):
         os.makedirs(res_path)
@@ -293,13 +295,24 @@ def fc_linear_main(args):
                     i = 0
                     for (ori_im, adv_im) in succ_pair[l]:
                         for im in ori_im:
-                            adj_m_ori, nodes_ori = build_adjm(im, net_H, nodes_num, dims, device)
+                            adj_m_ori, nodes_ori = build_adjm(im, net_H, nodes_num, dims, device, metric)
                 
                             # Create network object
                             G = nx.from_numpy_array(adj_m_ori, create_using=nx.DiGraph)
         
                             orf = OllivierRicci(G, alpha=0., method="OTD")
-                            orf.recal_graph_weight_w2(nodes_ori)
+                            
+                            if metric.lower() == "q_ngr":
+                                orf.recal_graph_weight(nodes_ori)
+                                
+                            elif metric.lower() == "q_inv":
+                                orf.recal_graph_weight_w2(nodes_ori)
+                
+                            elif metric.lower() == "q_exp":
+                                orf.recal_qexp(q, nodes_ori)
+                            else:
+                                raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+    
                             orf.compute_ricci_curvature()
                             G1 = orf.G.copy()
         
@@ -321,11 +334,22 @@ def fc_linear_main(args):
                     i = 0
                     for (ori_im, adv_im) in robust_pair[l]:
                         for im in ori_im:
-                            adj_m_ori, nodes_ori = build_adjm(im, net_H, nodes_num, dims, device)
+                            adj_m_ori, nodes_ori = build_adjm(im, net_H, nodes_num, dims, device, metric)
         
                             G = nx.from_numpy_array(adj_m_ori, create_using=nx.DiGraph)
                             orf = OllivierRicci(G, alpha=0., method="OTD")
-                            orf.recal_graph_weight_w2(nodes_ori)
+                            
+                            if metric.lower() == "q_ngr":
+                                orf.recal_graph_weight(nodes_ori)
+                                
+                            elif metric.lower() == "q_inv":
+                                orf.recal_graph_weight_w2(nodes_ori)
+                
+                            elif metric.lower() == "q_exp":
+                                orf.recal_qexp(q, nodes_ori)
+                            else:
+                                raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+    
                             orf.compute_ricci_curvature()
                             G1 = orf.G.copy()
                             
@@ -345,13 +369,13 @@ def fc_linear_main(args):
                             
 
                     
-                with open(res_path + str(e) + metric + str(q) + '_' + str(layer_num) + "frac_robust_linear.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "frac_robust_linear.pkl", 'wb') as file:
                     pickle.dump(rob_fraction, file)
-                with open(res_path + str(e) + metric + str(q) + '_' + str(layer_num) + "frac_norobust_linear.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "frac_norobust_linear.pkl", 'wb') as file:
                     pickle.dump(non_fraction, file)
                     
-                with open(res_path + str(e) + metric + str(q) + '_' + str(layer_num) + "curv_robust_linear.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "curv_robust_linear.pkl", 'wb') as file:
                     pickle.dump(robust_c, file)
-                with open(res_path + str(e) + metric + str(q) + '_' + str(layer_num) + "curv_norobust_linear.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "curv_norobust_linear.pkl", 'wb') as file:
                     pickle.dump(nonrobust_c, file)
                     
