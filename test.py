@@ -13,6 +13,7 @@ sys.path.append("..")
 
 from slope import cal_slope
 from avg_fraction import avg_f_cal
+from Lidar.draw_traj import lidar_draw
 
 
 import warnings
@@ -32,12 +33,16 @@ parameters:
 '''
 def parse_args():
     parse = argparse.ArgumentParser(description='Neural Data Graph')
+    parse.add_argument('--mnist', type=int, default=1, required=False, help='If test MNIST')
+    parse.add_argument('--lidar', type=int, default=1, required=False, help='If test LiDAR')
     parse.add_argument('--metric', type=str, required=True, help='Definition of NDG')
-    parse.add_argument('--model_type', type=str, required=True, help='Type of test model')
-    parse.add_argument('--model_name', type=str, required=True, help='Name of test model')
-    parse.add_argument('--model_path', type=str, required=True, help='Path of test model')
-    parse.add_argument('--res_path', type=str, required=True, help='Result path')
-    parse.add_argument('--data_path', type=str, required=True, help='Data path')
+    parse.add_argument('--model_type', type=str, default='fc', required=False, help='Type of test model')
+    parse.add_argument('--model_name', type=str, default='ori', required=False, help='Name of test model')
+    parse.add_argument('--model_path', type=str, default='pgd/models/', required=False, help='Path of test model')
+    parse.add_argument('--mnist_res_path', type=str, default='./', required=False, help='Result path')
+    parse.add_argument('--lidar_res_path', type=str, default='./', required=False, help='Result path')
+    parse.add_argument('--mnist_data_path', type=str, required=False, help='Data path')
+    parse.add_argument('--lidar_data_path', type=str, required=False, help='Data path')
     parse.add_argument('--sample_num', type=int, default=50, required=False, help='Number of test examples')
     args = parse.parse_args() 
     return args
@@ -48,9 +53,13 @@ def parse_args():
 if __name__=='__main__':
     args = parse_args()
     
-    print(f'Start calculate slopes...\n')
-    cal_slope(args)
-    
-    print(f'Start calculate average fraction per label...\n')
-    avg_f_cal(args)
+    if args.mnist:
+        print(f'Start calculate slopes...\n')
+        cal_slope(args)
+        
+        print(f'Start calculate average fraction per label...\n')
+        avg_f_cal(args)
+        
+    if args.lidar:
+        lidar_draw(args)
         
