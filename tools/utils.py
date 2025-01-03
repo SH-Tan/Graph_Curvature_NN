@@ -5,7 +5,6 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from GraphRicciCurvature.OllivierRicci import OllivierRicci
 import networkx as nx
-from tools.edge_remove import Edge_Remove
 
 
 from tools.small_model import FC_MD
@@ -248,81 +247,3 @@ def standard_PGD_test(loader, net, device, eps=.1, alpha=.1, iters=100):
     return adv_acc
 
 
-def compress_net(model, valid_loader, dims, layer_num, device, model_name, model_path, res_path, eps=.1, alpha=.1, iters=100):
-    nodes_num, edges_num = get_net_info(model)
-    flag = 1
-    index = 0
-    
-    sub_adv_acc = []
-    
-    negative_edge = 0
-    final_G = None
-    
-    # net_H.load_state_dict(torch.load(res_path + model_name))
-    adjacent_m = build_adjm(valid_loader, model, nodes_num, dims, device)   
-
-    while(flag):            
-        
-        # Create network object
-        G = nx.from_numpy_array(adjacent_m)
-
-        orf = OllivierRicci(G, alpha=0.5, verbose="TRACE")
-        # orf.compute_ricci_flow(iterations=100)
-        orf.compute_ricci_curvature()
-
-        G1 = orf.G.copy()
-        # print(G1)
-        
-        sorted_edge = sorted(G1.edges(data=True), key=lambda edge: edge[2].get("ricciCurvature", 0)) # ascending
-
-        edge_set = set()
-        remain_edges = set()
-    
-        for (n1,n2,c) in sorted_edge:
-            # edge_set.add((n1, n2))
-            if (c["ricciCurvature"] < 0):
-                edge_set.add((n1, n2))
-            else:
-                remain_edges.add((n1, n2))
-        
-        removed_e = edge_set
-            
-        cur_n = "full" + str(layer_num)
-        
-        if index == 0:
-            model_n = model_name
-            negative_edge = len(edge_set)
-        else:
-            model_n = cur_n + ".pth"
-            
-        # whole model remove new model edges  
-        model.load_state_dict(torch.load(model_path + model_name))
-        edge_r = Edge_Remove(model, dims, 28, G1, "ricciCurvature", model_path)
-        edge_r.e_remove(remain_edges, "remain.pth")
-            
-        model.load_state_dict(torch.load(model_path + model_n))
-        edge_r = Edge_Remove(model, dims, 28, G1, "ricciCurvature", model_path)
-        edge_r.e_remove(removed_e, cur_n + ".pth")
-        
-        # test acc
-        net_new = FC_MD(dims, layer_num)
-
-        net_new.load_state_dict(torch.load(model_path + cur_n + ".pth"))
-        net_new = net_new.to(device)
-        
-        acc = test(net_new, valid_loader, device)
-        
-        sub_adversary = standard_PGD_test(valid_loader, net_new, device, eps, alpha, iters)
-        
-        if len(removed_e)  == 0 or (len(sub_adv_acc)> 0 and sub_adversary < sub_adv_acc[-1]):
-            final_G = G1
-            flag = 0
-        else:
-            # torch.save(net_new.state_dict(), res_path + cur_n + ".pth")
-            adjacent_m = build_adjm(valid_loader, net_new, nodes_num, dims, device)
-
-            sub_adv_acc.append(sub_adversary)
-        
-        index += 1
-        
-    return negative_edge, final_G

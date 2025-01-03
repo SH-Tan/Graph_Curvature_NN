@@ -35,13 +35,6 @@ safety = {
 }
 
 
-metric = "w7"
-data_path = "res/" + metric + "/"
-
-res_path = "img/" + metric + "/"
-
-mark = "_controller_"
-
 types = ['DDPG', 'TD3']
 cs = ['1','2','3']
 szs = ['64','128']
@@ -49,10 +42,8 @@ szs = ['64','128']
 markers = ['*', '3', 'o', '+', '.', '>', 'v']
 Keys =  ['DDPG_128_1', 'DDPG_128_2', 'DDPG_128_3', 'DDPG_64_1', 'DDPG_64_2', 'DDPG_64_3', 'TD3_128_1', 'TD3_128_2', 'TD3_128_3', 'TD3_64_1', 'TD3_64_2', 'TD3_64_3']
 
-samples = 5
 
-
-def get_fraction(name, controller_n):
+def get_fraction(name, data_path):
     with open(data_path + name, 'rb') as file:
         data = pickle.load(file)
         
@@ -62,7 +53,7 @@ def get_fraction(name, controller_n):
 
 # AUC, loss = zip(*sorted(zip(AUC, loss))) 
 # legend: safety of controller
-def draw(frac, c_n_l, s, traj = ''): 
+def draw(frac, c_n_l, s, res_path, metric, traj = ''): 
     assert(len(frac) == len(c_n_l))
     
     fig1, ax1 = plt.subplots(figsize=(10, 7))
@@ -81,7 +72,7 @@ def draw(frac, c_n_l, s, traj = ''):
     plt.ylabel('Negative curvature edges fraction', fontsize = 19, fontweight='semibold')
     plt.yticks(y, size=18,weight='semibold')
     plt.xticks(x, size=18,weight='semibold')
-    plt.legend(loc = 'upper left', prop={'size':13, 'weight':'semibold'})
+    plt.legend(loc = 'best', prop={'size':13, 'weight':'semibold'})
     plt.grid(True)
     
     plt.savefig(res_path + metric + "_" + s + "_" + ".png")
@@ -91,28 +82,23 @@ def draw(frac, c_n_l, s, traj = ''):
 
     
 
-if __name__ == '__main__':
-    seed = 59
+def lidar_draw(args):
+    res_path = args.lidar_res_path
+    data_path = args.lidar_data_path
+    metric = args.metric
     
-    # set random seed
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
+    if not os.path.exists(res_path):
+        os.makedirs(res_path)
+     
     for s in szs:   
         frac = []
         c_n_l = []  
         for t in types:
-             
             for c in cs: 
                 name = '_'.join([t,s,c])
                 
-                frac_name = metric + name + "_frac.pkl"
-                frac_l = get_fraction(frac_name, name)
+                frac_name = metric + name + "_frac2.pkl"
+                frac_l = get_fraction(frac_name, data_path)
                 
                 tmp = []
                 for i in range(len(frac_l)):
@@ -122,5 +108,5 @@ if __name__ == '__main__':
                 c_n_l.append(name)
                 
                 # print(f'The average ratio for controller {name} is {np.mean(frac_l):.5f}...')
-        draw(frac, c_n_l, s)
+        draw(frac, c_n_l, s, res_path, metric)
 

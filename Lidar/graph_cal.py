@@ -6,8 +6,8 @@ import numpy as np
 from collections import defaultdict
 import networkx as nx
 
-from RICCICURVATURE.OllivierRicci import OllivierRicci
-from RICCICURVATURE.q_exponential import q_exponential
+from Lidar.RICCICURVATURE.OllivierRicci import OllivierRicci
+from Lidar.RICCICURVATURE.q_exponential import q_exponential
 
 
 q = 1
@@ -30,23 +30,6 @@ def q_adjust(adj, nodes, dims):
 def build_adjm(nodes_num, dims, edge_v, nodes, NN_w):
     NN_w[edge_v == 0] = 0.
     w_avg = torch.mean(NN_w, axis=0) # (edge num,)
-    # print(w_avg.shape)
-    # w_avg = torch.abs(w_avg) # absolate edge value for one image
-    # w_avg[w_avg != 0] = 1/w_avg[w_avg != 0]
-    
-    # prev = dims[0]
-    # start = 0
-    # for i in range(1, len(dims)):
-    #     edge_n = prev * dims[i] + start
-    #     max_v = torch.mean(w_avg[start:edge_n])
-    #     print(max_v)
-    #     w_avg[start:edge_n] = w_avg[start:edge_n]/max_v.item()
-        
-    #     prev = dims[i]
-    #     start = edge_n
-        
-    # print(f'max = {torch.max(w_avg)}, min = {torch.min(w_avg)}')
-    
     # build adjacent matrix
     adjacent_m = torch.zeros((nodes_num, nodes_num), dtype=torch.float32)
     # adjacent_m *= -10000

@@ -239,7 +239,7 @@ def fc_linear_main(args):
     
     model_type = args.model_type
     model_pre_name = args.model_name
-    res_path = args.res_path
+    res_path = args.mnist_res_path
     model_path = args.model_path
     metric = args.metric
     
