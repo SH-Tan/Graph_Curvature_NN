@@ -34,9 +34,11 @@ parameters:
 def parse_args():
     parse = argparse.ArgumentParser(description='Neural Data Graph')
     parse.add_argument('--mnist', type=int, default=1, required=False, help='If test MNIST')
+    parse.add_argument('--cifar', type=int, default=1, required=False, help='If test CIFAR')
     parse.add_argument('--lidar', type=int, default=1, required=False, help='If test LiDAR')
     parse.add_argument('--metric', type=str, required=True, help='Definition of NDG')
     parse.add_argument('--model_type', type=str, default='fc', required=False, help='Type of test model')
+    parse.add_argument('--dataset', type=str, default='mnist', required=False, help='Dataset')
     parse.add_argument('--model_name', type=str, default='ori', required=False, help='Name of test model')
     parse.add_argument('--model_path', type=str, default='pgd/models/', required=False, help='Path of test model')
     parse.add_argument('--mnist_res_path', type=str, default='./', required=False, help='Result path')
@@ -53,7 +55,7 @@ def parse_args():
 if __name__=='__main__':
     args = parse_args()
     
-    if args.mnist:
+    if args.mnist or args.cifar:
         print(f'Start calculate slopes...\n')
         cal_slope(args)
         
@@ -62,4 +64,5 @@ if __name__=='__main__':
         
     if args.lidar:
         lidar_draw(args)
+        
         
