@@ -15,9 +15,10 @@ warnings.filterwarnings("ignore")
 def avg_f_cal(args):
     model_type = args.model_type
     model_pre_name = args.model_name
-    res_path = args.res_path
-    data_path = args.data_path
+    res_path = args.mnist_res_path
+    data_path = args.mnist_data_path
     metric = args.metric
+    dataset = args.dataset
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -31,6 +32,9 @@ def avg_f_cal(args):
     selected_classes = [0,1,2,3,4,5,6,7,8,9]
     eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
+    
+    if dataset.lower() == "cifar":
+        eps = [1,3,5,7,11]
                 
     robust_suffix = "frac_robust.pkl"
     norobust_suffix = "frac_norobust.pkl"
@@ -50,9 +54,13 @@ def avg_f_cal(args):
                 norobust_suffix = "frac_norobust_linear.pkl"
                 
             # cnn model
-            elif model_type.lower() == "cnn":
+            elif model_type.lower() == "cnn" and dataset.lower() == "mnist":
                 robust_suffix = "frac_robust_cnn.pkl"
                 norobust_suffix = "frac_norobust_cnn.pkl"
+                
+            elif model_type.lower() == "cnn" and dataset.lower() == "cifar":
+                robust_suffix = "frac_robust_cifar.pkl"
+                norobust_suffix = "frac_norobust_cifar.pkl"
                 
             else:
                 raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
