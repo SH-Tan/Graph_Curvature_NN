@@ -14,6 +14,7 @@ sys.path.append("..")
 from pgd.single_ex_test import fc_main
 from pgd.single_test_linear import fc_linear_main
 from CNN.single_ex_test_small import cnn_main
+from CNN.single_ex_test_small_cifar10 import cifar_main
 
 from Lidar.LoadSampleScript import start_lidar
 
@@ -35,7 +36,8 @@ parameters:
 def parse_args():
     parse = argparse.ArgumentParser(description='Neural Data Graph')
     parse.add_argument('--mnist', type=int, default=1, required=False, help='If test MNIST')
-    parse.add_argument('--lidar', type=int, default=1, required=False, help='If test LiDAR')
+    parse.add_argument('--cifar', type=int, default=0, required=False, help='If test CIFAR')
+    parse.add_argument('--lidar', type=int, default=0, required=False, help='If test LiDAR')
     parse.add_argument('--metric', type=str, required=True, help='Definition of NDG')
     parse.add_argument('--model_type', type=str, default='fc', required=False, help='Type of test model')
     parse.add_argument('--model_name', type=str, default='ori', required=False, help='Name of test model')
@@ -63,7 +65,9 @@ if __name__=='__main__':
             cnn_main(args)
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
-        
+    
+    if args.cifar:
+         cifar_main(args)
     
     if args.lidar:
         start_lidar(args)

@@ -1,6 +1,8 @@
 import torch
 from torchvision.datasets.mnist import MNIST
 import torchvision.transforms as transforms
+from torchvision.datasets.cifar import CIFAR10
+import torchvision
 import numpy as np
 import random
 import os
@@ -8,8 +10,6 @@ import torch.nn as nn
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
-import statsmodels.api as sm
-from scipy.integrate import simps
 import pickle
 
 from sklearn.linear_model import LinearRegression as lg
@@ -18,6 +18,7 @@ import tools.utils as utils
 from tools.small_model import FC_MD
 from tools.FC_linear import FC_Linear
 from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
+from tools.LeNet5_custom import LeNet_custom
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -30,19 +31,27 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-data_train = MNIST('./data/mnist',
+mnist_train = MNIST('./data/mnist',
                   train=True,
                   download=True,
                   transform=transforms.Compose([
                       # transforms.Resize((32, 32)),
                       transforms.ToTensor()]))
 
-data_test = MNIST('./data/mnist',
+mnist_test = MNIST('./data/mnist',
                   train=False,
                   download=True,
                   transform=transforms.Compose([
                       # transforms.Resize((32, 32)),
                       transforms.ToTensor()]))
+
+normalize = torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.225, 0.225, 0.225])
+train_transforms = torchvision.transforms.Compose([torchvision.transforms.ToTensor(), normalize])
+test_transforms = torchvision.transforms.Compose([torchvision.transforms.ToTensor(), normalize])
+
+
+cifar_train = CIFAR10('./data/cifar10', train=True, download=True, transform=train_transforms)
+cifar_test = CIFAR10('./data/cifar10', train=False, download=True, transform=test_transforms)
 
 
 layers = [2, 4, 5, 6, 7]
@@ -57,10 +66,19 @@ model_zoo = {
 
 nodes_num = 2118
 
-model_dims = {
+mnist_model_dims = {
     1: {"name": "input", "dim": {"channel": 1, "out_size": 28}},
     2: {"name": "cnn", "dim": {"channel": 6, "kernel": 6, "stride": 2, "out_size": 12}},
     3: {"name": "cnn", "dim": {"channel": 16, "kernel": 6, "stride": 2, "out_size": 4}},
+    4: {"name": "fc", "dim": {"out_size": 120}},
+    5: {"name": "fc", "dim": {"out_size": 84}},
+    6: {"name": "fc", "dim": {"out_size": 10}}
+}
+
+cifar_model_dims = {
+    1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},
+    2: {"name": "cnn", "dim": {"channel": 6, "kernel": 6, "stride": 2, "out_size": 14}},
+    3: {"name": "cnn", "dim": {"channel": 16, "kernel": 6, "stride": 2, "out_size": 5}},
     4: {"name": "fc", "dim": {"out_size": 120}},
     5: {"name": "fc", "dim": {"out_size": 84}},
     6: {"name": "fc", "dim": {"out_size": 10}}
@@ -179,7 +197,7 @@ def draw(frac, loss, res_path, mark = ''):
     plt.legend(loc = 'best', prop={'size':19, 'weight':'semibold'})
     plt.grid(True)
     
-    plt.savefig(res_path + mark + "_loss.eps")
+    plt.savefig(res_path + mark + "_loss.png")
     plt.close()
     
     return a1
@@ -199,20 +217,29 @@ def cal_slope(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=1, valid_num=2000)
-
-    sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)
-    
     eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
     
     model_type = args.model_type
     model_pre_name = args.model_name
-    res_path = args.res_path
-    data_path = args.data_path
+    res_path = args.mnist_res_path
+    data_path = args.mnist_data_path
     model_path = args.model_path
     metric = args.metric
     sample_size = args.sample_num
+    dataset = args.dataset
+    
+    if dataset.lower() == 'mnist':
+        data_train = mnist_train
+        data_test = mnist_test
+    elif dataset.lower() == 'cifar':
+        data_train = cifar_train
+        data_test = cifar_test
+        eps = [1,3,5,7,11]
+    
+    train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=1, valid_num=2000)
+
+    sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)
     
     model_full_n = model_type.lower() + model_pre_name.lower()
     
@@ -258,20 +285,33 @@ def cal_slope(args):
             norobust_suffix = "frac_norobust_linear.pkl"
         
         # cnn model
-        elif model_type.lower() == "cnn":
+        elif model_type.lower() == "cnn" and dataset.lower() == 'mnist':
             model_name= "mnist_relu_small.pth"
             
-            net_H = LeNet_custom_v2(model_dims, None, device)
+            net_H = LeNet_custom_v2(mnist_model_dims, None, device)
             net_H.load_state_dict(torch.load(model_path + model_name))
             net_H = net_H.to(device)
             
             norobust_suffix = "frac_norobust_cnn.pkl"
             
+        elif model_type.lower() == "cnn" and dataset.lower() == 'cifar':
+            model_name= "best_cifar.pth"
+            
+            net_H = LeNet_custom(cifar_model_dims, device, input_c=3)
+            net_H.load_state_dict(torch.load(model_path + model_name))
+            net_H = net_H.to(device)
+            
+            norobust_suffix = "frac_norobust_cifar.pkl"
+            
         print(f'Now for model {model_name}....\n')
         
         for q in Q: 
             for e in eps:
-                succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40)
+                if dataset.lower() == 'cifar':
+                    ep = e/255
+                else:
+                    ep = e
+                succ_pair, robust_pair = test(net_H, sep_dataloader, eps=ep, alpha=2/255, iters=40)
                 
                 frac_name_no = model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + norobust_suffix
                 
