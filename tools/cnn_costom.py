@@ -5,16 +5,20 @@ import numpy as np
 
 
 
-class LeNet_custom(nn.Module):
+class CNN_custom(nn.Module):
 
     # network structure
     def __init__(self, model_info, device, input_c = 1):
-        super(LeNet_custom, self).__init__()
-        self.conv1 = nn.Conv2d(input_c, 6, 6, stride=2)
-        self.conv2 = nn.Conv2d(6, 16, 6, stride=2)
-        self.fc1   = nn.Linear(16*5*5, 120)
-        self.fc2   = nn.Linear(120, 84)
-        self.fc3   = nn.Linear(84, 10)
+        super(CNN_custom, self).__init__()
+        # Conv layers with batch norm
+        self.conv1 = nn.Conv2d(3, 32, 6, padding = 0, stride=2)
+        
+        self.conv2 = nn.Conv2d(32, 16, 6, padding = 0, stride=2)
+               
+        # fully connected layer with batch norm
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)    
+        self.fc2 = nn.Linear(120, 10)    
+
         self.activation = nn.ReLU()
         
         self.model_info = model_info
@@ -116,25 +120,17 @@ class LeNet_custom(nn.Module):
         self.cur_total_nodes = 0
         
         # first CNN
-        x_cov1 = self.activation(self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2))
-        
-        # # first pooloing
-        # x_pool1 = self.maxpooling(x_cov1, 2, 3)
+        x_cov1 = self.activation((self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2)))
         
         # second CNN
-        x_cov2 = self.activation(self.CNN(x_cov1, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3))
-        
-        # # second pooling
-        # x_pool2 = self.maxpooling(x_cov2, 4, 5)
+        x_cov2 = self.activation((self.CNN(x_cov1, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3)))
         
         # fc
         fc = x_cov2.view(-1, self.num_flat_features(x_cov2))
         
         fc1 = self.activation(self.linear(fc, self.fc1, 3, 4))
         
-        fc2 = self.activation(self.linear(fc1, self.fc2, 4, 5))
-        
-        y = self.linear(fc2, self.fc3, 5, 6)
+        y = self.linear(fc1, self.fc2, 4, 5)
         
         return y
 
@@ -220,7 +216,7 @@ class LeNet_custom(nn.Module):
         ones = (self.CNN_edges(ones_tmp, k1, 1, 2)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
-        x = self.activation(self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2))
+        x = self.activation((self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2)))
         
         x_tmp = x
         ones_tmp = torch.ones_like(x)
@@ -235,14 +231,8 @@ class LeNet_custom(nn.Module):
         ones = (self.CNN_edges(ones_tmp, k2, 2, 3)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
 
-        x = self.activation(self.CNN(x, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3))
+        x = self.activation((self.CNN(x, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3)))
         nodes = torch.cat((nodes, x.view(-1, self.num_flat_features(x))), axis = 1)
-        
-        # # second max pooling
-        # edge_v = (self.pooling_edges(x_tmp, 4, 5)).cpu().detach()
-        # edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
-
-        # x = self.maxpooling(x, 4, 5)
 
         # fully connected
         x = x.view(-1, self.num_flat_features(x)) # batch * input size
@@ -261,28 +251,15 @@ class LeNet_custom(nn.Module):
         ones_tmp = torch.ones_like(x)
         
         nodes = torch.cat((nodes, x), axis = 1)
-        
-        # fc2    
+
+        # fc2
         edge_v = (self.fc_edges(x_tmp, self.fc2, 4, 5)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc2, 4, 5)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
-        x = self.activation(self.linear(x, self.fc2, 4, 5))
-        x_tmp = x
-        ones_tmp = torch.ones_like(x)
-        
-        nodes = torch.cat((nodes, x), axis = 1)
-
-        # fc3
-        edge_v = (self.fc_edges(x_tmp, self.fc3, 5, 6)).cpu().detach()
-        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
-
-        ones = (self.fc_edges(ones_tmp, self.fc3, 5, 6)).cpu().detach()
-        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
-        
-        x = self.fc3(x)
+        x = self.fc2(x)
         nodes = torch.cat((nodes, x), axis = 1)
         
         return edge_value, nodes, weights

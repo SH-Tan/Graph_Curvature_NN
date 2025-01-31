@@ -25,10 +25,6 @@ from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device} device")
-
 import warnings
 
 # Ignore all warnings
@@ -91,7 +87,7 @@ def show_results(G, curvature="ricciCurvature"):
     return edge_set, remain_edges, weights, curvatures
 
 
-def standard_PGD(model, images, labels, eps=11/255, alpha=2/255, iters=40):
+def standard_PGD(model, images, labels, device, eps=11/255, alpha=2/255, iters=40):
     images = images.to(device)
     labels = labels.to(device)
     loss = nn.CrossEntropyLoss()
@@ -113,7 +109,7 @@ def standard_PGD(model, images, labels, eps=11/255, alpha=2/255, iters=40):
     return images
 
 
-def test(n, loader, eps, alpha, iters):    
+def test(n, loader, eps, alpha, iters, device):    
     n.eval()
     robust_pair = defaultdict(list)
     succ_pair = defaultdict(list)
@@ -125,7 +121,7 @@ def test(n, loader, eps, alpha, iters):
             output = n(images)
             pred = output.detach().max(1)[1]
             
-            adv_img = standard_PGD(n, images, labels, eps, alpha, iters)
+            adv_img = standard_PGD(n, images, labels, device,  eps, alpha, iters)
             adv_out = n(adv_img)
             adv_pred = adv_out.detach().max(1)[1]
             
@@ -139,20 +135,6 @@ def test(n, loader, eps, alpha, iters):
         print(f'Finish label {l}....')
     return succ_pair, robust_pair
 
-
-def single_test(n, im, l, eps, alpha, iters):
-    n.eval()
-    
-    im = im.to(device)
-    output = n(im)
-    labels = output.detach().max(1)[1]
-    
-    adv_img = standard_PGD(n, im, labels, eps, alpha, iters)
-    adv_out = n(adv_img)
-    adv_pred = adv_out.detach().max(1)[1]
-    
-    print(f'Correct label is {l}, predition label is {labels.cpu().item()}, attacked img prediction is {adv_pred.cpu().item()}....\n')
-    return adv_pred.cpu().item()
 
 
 # def cal_edge_v(net, im, device, metric):     
@@ -310,6 +292,10 @@ def cnn_main(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device} device")
+    
     selected_classes = [0,1,2,3,4,5,6,7,8,9]
     train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, valid_num = 2000, test_bs=1)
 
@@ -339,7 +325,7 @@ def cnn_main(args):
     
     for q in Q:
         for e in eps:
-            succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40)
+            succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
     
             robust_c = defaultdict(list)
             nonrobust_c = defaultdict(list)
