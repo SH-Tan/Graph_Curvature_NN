@@ -24,6 +24,7 @@ import tools.utils as utils
 from tools.small_model import FC_MD
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.FC_linear import FC_Linear
+from tools.graph_curvature import graph_curvature_main_torch
 
 
 import warnings
@@ -47,10 +48,13 @@ data_test = MNIST('./data/mnist',
                       transforms.ToTensor()]))
 
 
+
+
 layers = [2, 4, 5, 6, 7]
 
 model_zoo = {
     2: [784, 20, 15, 10],
+    21: [784, 200, 150, 10],
     4: [784, 15, 25, 20, 15, 10],
     5: [784, 20, 30, 30, 20, 15, 10],
     6: [784, 20, 30, 30, 35, 20, 15, 10],
@@ -134,51 +138,15 @@ def test(n, loader, eps, alpha, iters, device):
 
     return succ_pair, robust_pair
 
-
-
-def build_adjm(img, net, nodes_num, dims, device, metric):
-    img = img.to(device)
-    edge_array, nodes, _ = net.edge_w_batch(img)
-    edge_array = edge_array.cpu().detach().numpy() 
-    
-    if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
-        output = net.get_weights(img)
-        output = output.cpu().detach().numpy() 
-        
-        output[edge_array == 0] = 0.
-    elif metric.lower() == "q_exp":
-        output = edge_array
-    else:
-        raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-    
-    w_avg = np.mean(output, axis=0) # (edge num,)
-    
-    # build adjacent matrix
-    adjacent_m = np.zeros((nodes_num, nodes_num), dtype=np.float32)
-
-    d_num = len(dims)
-    cur_s_col = dims[0]
-    cur_e_col = dims[0] + dims[1]
-
-    cur_layer = 1
-    start_col = 0
-    end_col = dims[1]
-
-    for i in range(nodes_num - dims[d_num-1]):
-        # print(f'i : {i}, start col : {cur_s_col}, end_col : {cur_e_col}, from {start_col} to {end_col}')
-        adjacent_m[i, cur_s_col : cur_e_col] = w_avg[start_col : end_col]
-        
-        if (cur_layer < d_num-1 and i == cur_s_col - 1):
-            cur_layer += 1
-            start_col = end_col
-            end_col = end_col + dims[cur_layer]
-            cur_s_col = cur_e_col
-            cur_e_col = cur_e_col + dims[cur_layer]
-        else:
-            start_col = end_col
-            end_col = end_col + dims[cur_layer]
-            
-    return adjacent_m, nodes
+def get_fraction(curvature, b):
+    c = []
+    neg = []
+    total_e = []
+    for i in range(b):
+        curr = np.array(curvature[i])
+        neg.append(len(curr[curr<0]))
+        total_e.append(len(curr))
+    return np.array(neg), np.array(total_e), curr
 
 
 
@@ -209,7 +177,7 @@ def fc_main(args):
     print(f"Using {device} device")
 
     
-    train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=1, valid_num=5000)
+    train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
     sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)
     
@@ -221,6 +189,7 @@ def fc_main(args):
     res_path = args.mnist_res_path
     model_path = args.model_path
     metric = args.metric
+    dataset = args.dataset
     
     model_full_n = model_type.lower() + model_pre_name.lower()
     
@@ -228,17 +197,23 @@ def fc_main(args):
         os.makedirs(res_path)
     
     # build model
-    for layer_num in [2,4]:
+    for layer_num in [2]:
         for q in Q:
+            dims = model_zoo[layer_num]
+            
             if model_pre_name.lower() == "ori" or model_pre_name.lower() == "decay":
                 model_name = "best_ori_10l_" + str(layer_num) + ".pth"
             elif model_pre_name.lower() == "adv":
                 model_name = "pgdtrain_" + str(layer_num) + ".pth"
             else:
                 raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
-            print(f'Now for model {model_name}....\n')
             
-            dims = model_zoo[layer_num]
+            if dataset == 'cifar':
+                model_name = "best_cifar_adv.pth"
+                dims = model_zoo[21]
+                
+            print(f'Now for model {model_name}....\n')
+
             net_H = FC_MD(dims, layer_num)
 
             net_H.load_state_dict(torch.load(model_path + model_name))
@@ -270,88 +245,94 @@ def fc_main(args):
                 for l in selected_classes:
                     print(f'For label {l}....\n')
                     # non robust images
-                    i = 0
+                    count = 0
                     for (ori_im, adv_im) in succ_pair[l]:
                         for im in ori_im:
-                            adj_m_ori, nodes_ori = build_adjm(im, net_H, nodes_num, dims, device, metric)
-                     
-                            # Create network object
-                            G = nx.from_numpy_array(adj_m_ori, create_using=nx.DiGraph)
-            
-                            orf = OllivierRicci(G, alpha=0., method="OTD")
+                            img = im.to(device)
+                            edge_array, nodes_ori, nodes_before, output = net_H.NN_info_batch(img.unsqueeze(0))
+                            
+                            if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+                                weights = output.detach().clone().to(device)                   
+                                weights[edge_array == 0] = 0.
+                                
+                            elif metric.lower() == "q_exp":
+                                weights = edge_array.detach().clone().to(device)  
                             
                             if metric.lower() == "q_ngr":
-                                orf.recal_graph_weight(nodes_ori)
+                                _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
                                 
                             elif metric.lower() == "q_inv":
-                                orf.recal_graph_weight_w2(nodes_ori)
+                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
                 
                             elif metric.lower() == "q_exp":
-                                orf.recal_qexp(q, nodes_ori)
+                                weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, q)
                             else:
                                 raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-    
-                            orf.compute_ricci_curvature()
-                            G1 = orf.G.copy()
-        
-                            edge_set, remain_edges, w, c = show_results(G1, "ricciCurvature", name = str(l) + str(i) + '_nonrobust')
 
-                            nonrobust_c[l].append(np.array(c))
-                            non_fraction[l].append(len(edge_set)/(len(remain_edges)+len(edge_set)))
-                      
-                            i += 1
+                            weights_inv = weights_inv.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device)
+        
+                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
+                        
+                            nonrobust_c[l].append(c)
+                            non_fraction[l].append(neg_num/total_edge)
                             
-                            if (i % 10 == 0):
-                                print(f'Finish {i} graphs....')
-                
-                            if (i >= sample_size):
+                            count += 1
+                            if (count % 10 == 0):
+                                print(f'Finish {count} graphs....')
+                                
+                            if (count >= sample_size):
                                 break
-  
+
                 
                     # robust images
-                    i = 0
+                    count = 0
                     for (ori_im, adv_im) in robust_pair[l]:
                         for im in ori_im:
-                            adj_m_ori, nodes_ori = build_adjm(im, net_H, nodes_num, dims, device, metric)
-                    
-                            G = nx.from_numpy_array(adj_m_ori, create_using=nx.DiGraph)
-                            orf = OllivierRicci(G, alpha=0., method="OTD")
-
+                            img = im.to(device)
+                            edge_array, nodes_ori, nodes_before, output = net_H.NN_info_batch(img.unsqueeze(0))
+                            
+                            if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+                                weights = output.detach().clone().to(device)                   
+                                weights[edge_array == 0] = 0.
+                                
+                            elif metric.lower() == "q_exp":
+                                weights = edge_array.detach().clone().to(device)  
+                            
                             if metric.lower() == "q_ngr":
-                                orf.recal_graph_weight(nodes_ori)
+                                _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
                                 
                             elif metric.lower() == "q_inv":
-                                orf.recal_graph_weight_w2(nodes_ori)
+                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
                 
                             elif metric.lower() == "q_exp":
-                                orf.recal_qexp(q, nodes_ori)
+                                weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, q)
                             else:
                                 raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-                
-                            orf.compute_ricci_curvature()
-                            G1 = orf.G.copy()
-                            edge_set, remain_edges, w, c = show_results(G1, "ricciCurvature", name = str(l) + str(i) + '_robust')
-            
-                            robust_c[l].append(np.array(c))
-                            rob_fraction[l].append(len(edge_set)/(len(remain_edges)+len(edge_set)))
-                   
-                            i += 1
+
+                            weights_inv = weights_inv.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device)
+        
+                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
+                        
+                            robust_c[l].append(c)
+                            rob_fraction[l].append(neg_num/total_edge)
                             
-                            if (i % 10 == 0):
-                                print(f'Finish {i} graphs....')
+                            count += 1
+                            if (count % 10 == 0):
+                                print(f'Finish {count} graphs....')
                                 
-                            if (i >= sample_size):
+                            if (count >= sample_size):
                                 break
-                    print(f'Finish {i} graphs....')
                             
                     
-                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "frac_robust.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "frac_robust.pkl", 'wb') as file:
                     pickle.dump(rob_fraction, file)
-                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "frac_norobust.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "frac_norobust.pkl", 'wb') as file:
                     pickle.dump(non_fraction, file)
                     
-                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "curv_robust.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "curv_robust.pkl", 'wb') as file:
                     pickle.dump(robust_c, file)
-                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + "curv_norobust.pkl", 'wb') as file:
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "curv_norobust.pkl", 'wb') as file:
                     pickle.dump(nonrobust_c, file)
                         
