@@ -12,9 +12,9 @@
 
 ### FC
 
-- python main.py --lidar 0 --metric q_ngr --model_type fc --model_name ori --model_path pgd/models/ --mnist_res_path res/q_ngr/
-- python main.py --lidar 0 --metric q_inv --model_type fc --model_name ori --model_path pgd/models/ --mnist_res_path res/q_inv/
-- python main.py --lidar 0 --metric q_exp --model_type fc --model_name ori --model_path pgd/models/ --mnist_res_path res/q_exp/
+- python main.py --lidar 0 --metric q_ngr --model_type fc --model_name ori --model_path pgd/models/ --mnist_res_path res/q_ngr/ --dataset cifar
+- python main.py --lidar 0 --metric q_inv --model_type fc --model_name ori --model_path pgd/models/ --mnist_res_path res/q_inv/ --dataset cifar
+- python main.py --lidar 0 --metric q_exp --model_type fc --model_name ori --model_path pgd/models/ --mnist_res_path res/q_exp/ --dataset cifar
 
 ### FC Linear
 
