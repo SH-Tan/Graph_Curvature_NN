@@ -19,6 +19,7 @@ def avg_f_cal(args):
     data_path = args.mnist_data_path
     metric = args.metric
     dataset = args.dataset
+    cifar = args.cifar
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -61,6 +62,10 @@ def avg_f_cal(args):
             elif model_type.lower() == "cnn" and dataset.lower() == "cifar":
                 robust_suffix = "frac_robust_cifar.pkl"
                 norobust_suffix = "frac_norobust_cifar.pkl"
+                
+                if cifar.lower() == 'big':
+                    robust_suffix = "frac_robust_cifar_big.pkl"
+                    norobust_suffix = "frac_norobust_cifar_big.pkl"
                 
             else:
                 raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")

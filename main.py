@@ -14,7 +14,8 @@ sys.path.append("..")
 from pgd.single_ex_test import fc_main
 from pgd.single_test_linear import fc_linear_main
 from CNN.single_ex_test_small import cnn_main
-from CNN.single_ex_test_small_cifar10 import cifar_main
+from CNN.single_test_cifar_small import cifar_small_main
+from CNN.single_test_cifar_big import cifar_big_main
 
 from Lidar.LoadSampleScript import start_lidar
 
@@ -35,10 +36,11 @@ parameters:
 '''
 def parse_args():
     parse = argparse.ArgumentParser(description='Neural Data Graph')
-    parse.add_argument('--mnist', type=int, default=1, required=False, help='If test MNIST')
-    parse.add_argument('--cifar', type=int, default=0, required=False, help='If test CIFAR')
+    parse.add_argument('--image', type=int, default=1, required=False, help='If test Image')
     parse.add_argument('--lidar', type=int, default=0, required=False, help='If test LiDAR')
+    parse.add_argument('--cifar', type=str, default='small', required=False, help='Small or big model for CIFAR')
     parse.add_argument('--metric', type=str, required=True, help='Definition of NDG')
+    parse.add_argument('--dataset', type=str, default='mnist', required=False, help='Dataset')
     parse.add_argument('--model_type', type=str, default='fc', required=False, help='Type of test model')
     parse.add_argument('--model_name', type=str, default='ori', required=False, help='Name of test model')
     parse.add_argument('--model_path', type=str, default='pgd/models/', required=False, help='Path of test model')
@@ -56,18 +58,22 @@ if __name__=='__main__':
     
     model_type = args.model_type
     
-    if args.mnist:
+    if args.image:
         if model_type.lower() == "fc":
             fc_main(args)
         elif model_type.lower() == "fc_linear":
             fc_linear_main(args)
-        elif model_type.lower() == "cnn":
+        elif model_type.lower() == "cnn" and args.dataset == 'mnist':
             cnn_main(args)
+        elif model_type.lower() == "cnn" and args.dataset == 'cifar':
+            if args.cifar.lower() == 'small':
+                cifar_small_main(args)
+            elif args.cifar.lower() == 'big':
+                cifar_big_main(args)
+            else:
+                raise Exception("Invalid CIFAR model type, model type should be {small, big}!")
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
-    
-    if args.cifar:
-         cifar_main(args)
     
     if args.lidar:
         start_lidar(args)

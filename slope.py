@@ -19,6 +19,7 @@ from tools.small_model import FC_MD
 from tools.FC_linear import FC_Linear
 from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
 from tools.LeNet5_custom import LeNet_custom
+from tools.cnn_costom import CNN_custom
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -45,13 +46,20 @@ mnist_test = MNIST('./data/mnist',
                       # transforms.Resize((32, 32)),
                       transforms.ToTensor()]))
 
-normalize = torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.225, 0.225, 0.225])
-train_transforms = torchvision.transforms.Compose([torchvision.transforms.ToTensor(), normalize])
-test_transforms = torchvision.transforms.Compose([torchvision.transforms.ToTensor(), normalize])
+transform_train = torchvision.transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomCrop(size=32, padding=4),
+    transforms.ToTensor(),
+    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+])
 
+transform_test = torchvision.transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+])
 
-cifar_train = CIFAR10('./data/cifar10', train=True, download=True, transform=train_transforms)
-cifar_test = CIFAR10('./data/cifar10', train=False, download=True, transform=test_transforms)
+cifar_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
+cifar_test = CIFAR10('./data/cifar10', train=False, download=True, transform=transform_test)
 
 
 layers = [2, 4, 5, 6, 7]
@@ -84,6 +92,14 @@ cifar_model_dims = {
     6: {"name": "fc", "dim": {"out_size": 10}}
 }
 
+cifar_bigmodel_dims = {
+    1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},
+    2: {"name": "cnn", "dim": {"channel": 32, "kernel": 6, "stride": 2, "out_size": 14}},
+    3: {"name": "cnn", "dim": {"channel": 16, "kernel": 6, "stride": 2, "out_size": 5}},
+    4: {"name": "fc", "dim": {"out_size": 120}},
+    5: {"name": "fc", "dim": {"out_size": 10}}
+}
+
 loss_fn = nn.CrossEntropyLoss()
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
     
@@ -108,6 +124,7 @@ def standard_PGD(model, images, labels, eps=11/255, alpha=2/255, iters=40):
         adv_images = images + alpha*images.grad.sign()
         eta = torch.clamp(adv_images - ori_images, min=-eps, max=eps)
         images = torch.clamp(ori_images + eta, min=0, max=1).detach_()
+        # images = (ori_images + eta).detach_()
             
     return images
 
@@ -176,6 +193,11 @@ def get_fraction(name, data_path):
 def draw(frac, loss, res_path, mark = ''): 
     assert(len(frac) == len(loss))
     
+    loss = np.array(loss)
+    frac = np.array(frac)
+    frac = frac[loss<1]
+    loss = loss[loss<1]
+    
     X_train = np.array(loss).reshape((len(loss), 1))
     Y_train = np.array(frac).reshape((len(frac), 1))
     lineModel = lg()
@@ -228,6 +250,7 @@ def cal_slope(args):
     metric = args.metric
     sample_size = args.sample_num
     dataset = args.dataset
+    cifar = args.cifar
     
     if dataset.lower() == 'mnist':
         data_train = mnist_train
@@ -251,6 +274,7 @@ def cal_slope(args):
         layers = [2,4]
              
     norobust_suffix = "frac_norobust.pkl"
+    robust_suffix = "frac_robust.pkl"
     
     # build model
     for layer_num in layers:
@@ -295,14 +319,26 @@ def cal_slope(args):
             norobust_suffix = "frac_norobust_cnn.pkl"
             
         elif model_type.lower() == "cnn" and dataset.lower() == 'cifar':
-            model_name= "best_cifar.pth"
-            
-            net_H = LeNet_custom(cifar_model_dims, device, input_c=3)
+            if cifar.lower() == 'small':
+                model_name= "best_cifar.pth"
+                
+                if model_pre_name.lower() == "adv":
+                    model_name = "best_cifar_adv.pth"
+                    
+                net_H = LeNet_custom(cifar_model_dims, device, input_c=3)
+                norobust_suffix = "frac_norobust_cifar.pkl"
+                robust_suffix = "frac_robust_cifar.pkl"
+                
+            elif cifar.lower() == 'big':
+                model_name= "best_cifar_adv_cnn.pth"
+                net_H = CNN_custom(cifar_bigmodel_dims, device, input_c=3)
+                norobust_suffix = "frac_norobust_cifar_big.pkl"
+            else:
+                raise Exception("Invalid CIFAR model type, model type should be {small, big}!")
+                
             net_H.load_state_dict(torch.load(model_path + model_name))
             net_H = net_H.to(device)
-            
-            norobust_suffix = "frac_norobust_cifar.pkl"
-            
+
         print(f'Now for model {model_name}....\n')
         
         for q in Q: 
@@ -317,6 +353,7 @@ def cal_slope(args):
                 
                 if model_type.lower() == "cnn":
                     frac_name_no = model_full_n + str(e) + metric + str(q) + norobust_suffix
+                    frac_name = model_full_n + str(e) + metric + str(q) + robust_suffix
 
                 delta_loss_l = []
                 
@@ -332,13 +369,26 @@ def cal_slope(args):
                             if (i >= sample_size):
                                 break
                             
+                for l in selected_classes: 
+                    i = 0 
+                    for (ori_im, adv_im) in robust_pair[l]:
+                        for index in range(0, len(ori_im)):
+                            im, pgd_im = ori_im[index], adv_im[index]
+                            loss = single_test(net_H, im, pgd_im, l, e, alpha=2/255, iters=40)
+                            delta_loss_l.append(loss)
+                            
+                            i += 1
+                            if (i >= sample_size):
+                                break
+                            
                 frac_norobust = get_fraction(frac_name_no, data_path)
+                frac_robust = get_fraction(frac_name, data_path)
                                 
-                frac = frac_norobust 
+                frac = frac_norobust + frac_robust
                 
                 print(f'Delta loss: {len(delta_loss_l)}, FRAC: {len(frac)}')
                 
                 with open(res_path + "slope.txt", "a+") as f:
                     if (len(frac) > 0):
-                        a = draw(frac, delta_loss_l, res_path, mark= model_full_n + str(q) + '_e_' + str(e) + '_frac_l_' + str(layer_num))
+                        a = draw(frac, delta_loss_l, res_path, mark= model_full_n + str(q) + '_e_' + str(e) + '_frac_l_' + str(layer_num)+cifar)
                         f.write(f'W = {metric}: For model {model_type} - {model_pre_name}, layer {layer_num}, eps = {e}, the slope is {a:.4f}\n\n')
