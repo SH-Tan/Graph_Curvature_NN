@@ -25,10 +25,6 @@ from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.FC_linear import FC_Linear
 # from RicciCurvature.q_exponential import q_exponential
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device} device")
-
 
 import warnings
 
@@ -87,7 +83,7 @@ def show_results(G, curvature="ricciCurvature", name = ""):
     return edge_set, remain_edges, weights, curvatures
 
 
-def standard_PGD(model, images, labels, eps=11/255, alpha=2/255, iters=40):
+def standard_PGD(model, images, labels, device, eps=11/255, alpha=2/255, iters=40):
     images = images.to(device)
     labels = labels.to(device)
     loss = nn.CrossEntropyLoss()
@@ -109,7 +105,7 @@ def standard_PGD(model, images, labels, eps=11/255, alpha=2/255, iters=40):
     return images
 
 
-def test(n, loader, eps, alpha, iters):    
+def test(n, loader, eps, alpha, iters, device):    
     n.eval()
     robust_pair = defaultdict(list)
     succ_pair = defaultdict(list)
@@ -123,7 +119,7 @@ def test(n, loader, eps, alpha, iters):
             output = n(images)
             pred = output.detach().max(1)[1]
             
-            adv_img = standard_PGD(n, images, labels, eps, alpha, iters)
+            adv_img = standard_PGD(n, images, labels, device, eps, alpha, iters)
             adv_out = n(adv_img)
             adv_pred = adv_out.detach().max(1)[1]
             
@@ -230,6 +226,11 @@ def fc_linear_main(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device} device")
+
+    
     train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=1, valid_num=5000)
 
     sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)
@@ -279,7 +280,7 @@ def fc_linear_main(args):
                 i += 1
         
             for e in eps:
-                succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40)
+                succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
                 
                 sample_size = args.sample_num
                 
