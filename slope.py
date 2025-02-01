@@ -50,12 +50,12 @@ transform_train = torchvision.transforms.Compose([
     transforms.RandomHorizontalFlip(),
     transforms.RandomCrop(size=32, padding=4),
     transforms.ToTensor(),
-    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
 transform_test = torchvision.transforms.Compose([
     transforms.ToTensor(),
-    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
 cifar_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
@@ -193,11 +193,6 @@ def get_fraction(name, data_path):
 def draw(frac, loss, res_path, mark = ''): 
     assert(len(frac) == len(loss))
     
-    loss = np.array(loss)
-    frac = np.array(frac)
-    frac = frac[loss<1]
-    loss = loss[loss<1]
-    
     X_train = np.array(loss).reshape((len(loss), 1))
     Y_train = np.array(frac).reshape((len(frac), 1))
     lineModel = lg()
@@ -258,7 +253,7 @@ def cal_slope(args):
     elif dataset.lower() == 'cifar':
         data_train = cifar_train
         data_test = cifar_test
-        eps = [1,3,5,7,11]
+        eps = [1,2,3,5]
     
     train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=1, valid_num=2000)
 
@@ -369,22 +364,22 @@ def cal_slope(args):
                             if (i >= sample_size):
                                 break
                             
-                for l in selected_classes: 
-                    i = 0 
-                    for (ori_im, adv_im) in robust_pair[l]:
-                        for index in range(0, len(ori_im)):
-                            im, pgd_im = ori_im[index], adv_im[index]
-                            loss = single_test(net_H, im, pgd_im, l, e, alpha=2/255, iters=40)
-                            delta_loss_l.append(loss)
+                # for l in selected_classes: 
+                #     i = 0 
+                #     for (ori_im, adv_im) in robust_pair[l]:
+                #         for index in range(0, len(ori_im)):
+                #             im, pgd_im = ori_im[index], adv_im[index]
+                #             loss = single_test(net_H, im, pgd_im, l, e, alpha=2/255, iters=40)
+                #             delta_loss_l.append(loss)
                             
-                            i += 1
-                            if (i >= sample_size):
-                                break
+                #             i += 1
+                #             if (i >= sample_size):
+                #                 break
                             
                 frac_norobust = get_fraction(frac_name_no, data_path)
                 frac_robust = get_fraction(frac_name, data_path)
                                 
-                frac = frac_norobust + frac_robust
+                frac = frac_norobust
                 
                 print(f'Delta loss: {len(delta_loss_l)}, FRAC: {len(frac)}')
                 

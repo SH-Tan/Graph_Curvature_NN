@@ -35,7 +35,7 @@ def avg_f_cal(args):
     Q = [1]
     
     if dataset.lower() == "cifar":
-        eps = [1,3,5,7,11]
+        eps = [1,2,3,5]
                 
     robust_suffix = "frac_robust.pkl"
     norobust_suffix = "frac_norobust.pkl"
