@@ -21,9 +21,10 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
+from tools.small_model import FC_MD
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.FC_linear import FC_Linear
-# from RicciCurvature.q_exponential import q_exponential
+from tools.graph_curvature import graph_curvature_main_torch
 
 
 import warnings
@@ -47,10 +48,13 @@ data_test = MNIST('./data/mnist',
                       transforms.ToTensor()]))
 
 
+
+
 layers = [2, 4, 5, 6, 7]
 
 model_zoo = {
     2: [784, 20, 15, 10],
+    21: [784, 200, 150, 10],
     4: [784, 15, 25, 20, 15, 10],
     5: [784, 20, 30, 30, 20, 15, 10],
     6: [784, 20, 30, 30, 35, 20, 15, 10],
@@ -58,6 +62,7 @@ model_zoo = {
 }
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
+
 
 
 def show_results(G, curvature="ricciCurvature", name = ""):
@@ -109,8 +114,7 @@ def test(n, loader, eps, alpha, iters, device):
     n.eval()
     robust_pair = defaultdict(list)
     succ_pair = defaultdict(list)
-    sample = 20
-    finish = set()
+ 
     
     for l in selected_classes:
         for i, (images, labels) in enumerate(loader[l]):
@@ -122,10 +126,6 @@ def test(n, loader, eps, alpha, iters, device):
             adv_img = standard_PGD(n, images, labels, device, eps, alpha, iters)
             adv_out = n(adv_img)
             adv_pred = adv_out.detach().max(1)[1]
-            
-            # adv_img1 = standard_PGD(n, images, labels, 0.05, alpha, iters)
-            # adv_out1 = n(adv_img1)
-            # adv_pred1 = adv_out1.detach().max(1)[1]
  
             robust_l = pred.eq(labels.view_as(pred)) & adv_pred.eq(labels.view_as(pred))
             
@@ -133,74 +133,20 @@ def test(n, loader, eps, alpha, iters, device):
    
             succ_pair[l].append((images[succ_l].cpu(), adv_img[succ_l].cpu()))
             robust_pair[l].append((images[robust_l].cpu(), adv_img[robust_l].cpu()))
-
+            
         print(f'Finish label {l}....')
 
-    # print(f'Test Accuracy for label {l}: {(float(total_correct) / len(loader.dataset)):.3f}')
-    # acc = float(total_correct) / len(loader.dataset)
     return succ_pair, robust_pair
 
-
-def single_test(n, im, l, eps, alpha, iters):
-    n.eval()
-    
-    im = im.to(device)
-    output = n(im)
-    labels = output.detach().max(1)[1]
-    
-    adv_img = standard_PGD(n, im, labels, eps, alpha, iters)
-    adv_out = n(adv_img)
-    adv_pred = adv_out.detach().max(1)[1]
-    
-    print(f'Correct label is {l}, predition label is {labels.cpu().item()}, attacked img prediction is {adv_pred.cpu().item()}....\n')
-    return adv_pred.cpu().item()
-
-
-
-
-def build_adjm(img, net, nodes_num, dims, device, metric):
-    img = img.to(device)
-    edge_array, nodes = net.edge_w_batch(img)
-    edge_array = edge_array.cpu().detach().numpy() 
-    
-    if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
-        output = net.get_weights(img)
-        output = output.cpu().detach().numpy() 
-        
-        output[edge_array == 0] = 0.
-    elif metric.lower() == "q_exp":
-        output = edge_array
-    else:
-        raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-    
-    w_avg = np.mean(output, axis=0) # (edge num,)
-    
-    # build adjacent matrix
-    adjacent_m = np.zeros((nodes_num, nodes_num), dtype=np.float32)
-
-    d_num = len(dims)
-    cur_s_col = dims[0]
-    cur_e_col = dims[0] + dims[1]
-
-    cur_layer = 1
-    start_col = 0
-    end_col = dims[1]
-
-    for i in range(nodes_num - dims[d_num-1]):
-        # print(f'i : {i}, start col : {cur_s_col}, end_col : {cur_e_col}, from {start_col} to {end_col}')
-        adjacent_m[i, cur_s_col : cur_e_col] = w_avg[start_col : end_col]
-        
-        if (cur_layer < d_num-1 and i == cur_s_col - 1):
-            cur_layer += 1
-            start_col = end_col
-            end_col = end_col + dims[cur_layer]
-            cur_s_col = cur_e_col
-            cur_e_col = cur_e_col + dims[cur_layer]
-        else:
-            start_col = end_col
-            end_col = end_col + dims[cur_layer]
-            
-    return adjacent_m, nodes
+def get_fraction(curvature, b):
+    c = []
+    neg = []
+    total_e = []
+    for i in range(b):
+        curr = np.array(curvature[i])
+        neg.append(len(curr[curr<0]))
+        total_e.append(len(curr))
+    return np.array(neg), np.array(total_e), curr
 
 
 
@@ -235,8 +181,9 @@ def fc_linear_main(args):
 
     sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)
     
-    eps = [0.03, 0.07, 0.1, 0.2]
+    # eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
+    eps = [0.1]
     
     model_type = args.model_type
     model_pre_name = args.model_name
@@ -252,10 +199,12 @@ def fc_linear_main(args):
     # build model
     for layer_num in [2]:
         for q in Q:
+            dims = model_zoo[layer_num]
+            
             if model_pre_name.lower() == "ori" or model_pre_name.lower() == "decay":
-                model_name = "best_ori_" + str(layer_num) + "_linear.pth"
+                model_name = "best_ori_10l_" + str(layer_num) + ".pth"
             elif model_pre_name.lower() == "adv":
-                model_name = "best_adv_" + str(layer_num) + "_linear.pth"
+                model_name = "pgdtrain_" + str(layer_num) + ".pth"
             else:
                 raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
             print(f'Now for model {model_name}....\n')
@@ -293,79 +242,84 @@ def fc_linear_main(args):
                     print(f'For label {l}....\n')
 
                     # non robust images
-                    i = 0
+                    count = 0
                     for (ori_im, adv_im) in succ_pair[l]:
                         for im in ori_im:
-                            adj_m_ori, nodes_ori = build_adjm(im, net_H, nodes_num, dims, device, metric)
-                
-                            # Create network object
-                            G = nx.from_numpy_array(adj_m_ori, create_using=nx.DiGraph)
-        
-                            orf = OllivierRicci(G, alpha=0., method="OTD")
+                            img = im.to(device)
+                            edge_array, nodes_ori, nodes_before, output = net_H.NN_info_batch(img.unsqueeze(0))
+                            
+                            if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+                                weights = output.detach().clone().to(device)                   
+                                weights[edge_array == 0] = 0.
+                                
+                            elif metric.lower() == "q_exp":
+                                weights = edge_array.detach().clone().to(device)  
                             
                             if metric.lower() == "q_ngr":
-                                orf.recal_graph_weight(nodes_ori)
+                                _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
                                 
                             elif metric.lower() == "q_inv":
-                                orf.recal_graph_weight_w2(nodes_ori)
+                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
                 
                             elif metric.lower() == "q_exp":
-                                orf.recal_qexp(q, nodes_ori)
+                                weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, q)
                             else:
                                 raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-    
-                            orf.compute_ricci_curvature()
-                            G1 = orf.G.copy()
-        
-                            edge_set, remain_edges, w, c = show_results(G1, "ricciCurvature", name = str(l) + str(i) + '_nonrobust')
 
-                            nonrobust_c[l].append(np.array(c))
-                            non_fraction[l].append(len(edge_set)/(len(remain_edges)+len(edge_set)))
-                
-                            i += 1
+                            weights_inv = weights_inv.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device)
+        
+                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
+                        
+                            nonrobust_c[l].append(c)
+                            non_fraction[l].append(neg_num/total_edge)
                             
-                            if (i % 10 == 0):
-                                print(f'Finish {i} graphs....')
-                            
-                            if (i >= sample_size):
+                            count += 1
+                            if (count % 10 == 0):
+                                print(f'Finish {count} graphs....')
+                                
+                            if (count >= sample_size):
                                 break
     
                 
                     # robust images
-                    i = 0
+                    count = 0
                     for (ori_im, adv_im) in robust_pair[l]:
                         for im in ori_im:
-                            adj_m_ori, nodes_ori = build_adjm(im, net_H, nodes_num, dims, device, metric)
-        
-                            G = nx.from_numpy_array(adj_m_ori, create_using=nx.DiGraph)
-                            orf = OllivierRicci(G, alpha=0., method="OTD")
+                            img = im.to(device)
+                            edge_array, nodes_ori, nodes_before, output = net_H.NN_info_batch(img.unsqueeze(0))
+                            
+                            if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+                                weights = output.detach().clone().to(device)                   
+                                weights[edge_array == 0] = 0.
+                                
+                            elif metric.lower() == "q_exp":
+                                weights = edge_array.detach().clone().to(device)  
                             
                             if metric.lower() == "q_ngr":
-                                orf.recal_graph_weight(nodes_ori)
+                                _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
                                 
                             elif metric.lower() == "q_inv":
-                                orf.recal_graph_weight_w2(nodes_ori)
+                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
                 
                             elif metric.lower() == "q_exp":
-                                orf.recal_qexp(q, nodes_ori)
+                                weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, q)
                             else:
                                 raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-    
-                            orf.compute_ricci_curvature()
-                            G1 = orf.G.copy()
-                            
-                            edge_set, remain_edges, w, c = show_results(G1, "ricciCurvature", name = str(l) + str(i) + '_robust')
-            
-                            robust_c[l].append(np.array(c))
-                            rob_fraction[l].append(len(edge_set)/(len(remain_edges)+len(edge_set)))
 
+                            weights_inv = weights_inv.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device)
+        
+                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
+                        
+                            robust_c[l].append(c)
+                            rob_fraction[l].append(neg_num/total_edge)
                             
-                            i += 1
-                            
-                            if (i % 10 == 0):
-                                print(f'Finish {i} graphs....')
+                            count += 1
+                            if (count % 10 == 0):
+                                print(f'Finish {count} graphs....')
                                 
-                            if (i >= sample_size):
+                            if (count >= sample_size):
                                 break
                             
 

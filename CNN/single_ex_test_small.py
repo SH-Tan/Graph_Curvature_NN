@@ -23,6 +23,7 @@ sys.path.append("..")
 import tools.utils as utils
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
+from tools.graph_curvature import graph_curvature_main_torch
 
 
 import warnings
@@ -135,28 +136,37 @@ def test(n, loader, eps, alpha, iters, device):
         print(f'Finish label {l}....')
     return succ_pair, robust_pair
 
+def get_fraction(curvature, b):
+    c = []
+    neg = []
+    total_e = []
+    for i in range(b):
+        curr = np.array(curvature[i])
+        neg.append(len(curr[curr<0]))
+        total_e.append(len(curr))
+    return np.array(neg), np.array(total_e), curr
 
 
-# def cal_edge_v(net, im, device, metric):     
-#     net.eval()
-#     d = im.to(device)
+def cal_dims(model_dims):
+    dims = []
+    layer_num = len(model_dims)
     
-#     edge_array, nodes = net.edge_w_batch(d)
-#     edge_array = edge_array.cpu().detach().numpy() 
+    for i in range(1, layer_num + 1):
+        cur_name = model_dims[i]["name"]
+        cur_dim = model_dims[i]["dim"]
+        cur_size = cur_dim['out_size']
+
+        cur_channel = 1 if (cur_name == "fc") else cur_dim['channel']
+
+        if cur_name == "input":
+            cur_nodes = cur_channel * cur_size**2
+        else:
+            cur_nodes = cur_size if (cur_name == "fc") else cur_dim['channel']*(cur_size**2)
+            
+        dims.append(cur_nodes)
     
-#     if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
-#         output = net.get_weights(d)
-#         output = output.cpu().detach().numpy() 
-#         output[edge_array == 0] = 0.
-        
-#     elif metric.lower() == "q_exp":
-#         output = edge_array
-#     else:
-#         raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-    
-#     w_avg = np.mean(output, axis=0)
-    
-#     return w_avg, nodes
+    return dims
+
     
 
 def build_cnn_adj(nodes_num, model_dims, net, im, device, metric):
@@ -301,6 +311,8 @@ def cnn_main(args):
 
     sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)
     
+    dims = cal_dims(model_dims)
+    
     model_type = args.model_type
     model_pre_name = args.model_name
     res_path = args.mnist_res_path
@@ -320,8 +332,11 @@ def cnn_main(args):
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
     
-    eps = [0.03, 0.07, 0.1, 0.2]
+    print(model_name)
+    
+    # eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
+    eps = [0.1]
     
     for q in Q:
         for e in eps:
@@ -338,72 +353,83 @@ def cnn_main(args):
                 count = 0
                 for (ori_im, adv_im) in succ_pair[l]:
                     for im in ori_im:
-                        adj_m_ori, nodes_ori = build_cnn_adj(nodes_num, model_dims, net_H, im[np.newaxis,:], device, metric)
-                  
-                        G = nx.from_numpy_array(adj_m_ori, create_using=nx.DiGraph)
-                        orf = OllivierRicci(G, alpha=0., method="OTD")
+                        img = im.to(device)
+                        edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
+                        
+                        if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+                            weights = output.detach().clone().to(device)                   
+                            weights[edge_array == 0] = 0.
+                            
+                        elif metric.lower() == "q_exp":
+                            weights = edge_array.detach().clone().to(device)  
                         
                         if metric.lower() == "q_ngr":
-                            orf.recal_graph_weight(nodes_ori)
+                            _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
                             
                         elif metric.lower() == "q_inv":
-                            orf.recal_graph_weight_w2(nodes_ori)
+                            _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
             
                         elif metric.lower() == "q_exp":
-                            orf.recal_qexp(q, nodes_ori)
+                            weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, model_dims, q)
                         else:
                             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-    
-                        orf.compute_ricci_curvature()
-                        G1 = orf.G.copy()
                         
-                        edge_set, remain_edges, w, c = show_results(G1, "ricciCurvature")
-                        nonrobust_c[l].append(np.array(c))
-                        non_fraction[l].append(len(edge_set)/(len(remain_edges)+len(edge_set)))
+                        weights_inv = weights_inv.detach()
+
+                        ricci_curvature = graph_curvature_main_torch(dims, weights_inv, model_dims=model_dims, device=device)
+    
+                        neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
+                    
+                        nonrobust_c[l].append(c)
+                        non_fraction[l].append(neg_num/total_edge)
                         
                         count += 1
                         if (count % 10 == 0):
                             print(f'Finish {count} graphs....')
-                                    
+                            
                         if (count >= sample_size):
                             break
           
                 count = 0
                 for (ori_im, adv_im) in robust_pair[l]:
                     for im in ori_im:
-                        adj_m_ori, nodes_ori = build_cnn_adj(nodes_num, model_dims, net_H, im[np.newaxis,:], device, metric)
-       
-                        G = nx.from_numpy_array(adj_m_ori, create_using=nx.DiGraph)
-                        orf = OllivierRicci(G, alpha=0., method="OTD")
+                        img = im.to(device)
+                        edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
+                        
+                        if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+                            weights = output.detach().clone().to(device)                   
+                            weights[edge_array == 0] = 0.
+                            
+                        elif metric.lower() == "q_exp":
+                            weights = edge_array.detach().clone().to(device)  
                         
                         if metric.lower() == "q_ngr":
-                            orf.recal_graph_weight(nodes_ori)
+                            _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
                             
                         elif metric.lower() == "q_inv":
-                            orf.recal_graph_weight_w2(nodes_ori)
+                            _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
             
                         elif metric.lower() == "q_exp":
-                            orf.recal_qexp(q, nodes_ori)
+                            weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, model_dims, q)
                         else:
                             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-    
-                        orf.compute_ricci_curvature()
-                        G1 = orf.G.copy()
                         
-                        edge_set, remain_edges, w, c = show_results(G1, "ricciCurvature")
+                        weights_inv = weights_inv.detach()
+                        
+                        ricci_curvature = graph_curvature_main_torch(dims, weights_inv, model_dims=model_dims, device=device)
+    
+                        neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
         
-                        robust_c[l].append(np.array(c))
-                        rob_fraction[l].append(len(edge_set)/(len(remain_edges)+len(edge_set)))
+                        robust_c[l].append(c)
+                        rob_fraction[l].append(neg_num/total_edge)
                         
                         count += 1
-                        
                         if (count % 10 == 0):
                             print(f'Finish {count} graphs....')
                             
                         if (count >= sample_size):
                             break
-                        
-                
+            
             with open(res_path + model_full_n + str(e) + metric + str(q) + "frac_robust_cnn.pkl", 'wb') as file:
                 pickle.dump(rob_fraction, file)
             with open(res_path + model_full_n + str(e) + metric + str(q) +  "frac_norobust_cnn.pkl", 'wb') as file:
