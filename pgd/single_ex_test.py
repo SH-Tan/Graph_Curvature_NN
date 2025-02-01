@@ -172,7 +172,7 @@ def fc_main(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    # os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -208,8 +208,8 @@ def fc_main(args):
             else:
                 raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
             
-            if dataset == 'cifar':
-                model_name = "best_cifar_adv.pth"
+            if model_pre_name.lower() == 'fc_big':
+                model_name = "best_21_adv.pth"
                 dims = model_zoo[21]
                 
             print(f'Now for model {model_name}....\n')

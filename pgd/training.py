@@ -12,7 +12,7 @@ sys.path.append("..")
 
 import tools.utils as utils
 from tools.small_model import FC_MD
-from RicciCurvature.OllivierRicci_newW import OllivierRicci
+from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.FC_linear import FC_Linear
 
 import standard_pgd_test
