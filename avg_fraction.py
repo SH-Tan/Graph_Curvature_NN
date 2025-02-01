@@ -37,8 +37,8 @@ def avg_f_cal(args):
     if dataset.lower() == "cifar":
         eps = [1,3,5,7,11]
                 
-    robust_suffix = "frac_robust.pkl"
-    norobust_suffix = "frac_norobust.pkl"
+    robust_suffix = "cifar" + "frac_robust.pkl"
+    norobust_suffix = "cifar" + "frac_norobust.pkl"
 
     with open(res_path + "avg_f.txt", "a+") as ff:
         # Plot the data
@@ -46,8 +46,13 @@ def avg_f_cal(args):
             ff.write(f'W = {metric}: For model {model_type} - {model_pre_name}, layer {layer_num}: \n')
             
             if model_type.lower() == "fc":
-                robust_suffix = "frac_robust.pkl"
-                norobust_suffix = "frac_norobust.pkl"
+                robust_suffix = dataset + "frac_robust.pkl"
+                norobust_suffix = dataset + "frac_norobust.pkl"
+                
+                if model_pre_name.lower() == 'big':
+                    robust_suffix = "cifar" + "frac_robust.pkl"
+                    norobust_suffix = "cifar" + "frac_norobust.pkl"
+                    model_full_n =  model_type.lower() + "ori"
             
             # fc linear model
             elif model_type.lower() == "fc_linear":
