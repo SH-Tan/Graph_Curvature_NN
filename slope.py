@@ -66,6 +66,7 @@ layers = [2, 4, 5, 6, 7]
 
 model_zoo = {
     2: [784, 20, 15, 10],
+    21: [784, 200, 150, 10],
     4: [784, 15, 25, 20, 15, 10],
     5: [784, 20, 30, 30, 20, 15, 10],
     6: [784, 20, 30, 30, 35, 20, 15, 10],
@@ -203,18 +204,18 @@ def draw(frac, loss, res_path, mark = ''):
     a1 = lineModel.coef_[0][0]
     b = lineModel.intercept_[0]
     
-    fig1, ax1 = plt.subplots(figsize=(9, 7))
+    fig1, ax1 = plt.subplots(figsize=(10, 8))
     ax1.scatter(loss, frac, c = 'skyblue', marker = '*', label='Example')
     ax1.plot(loss, Y_predict, 'r', label='Fitted Line: y = ' + str(round(a1,4)) + '*x + ' + str(round(b,4)))
     
-    plt.xlabel('Delta Loss', fontsize = 19, fontweight='semibold')
-    plt.ylabel('Negative Curvature Edges Ratio', fontsize = 19, fontweight='semibold')
-    plt.yticks(size=18,weight='semibold')
-    plt.xticks(size=18,weight='semibold')
-    plt.legend(loc = 'best', prop={'size':19, 'weight':'semibold'})
+    plt.xlabel('Delta Loss', fontsize = 23, fontweight='semibold')
+    plt.ylabel('Negative Curvature Edges Ratio', fontsize = 23, fontweight='semibold')
+    plt.yticks(size=22,weight='semibold')
+    plt.xticks(size=22,weight='semibold')
+    plt.legend(loc = 'best', prop={'size':22, 'weight':'semibold'})
     plt.grid(True)
     
-    plt.savefig(res_path + mark + "_loss.png")
+    plt.savefig(res_path + mark + "_loss.eps")
     plt.close()
     
     return a1
@@ -273,16 +274,24 @@ def cal_slope(args):
     
     # build model
     for layer_num in layers:
+        dims = model_zoo[layer_num]
         # fc model
         if model_type.lower() == "fc":
-            if model_pre_name.lower() == "ori" or model_pre_name.lower() == "decay":
-                model_name = "best_ori_10l_" + str(layer_num) + ".pth"
-            elif model_pre_name.lower() == "adv":
-                model_name = "pgdtrain_" + str(layer_num) + ".pth"
+            if model_pre_name.lower() == 'big':
+                model_name = "best_21_adv.pth"
+                dims = model_zoo[21]
+                norobust_suffix = "cifar" + "frac_norobust.pkl"
+                model_full_n =  model_type.lower() + "ori"
             else:
-                raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
-            
-            dims = model_zoo[layer_num]
+                if model_pre_name.lower() == "ori" or model_pre_name.lower() == "decay":
+                    model_name = "best_ori_10l_" + str(layer_num) + ".pth"
+                elif model_pre_name.lower() == "adv":
+                    model_name = "pgdtrain_" + str(layer_num) + ".pth"
+                else:
+                    raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
+                
+                norobust_suffix = dataset + "frac_norobust.pkl"
+                
             net_H = FC_MD(dims, layer_num)
             net_H.load_state_dict(torch.load(model_path + model_name))
             net_H = net_H.to(device)
@@ -348,7 +357,7 @@ def cal_slope(args):
                 
                 if model_type.lower() == "cnn":
                     frac_name_no = model_full_n + str(e) + metric + str(q) + norobust_suffix
-                    frac_name = model_full_n + str(e) + metric + str(q) + robust_suffix
+                    # frac_name = model_full_n + str(e) + metric + str(q) + robust_suffix
 
                 delta_loss_l = []
                 
@@ -377,7 +386,7 @@ def cal_slope(args):
                 #                 break
                             
                 frac_norobust = get_fraction(frac_name_no, data_path)
-                frac_robust = get_fraction(frac_name, data_path)
+                # frac_robust = get_fraction(frac_name, data_path)
                                 
                 frac = frac_norobust
                 
