@@ -37,12 +37,12 @@ transform_train = torchvision.transforms.Compose([
     transforms.RandomHorizontalFlip(),
     transforms.RandomCrop(size=32, padding=4),
     transforms.ToTensor(),
-    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
 transform_test = torchvision.transforms.Compose([
     transforms.ToTensor(),
-    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
 data_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
@@ -165,7 +165,7 @@ def cifar_small_main(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     selected_classes = [0,1,2,3,4,5,6,7,8,9]
@@ -200,7 +200,7 @@ def cifar_small_main(args):
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
     
-    eps = [1,3,5,7,11]
+    eps = [1,2,3,5]
     Q = [1]
     
     for q in Q:
@@ -229,10 +229,24 @@ def cifar_small_main(args):
                             img = im.to(device)
                             edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
                             
-                            weights = output.detach().clone().to(device)                   
-                            weights[edge_array == 0] = 0.
+                            if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+                                weights = output.detach().clone().to(device)                   
+                                weights[edge_array == 0] = 0.
+                                
+                            elif metric.lower() == "q_exp":
+                                weights = edge_array.detach().clone().to(device)  
                             
-                            _, weights_inv = net_H.normalization_weight(nodes_ori, weights, dims, model_dims)
+                            if metric.lower() == "q_ngr":
+                                _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
+                                
+                            elif metric.lower() == "q_inv":
+                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
+                
+                            elif metric.lower() == "q_exp":
+                                weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, model_dims, q)
+                            else:
+                                raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+                            
                             weights_inv = weights_inv.detach()
 
                             ricci_curvature = graph_curvature_main_torch(dims, weights_inv, model_dims=model_dims, device=device)
@@ -255,10 +269,24 @@ def cifar_small_main(args):
                             img = im.to(device)
                             edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
                             
-                            weights = output.detach().clone().to(device)                   
-                            weights[edge_array == 0] = 0.
+                            if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+                                weights = output.detach().clone().to(device)                   
+                                weights[edge_array == 0] = 0.
+                                
+                            elif metric.lower() == "q_exp":
+                                weights = edge_array.detach().clone().to(device)  
                             
-                            _, weights_inv = net_H.normalization_weight(nodes_ori, weights, dims, model_dims)
+                            if metric.lower() == "q_ngr":
+                                _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
+                                
+                            elif metric.lower() == "q_inv":
+                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
+                
+                            elif metric.lower() == "q_exp":
+                                weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, model_dims, q)
+                            else:
+                                raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+                            
                             weights_inv = weights_inv.detach()
                             
                             ricci_curvature = graph_curvature_main_torch(dims, weights_inv, model_dims=model_dims, device=device)
