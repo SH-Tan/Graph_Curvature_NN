@@ -302,7 +302,7 @@ def cnn_main(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    # os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
     
@@ -334,9 +334,9 @@ def cnn_main(args):
     
     print(model_name)
     
-    # eps = [0.03, 0.07, 0.1, 0.2]
+    eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
-    eps = [0.1]
+    # eps = [0.1]
     
     for q in Q:
         for e in eps:

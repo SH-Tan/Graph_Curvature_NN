@@ -172,7 +172,7 @@ def fc_main(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -183,6 +183,7 @@ def fc_main(args):
     
     eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
+    # eps = [0.1]
     
     model_type = args.model_type
     model_pre_name = args.model_name
@@ -195,9 +196,13 @@ def fc_main(args):
     
     if not os.path.exists(res_path):
         os.makedirs(res_path)
+        
+    layers = [2,4]
+    if model_pre_name.lower() == 'big':
+        layers = [2]
     
     # build model
-    for layer_num in [2]:
+    for layer_num in layers:
         for q in Q:
             dims = model_zoo[layer_num]
             
@@ -205,12 +210,13 @@ def fc_main(args):
                 model_name = "best_ori_10l_" + str(layer_num) + ".pth"
             elif model_pre_name.lower() == "adv":
                 model_name = "pgdtrain_" + str(layer_num) + ".pth"
+            elif model_pre_name.lower() == 'big':
+                model_name = "best_21_adv.pth"
+                dims = model_zoo[21]
             else:
                 raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
             
-            if model_pre_name.lower() == 'fc_big':
-                model_name = "best_21_adv.pth"
-                dims = model_zoo[21]
+            
                 
             print(f'Now for model {model_name}....\n')
 
@@ -249,7 +255,7 @@ def fc_main(args):
                     for (ori_im, adv_im) in succ_pair[l]:
                         for im in ori_im:
                             img = im.to(device)
-                            edge_array, nodes_ori, nodes_before, output = net_H.NN_info_batch(img.unsqueeze(0))
+                            edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
                             
                             if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
                                 weights = output.detach().clone().to(device)                   
@@ -259,10 +265,10 @@ def fc_main(args):
                                 weights = edge_array.detach().clone().to(device)  
                             
                             if metric.lower() == "q_ngr":
-                                _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
+                                weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
                                 
                             elif metric.lower() == "q_inv":
-                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
+                                weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
                 
                             elif metric.lower() == "q_exp":
                                 weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, q)
@@ -290,7 +296,7 @@ def fc_main(args):
                     for (ori_im, adv_im) in robust_pair[l]:
                         for im in ori_im:
                             img = im.to(device)
-                            edge_array, nodes_ori, nodes_before, output = net_H.NN_info_batch(img.unsqueeze(0))
+                            edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
                             
                             if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
                                 weights = output.detach().clone().to(device)                   
@@ -300,10 +306,10 @@ def fc_main(args):
                                 weights = edge_array.detach().clone().to(device)  
                             
                             if metric.lower() == "q_ngr":
-                                _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
+                                weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
                                 
                             elif metric.lower() == "q_inv":
-                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
+                                weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
                 
                             elif metric.lower() == "q_exp":
                                 weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, q)

@@ -50,11 +50,11 @@
 
 ### Slope and Fraction Calculation
 
-- python test.py --lidar 0 --metric q_exp --model_type fc --model_name big --model_path pgd/models/ --mnist_data_path res/q_exp/ --mnist_res_path statistics/q_exp/ 
+- python test.py --lidar 0 --metric q_inv --model_type fc --model_name big --model_path pgd/models/ --mnist_data_path res/q_inv/ --mnist_res_path statistics/q_inv/ 
 
 - python test.py --lidar 0 --metric q_ngr --model_type fc --model_name ori --model_path pgd/models/ --mnist_data_path res/q_ngr/ --mnist_res_path statistics/q_ngr/
 
-- python test.py --lidar 0 --metric q_inv --model_type fc --model_name ori --model_path pgd/models/ --mnist_data_path res/q_inv/ --mnist_res_path statistics/q_inv/
+- python test.py --lidar 0 --metric q_inv --model_type fc --model_name adv --model_path pgd/models/ --mnist_data_path res/q_inv/ --mnist_res_path statistics/q_inv/
 
 - python test.py --lidar 0 --metric q_exp --model_type fc --model_name ori --model_path pgd/models/ --mnist_data_path res/q_exp/ --mnist_res_path statistics/q_exp/
 

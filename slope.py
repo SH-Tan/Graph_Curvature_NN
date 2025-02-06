@@ -237,6 +237,7 @@ def cal_slope(args):
     
     eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
+    # eps = [0.1]
     
     model_type = args.model_type
     model_pre_name = args.model_name
@@ -266,7 +267,7 @@ def cal_slope(args):
         os.makedirs(res_path)
     
     layers = [2]
-    if model_type.lower() == "fc":
+    if model_type.lower() == "fc" and model_pre_name.lower() != 'big':
         layers = [2,4]
              
     norobust_suffix = "frac_norobust.pkl"
@@ -274,14 +275,12 @@ def cal_slope(args):
     
     # build model
     for layer_num in layers:
-        dims = model_zoo[layer_num]
         # fc model
         if model_type.lower() == "fc":
+            dims = model_zoo[layer_num]
             if model_pre_name.lower() == 'big':
                 model_name = "best_21_adv.pth"
                 dims = model_zoo[21]
-                norobust_suffix = "cifar" + "frac_norobust.pkl"
-                model_full_n =  model_type.lower() + "ori"
             else:
                 if model_pre_name.lower() == "ori" or model_pre_name.lower() == "decay":
                     model_name = "best_ori_10l_" + str(layer_num) + ".pth"
@@ -290,7 +289,7 @@ def cal_slope(args):
                 else:
                     raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
                 
-                norobust_suffix = dataset + "frac_norobust.pkl"
+            norobust_suffix = dataset + "frac_norobust.pkl"
                 
             net_H = FC_MD(dims, layer_num)
             net_H.load_state_dict(torch.load(model_path + model_name))
