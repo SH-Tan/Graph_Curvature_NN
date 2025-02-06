@@ -27,18 +27,19 @@ def avg_f_cal(args):
         os.makedirs(res_path)
 
     layer = [2]
-    if model_type.lower() == "fc":
+    if model_type.lower() == "fc" and model_pre_name.lower() != 'big':
         layer = [2,4]
         
     selected_classes = [0,1,2,3,4,5,6,7,8,9]
     eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
+    # eps = [0.1]
     
     if dataset.lower() == "cifar":
         eps = [1,2,3,5]
                 
-    robust_suffix = "cifar" + "frac_robust.pkl"
-    norobust_suffix = "cifar" + "frac_norobust.pkl"
+    robust_suffix = "frac_robust.pkl"
+    norobust_suffix = "frac_norobust.pkl"
 
     with open(res_path + "avg_f.txt", "a+") as ff:
         # Plot the data
@@ -48,11 +49,6 @@ def avg_f_cal(args):
             if model_type.lower() == "fc":
                 robust_suffix = dataset + "frac_robust.pkl"
                 norobust_suffix = dataset + "frac_norobust.pkl"
-                
-                if model_pre_name.lower() == 'big':
-                    robust_suffix = "cifar" + "frac_robust.pkl"
-                    norobust_suffix = "cifar" + "frac_norobust.pkl"
-                    model_full_n =  model_type.lower() + "ori"
             
             # fc linear model
             elif model_type.lower() == "fc_linear":

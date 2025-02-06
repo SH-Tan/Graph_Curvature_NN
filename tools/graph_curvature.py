@@ -256,7 +256,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda'):
         if (layer-1, layer) in sp_dict:
             path_sub = sp_dict[(layer-1, layer)]
             mask = (path_sub != float('inf'))
-            weights_layer = torch.exp(-(path_sub**2)) * mask
+            # weights_layer = torch.exp(-(path_sub)) * mask
+            weights_layer = (1./path_sub) * mask
             sum_weights = weights_layer.sum(dim=1)
             
             dist_prev = weights_layer / sum_weights[:, None, :]
@@ -273,7 +274,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda'):
         if (layer, layer+1) in sp_dict:
             path_sub = sp_dict[(layer, layer+1)]
             mask = (path_sub != float('inf'))
-            weights_layer = torch.exp(-(path_sub**2)) * mask
+            # weights_layer = torch.exp(-(path_sub)) * mask
+            weights_layer = (1./path_sub) * mask
             sum_weights = weights_layer.sum(dim=2)
             
             dist_next = weights_layer / sum_weights[:, :, None]

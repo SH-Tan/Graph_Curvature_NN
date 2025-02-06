@@ -181,9 +181,9 @@ def fc_linear_main(args):
 
     sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)
     
-    # eps = [0.03, 0.07, 0.1, 0.2]
+    eps = [0.03, 0.07, 0.1, 0.2]
     Q = [1]
-    eps = [0.1]
+    # eps = [0.1]
     
     model_type = args.model_type
     model_pre_name = args.model_name
@@ -202,9 +202,9 @@ def fc_linear_main(args):
             dims = model_zoo[layer_num]
             
             if model_pre_name.lower() == "ori" or model_pre_name.lower() == "decay":
-                model_name = "best_ori_10l_" + str(layer_num) + ".pth"
+                model_name = "best_ori_" + str(layer_num) + "_linear.pth"
             elif model_pre_name.lower() == "adv":
-                model_name = "pgdtrain_" + str(layer_num) + ".pth"
+                model_name = "best_adv_" + str(layer_num) + "_linear.pth"
             else:
                 raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
             print(f'Now for model {model_name}....\n')
@@ -246,7 +246,7 @@ def fc_linear_main(args):
                     for (ori_im, adv_im) in succ_pair[l]:
                         for im in ori_im:
                             img = im.to(device)
-                            edge_array, nodes_ori, nodes_before, output = net_H.NN_info_batch(img.unsqueeze(0))
+                            edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
                             
                             if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
                                 weights = output.detach().clone().to(device)                   
@@ -256,10 +256,10 @@ def fc_linear_main(args):
                                 weights = edge_array.detach().clone().to(device)  
                             
                             if metric.lower() == "q_ngr":
-                                _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
+                                weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
                                 
                             elif metric.lower() == "q_inv":
-                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
+                                weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
                 
                             elif metric.lower() == "q_exp":
                                 weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, q)
@@ -287,7 +287,7 @@ def fc_linear_main(args):
                     for (ori_im, adv_im) in robust_pair[l]:
                         for im in ori_im:
                             img = im.to(device)
-                            edge_array, nodes_ori, nodes_before, output = net_H.NN_info_batch(img.unsqueeze(0))
+                            edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
                             
                             if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
                                 weights = output.detach().clone().to(device)                   
@@ -297,10 +297,10 @@ def fc_linear_main(args):
                                 weights = edge_array.detach().clone().to(device)  
                             
                             if metric.lower() == "q_ngr":
-                                _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
+                                weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims)
                                 
                             elif metric.lower() == "q_inv":
-                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
+                                weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
                 
                             elif metric.lower() == "q_exp":
                                 weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, q)
