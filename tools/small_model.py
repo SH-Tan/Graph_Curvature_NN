@@ -78,20 +78,13 @@ class FC_MD(nn.Module):
         x_tmp = x
         
         nodes = x
-        nodes_before = torch.zeros_like(nodes)
 
         ones_tmp = torch.ones_like(x)
         
         for i in range(self.num_hidden_layers):  
-            # nodes no activation
-            x1 = x @ self.layer_list[i].f4.f4.weight.T
-            nodes_before = torch.cat((nodes_before, x1), axis = 1)
-            
             # ndoes after activation
             x = self.layer_list[i](x)      
             nodes = torch.cat((nodes, x), axis = 1)
-            
-            assert(nodes_before.shape == nodes.shape)
             
             # edges
             w = self.layer_list[i].f4.f4.weight.T
@@ -118,14 +111,11 @@ class FC_MD(nn.Module):
         
         # output layer nodes
         x1 = x @ self.layer_list[self.num_hidden_layers].weight.T
-        nodes_before = torch.cat((nodes_before, x1), axis = 1)
          
         x =  self.layer_list[self.num_hidden_layers](x)
         nodes = torch.cat((nodes, x), axis = 1)
         
-        assert(nodes_before.shape == nodes.shape)
-        
-        return output, nodes, nodes_before, weights
+        return output, nodes, weights
     
 
     
@@ -224,7 +214,6 @@ class FC_MD(nn.Module):
         neighbors = torch.arange(prefix_dims[cur_layer-1], prefix_dims[cur_layer])
         
         weights_inv = torch.zeros_like(weights)
-        weights_new = torch.zeros_like(weights)
         
         # go through each node except input layer
         for n in range(dims[0], nodes_num):
@@ -255,12 +244,10 @@ class FC_MD(nn.Module):
             values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
             
             sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
-            sub_pos = torch.where(mask, values, torch.tensor(0.))
 
-            weights_new[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos
             weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
 
-        return weights_new, weights_inv
+        return weights_inv
     
     
     
@@ -277,7 +264,6 @@ class FC_MD(nn.Module):
         neighbors = torch.arange(prefix_dims[cur_layer-1], prefix_dims[cur_layer])
         
         weights_inv = torch.zeros_like(weights)
-        weights_new = torch.zeros_like(weights)
         
         # go through each node except input layer
         for n in range(dims[0], nodes_num):
@@ -308,12 +294,9 @@ class FC_MD(nn.Module):
             values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
             
             sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
-            sub_pos = torch.where(mask, values, torch.tensor(0.))
-
-            weights_new[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos
             weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
 
-        return weights_new, weights_inv
+        return weights_inv
     
     
     def normalization_weight_w6(self, nodes, weights, dims, q):
@@ -328,6 +311,7 @@ class FC_MD(nn.Module):
         step = dims[cur_layer]
         
         q_exp = q_exponential(q)
+        weights_inv = torch.zeros_like(weights)
         
         # go through each node except input layer
         for n in range(dims[0], nodes_num):
@@ -341,15 +325,16 @@ class FC_MD(nn.Module):
             # print(f'start: {start_col + (n - prefix_dims[cur_layer])}, end: {end_col}, step: {step}')
             in_edges = torch.arange(start_col + (n - prefix_dims[cur_layer]), end_col, step)
             
-            mask = (weights[:, in_edges] != 0)
-            if nodes[:, n] <= 0:
-                weights[:, in_edges] = 1.0/abs(q_exp.q_exponential_series(-weights[:, in_edges]))
+            w = weights[:, in_edges]
+            mask = (w != 0)
+            if nodes[:, n].item() <= 0:
+                weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(-w))
             else:
-                weights[:, in_edges] = 1.0/abs(q_exp.q_exponential_series(weights[:, in_edges]))
+                weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(w))
             
-            weights[:, in_edges] * mask
+            weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] *= mask
 
-        return weights
+        return weights_inv
     
 
 

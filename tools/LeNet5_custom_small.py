@@ -611,6 +611,7 @@ class LeNet_custom_v2(nn.Module):
         end_col = 0
         
         q_exp = q_exponential(q)
+        weights_inv = torch.zeros_like(weights)
         
         n = dims[0]  # Start from the first node of the second layer
 
@@ -650,17 +651,16 @@ class LeNet_custom_v2(nn.Module):
                 # Process all channels and positions at once
                 for c in range(cur_channel):
                     for l in range(indices.shape[1]):
-                        neighbors = indices[0,l] + prefix_dims[current_l-2] 
                         in_edges = torch.arange(start_col, end_col, device=nodes.device)
                         
-                        mask = (weights[:, in_edges] != 0)
-                        
-                        if nodes[:, n] <= 0:
-                            weights[:, in_edges] = 1.0/abs(q_exp.q_exponential_series(-weights[:, in_edges]))
+                        w = weights[:, in_edges]
+                        mask = (w != 0)
+                        if nodes[:, n].item() <= 0:
+                            weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(-w))
                         else:
-                            weights[:, in_edges] = 1.0/abs(q_exp.q_exponential_series(weights[:, in_edges]))
+                            weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(w))
                         
-                        weights[:, in_edges] * mask
+                        weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] *= mask
                         
                         n += 1
                         start_col = end_col
@@ -670,14 +670,15 @@ class LeNet_custom_v2(nn.Module):
             elif cur_name == "fc":
                 in_edges = torch.arange(start_col + (n - prefix_dims[current_l-1]), end_col, step)
             
-                mask = (weights[:, in_edges] != 0)
-                if nodes[:, n] <= 0:
-                    weights[:, in_edges] = 1.0/abs(q_exp.q_exponential_series(-weights[:, in_edges]))
+                w = weights[:, in_edges]
+                mask = (w != 0)
+                if nodes[:, n].item() <= 0:
+                    weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(-w))
                 else:
-                    weights[:, in_edges] = 1.0/abs(q_exp.q_exponential_series(weights[:, in_edges]))
+                    weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(w))
                 
-                weights[:, in_edges] * mask
+                weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] *= mask
                 n += 1
         
-        return weights
+        return weights_inv
     
