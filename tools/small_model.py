@@ -213,7 +213,8 @@ class FC_MD(nn.Module):
         step = dims[cur_layer]
         neighbors = torch.arange(prefix_dims[cur_layer-1], prefix_dims[cur_layer])
         
-        weights_inv = torch.zeros_like(weights)
+        weights_inv1 = torch.zeros_like(weights)
+        weights_inv2 = torch.zeros_like(weights)
         
         # go through each node except input layer
         for n in range(dims[0], nodes_num):
@@ -238,16 +239,19 @@ class FC_MD(nn.Module):
             
             positive_s_i = torch.where(sum > 0)[0] # indices
             
-            sub_pos_a = weights[positive_s_i][:, in_edges]
-                        
-            mask = sub_pos_a > 0
-            values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
+            sub_pos_a1 = weights[positive_s_i][:, in_edges]   
+            sub_pos_a2 = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
+                    
+            mask = sub_pos_a1 > 0
+            values1 = sub_pos_a1 * (sum[positive_s_i] / pos_sum[positive_s_i])
+            values2 = torch.abs(sub_pos_a2 * (sum[positive_s_i] / pos_sum[positive_s_i]))
             
-            sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
+            sub_pos_a_inv1 = torch.where(mask, 1./values1, torch.tensor(0.))
+            sub_pos_a_inv2 = torch.where(mask, 1./values2, torch.tensor(0.))
+            weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv1
+            weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
 
-            weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
-
-        return weights_inv
+        return weights_inv1, weights_inv2
     
     
     
@@ -263,7 +267,8 @@ class FC_MD(nn.Module):
         step = dims[cur_layer]
         neighbors = torch.arange(prefix_dims[cur_layer-1], prefix_dims[cur_layer])
         
-        weights_inv = torch.zeros_like(weights)
+        # weights_inv1 = torch.zeros_like(weights)
+        weights_inv2 = torch.zeros_like(weights)
         
         # go through each node except input layer
         for n in range(dims[0], nodes_num):
@@ -288,15 +293,19 @@ class FC_MD(nn.Module):
             
             positive_s_i = torch.where(sum > 0)[0] # indices
             
-            sub_pos_a = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
-                        
-            mask = sub_pos_a > 0
-            values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
+            # sub_pos_a1 = weights[positive_s_i][:, in_edges]   
+            sub_pos_a2 = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
+                    
+            mask = sub_pos_a2 > 0
+            # values1 = (sub_pos_a1 * (sum[positive_s_i] / pos_sum[positive_s_i]))
+            values2 = (sub_pos_a2 * (sum[positive_s_i] / pos_sum[positive_s_i]))
             
-            sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
-            weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
+            # sub_pos_a_inv1 = torch.where(mask, 1./values1, torch.tensor(0.))
+            sub_pos_a_inv2 = torch.where(mask, 1./values2, torch.tensor(0.))
+            # weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv1
+            weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
 
-        return weights_inv
+        return weights_inv2
     
     
     def normalization_weight_w6(self, nodes, weights, dims, q):

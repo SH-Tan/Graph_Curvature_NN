@@ -319,6 +319,7 @@ def cnn_main(args):
     model_path = args.model_path
     metric = args.metric
     sample_size = args.sample_num
+    alpha = args.alpha
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -364,20 +365,23 @@ def cnn_main(args):
                             weights = edge_array.detach().clone().to(device)  
                         
                         if metric.lower() == "q_ngr":
-                            _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
+                            weights_inv, weights_inv2 = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
+                            weights_inv = weights_inv.detach()
+                            weights_inv2 = weights_inv2.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, model_dims=model_dims, alpha=alpha)
                             
                         elif metric.lower() == "q_inv":
-                            _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
+                            weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
+                            weights_inv = weights_inv.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha)
             
                         elif metric.lower() == "q_exp":
                             weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, model_dims, q)
+                            weights_inv = weights_inv.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha)
                         else:
                             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                         
-                        weights_inv = weights_inv.detach()
-
-                        ricci_curvature = graph_curvature_main_torch(dims, weights_inv, model_dims=model_dims, device=device)
-    
                         neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
                     
                         nonrobust_c[l].append(c)
@@ -404,19 +408,22 @@ def cnn_main(args):
                             weights = edge_array.detach().clone().to(device)  
                         
                         if metric.lower() == "q_ngr":
-                            _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
+                            weights_inv, weights_inv2 = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
+                            weights_inv = weights_inv.detach()
+                            weights_inv2 = weights_inv2.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, model_dims=model_dims, alpha=alpha)
                             
                         elif metric.lower() == "q_inv":
-                            _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
+                            weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
+                            weights_inv = weights_inv.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha)
             
                         elif metric.lower() == "q_exp":
                             weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, model_dims, q)
+                            weights_inv = weights_inv.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha)
                         else:
                             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-                        
-                        weights_inv = weights_inv.detach()
-                        
-                        ricci_curvature = graph_curvature_main_torch(dims, weights_inv, model_dims=model_dims, device=device)
     
                         neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
         
