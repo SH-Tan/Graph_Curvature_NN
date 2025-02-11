@@ -40,6 +40,7 @@ def parse_args():
     parse.add_argument('--lidar', type=int, default=0, required=False, help='If test LiDAR')
     parse.add_argument('--cifar', type=str, default='small', required=False, help='Small or big model for CIFAR')
     parse.add_argument('--metric', type=str, required=True, help='Definition of NDG')
+    parse.add_argument('--alpha', type=float, default=0., required=False, help='Alpha used for distribution')
     parse.add_argument('--dataset', type=str, default='mnist', required=False, help='Dataset')
     parse.add_argument('--model_type', type=str, default='fc', required=False, help='Type of test model')
     parse.add_argument('--model_name', type=str, default='ori', required=False, help='Name of test model')

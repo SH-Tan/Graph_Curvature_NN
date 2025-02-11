@@ -401,8 +401,9 @@ class LeNet_custom_v2(nn.Module):
         current_l = 1
         start_col = 0
         end_col = 0
-        weights_inv = torch.zeros_like(weights)
-        weights_new = torch.zeros_like(weights)
+        
+        weights_inv1 = torch.zeros_like(weights)
+        weights_inv2 = torch.zeros_like(weights)
         
         n = dims[0]  # Start from the first node of the second layer
 
@@ -454,16 +455,17 @@ class LeNet_custom_v2(nn.Module):
                         
                         positive_s_i = torch.where(sum > 0)[0] # indices
                         
-                        sub_pos_a = weights[positive_s_i][:, in_edges]
+                        sub_pos_a1 = weights[positive_s_i][:, in_edges]   
+                        sub_pos_a2 = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
                                 
-                        mask = sub_pos_a > 0
-                        values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
+                        mask = sub_pos_a1 > 0
+                        values1 = sub_pos_a1 * (sum[positive_s_i] / pos_sum[positive_s_i])
+                        values2 = torch.abs(sub_pos_a2 * (sum[positive_s_i] / pos_sum[positive_s_i]))
                         
-                        sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
-                        sub_pos = torch.where(mask, values, torch.tensor(0.))
-    
-                        weights_new[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos
-                        weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
+                        sub_pos_a_inv1 = torch.where(mask, 1./values1, torch.tensor(0.))
+                        sub_pos_a_inv2 = torch.where(mask, 1./values2, torch.tensor(0.))
+                        weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv1
+                        weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
                     
                         n += 1
                         start_col = end_col
@@ -482,19 +484,20 @@ class LeNet_custom_v2(nn.Module):
                 
                 positive_s_i = torch.where(sum > 0)[0] # indices
                 
-                sub_pos_a = weights[positive_s_i][:, in_edges]
-                            
-                mask = sub_pos_a > 0
-                values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
+                sub_pos_a1 = weights[positive_s_i][:, in_edges]   
+                sub_pos_a2 = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
+                        
+                mask = sub_pos_a1 > 0
+                values1 = sub_pos_a1 * (sum[positive_s_i] / pos_sum[positive_s_i])
+                values2 = torch.abs(sub_pos_a2 * (sum[positive_s_i] / pos_sum[positive_s_i]))
                 
-                sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
-                sub_pos = torch.where(mask, values, torch.tensor(0.))
-
-                weights_new[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos
-                weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
+                sub_pos_a_inv1 = torch.where(mask, 1./values1, torch.tensor(0.))
+                sub_pos_a_inv2 = torch.where(mask, 1./values2, torch.tensor(0.))
+                weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv1
+                weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
                 n += 1
         
-        return weights_new, weights_inv
+        return weights_inv1, weights_inv2
     
 
     def normalization_weight_w2(self, nodes, weights, dims, model_dims):
@@ -505,8 +508,8 @@ class LeNet_custom_v2(nn.Module):
         current_l = 1
         start_col = 0
         end_col = 0
+        
         weights_inv = torch.zeros_like(weights)
-        weights_new = torch.zeros_like(weights)
         
         n = dims[0]  # Start from the first node of the second layer
 
@@ -564,9 +567,7 @@ class LeNet_custom_v2(nn.Module):
                         values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
                         
                         sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
-                        sub_pos = torch.where(mask, values, torch.tensor(0.))
     
-                        weights_new[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos
                         weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
                     
                         n += 1
@@ -592,13 +593,11 @@ class LeNet_custom_v2(nn.Module):
                 values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
                 
                 sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
-                sub_pos = torch.where(mask, values, torch.tensor(0.))
 
-                weights_new[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos
                 weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
                 n += 1
         
-        return weights_new, weights_inv
+        return weights_inv
     
     
     def normalization_weight_w6(self, nodes, weights, dims, model_dims, q):

@@ -20,6 +20,7 @@ _prefix_dims = []
 _sp_dict = {}
 _distribution_in = {}
 _distribution_out = {}
+_alpha = 0.
 
 
 # For CNN
@@ -145,6 +146,83 @@ def layerwise_shortest_path_torch(dims, weights, device='cuda'):
     return shortest_paths
 
 
+def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda'):
+    batch_size, weight_num = weights.shape
+    layers = sorted(model_dims.items(), key=lambda x: x[0])
+    num_layers = len(layers)
+    shortest_paths = {}
+    inf = torch.tensor(float('inf'), device=device)
+    
+    
+    weight_idx = 0
+    for i in range(num_layers - 1):
+        l = i + 1
+        current_layer = model_dims[l+1]
+        src_size = prefix_dims[i+1] - prefix_dims[i]
+        dst_size = prefix_dims[i+2] - prefix_dims[i+1]
+        
+        if current_layer['name'] == 'fc':
+            # FC layer handling
+            direct_dist = weights[:, weight_idx:weight_idx+src_size*dst_size]
+            direct_dist = direct_dist.view(batch_size, src_size, dst_size)
+            
+            shortest_paths[(i, i+1)] = torch.where(direct_dist > 0, direct_dist, inf)
+            weight_idx += src_size * dst_size
+            
+            # f.write(f'{i}-{i+1}: {shortest_paths[(i, i+1)]}\n')
+            
+        elif current_layer['name'] in ['cnn', 'pooling']:
+            adjacent_m = torch.zeros((batch_size, src_size, dst_size), dtype=torch.float32, device=device)
+            
+            # CNN layer handling
+            k = current_layer['dim']['kernel']
+            s = current_layer['dim']['stride']
+            in_size = model_dims[l]['dim']['out_size']
+            pre_ch = model_dims[l]['dim'].get('channel', 1)
+            cur_ch = current_layer['dim']['channel']
+            # Generate receptive field indices
+            dummy = torch.arange(src_size, device=device).reshape(1, pre_ch, in_size, in_size).float()
+
+            # Unfold operation to get receptive field indices
+            unfolded = F.unfold(dummy, kernel_size=k, stride=s).transpose(1, 2).int()
+            patches = unfolded.shape[1]
+
+            step = k**2 
+            
+            # Create indices matrix
+            n = 0
+            end_col = weight_idx + step*pre_ch
+            for c in range(cur_ch):
+                for p in range(patches):
+                    cur_idx = unfolded[0,p].tolist()
+                    adjacent_m[:, cur_idx, n] = weights[:, weight_idx : end_col]
+                    
+                    weight_idx = end_col
+                    end_col = weight_idx + step*pre_ch
+                    n += 1
+            
+            shortest_paths[(i, i+1)] = torch.where(adjacent_m > 0, adjacent_m, inf)
+            
+    return shortest_paths
+
+
+def fc_adjacent_layer(dims, weights, device='cuda'):
+    batch_size, edge_num = weights.shape
+    num_layers = len(dims)
+    shortest_paths = {}
+
+    weight_idx = 0
+    for i in range(num_layers - 1):
+        src_size, dst_size = dims[i], dims[i+1]
+        direct_dist = weights[:, weight_idx:weight_idx+src_size*dst_size]
+        direct_dist = direct_dist.view(batch_size, src_size, dst_size)
+        inf = torch.tensor(float('inf'), device=device)
+        shortest_paths[(i, i+1)] = torch.where(direct_dist > 0, direct_dist, inf)
+        weight_idx += src_size * dst_size
+        
+    return shortest_paths
+
+
 def get_layer_path(sp_dict, prefix_dims, b, i, j):     
     i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
     j_layer = np.searchsorted(prefix_dims, j, side='right') - 1
@@ -180,12 +258,12 @@ def process_edge(b, edge):
             in_neigh = [i]
         else:
             if (np.any(mu == -1.)):
-                tmp = 1. / len(np.nonzero(mu)[0])
+                tmp = (1.0 - _alpha) / len(np.nonzero(mu)[0])
                 mu[mu==-1] = tmp
             non_zero = np.nonzero(mu)[0]
             in_neigh = np.array(range(_prefix_dims[i_layer-1], _prefix_dims[i_layer]))
             in_neigh = list(in_neigh[non_zero]) + [i]
-            mu = np.hstack((mu[non_zero], np.array(0)))
+            mu = np.hstack((mu[non_zero], np.array(_alpha)))
 
     # Out-neighbors distribution
     if j_layer == len(_dims)-1:
@@ -198,12 +276,12 @@ def process_edge(b, edge):
             out_neigh = [j]
         else:
             if (np.any(nu == -1.)):
-                tmp = 1. / len(np.nonzero(nu)[0])
+                tmp = (1.0 - _alpha) / len(np.nonzero(nu)[0])
                 nu[nu==-1] = tmp
             non_zero = np.nonzero(nu)[0]
             out_neigh = np.array(range(_prefix_dims[j_layer+1], _prefix_dims[j_layer+2]))
             out_neigh = list(out_neigh[non_zero]) + [j]
-            nu = np.hstack((nu[non_zero], np.array(0)))
+            nu = np.hstack((nu[non_zero], np.array(_alpha)))
 
     # Get submatrix for neighbors
     d_np = np.zeros((len(in_neigh), len(out_neigh)))
@@ -228,12 +306,15 @@ def _wrap_compute_single_edge(stuff):
     return process_edge(*stuff)
 
 
-def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda'):
+def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0.):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
     global _distribution_in 
     global _distribution_out
+    global _alpha
+    
+    _alpha = alpha
 
     weights = weights.to(device)
     batch_size = weights.shape[0]
@@ -241,25 +322,35 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda'):
 
     _dims = dims
     _prefix_dims = np.array(prefix_dims)
-    
+
     # Compute shortest paths
     if model_dims:
         sp_dict = cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='cuda')
+        if probability_w != None:
+            sp1 = cnn_adjacent_layer(model_dims, probability_w, prefix_dims, device='cuda')
     else:
         sp_dict = layerwise_shortest_path_torch(dims, weights, device)
+        if probability_w != None:
+            sp1 = fc_adjacent_layer(dims, probability_w, device)
+            
         
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
+    
+    if probability_w != None:
+        dis_w = sp1
+    else:
+        dis_w = sp_dict
     
     # Precompute distributions using dictionary
     distribution_in, distribution_out = {}, {}
     for layer in range(1, len(dims)):
-        if (layer-1, layer) in sp_dict:
-            path_sub = sp_dict[(layer-1, layer)]
+        if (layer-1, layer) in dis_w:
+            path_sub = dis_w[(layer-1, layer)]
             mask = (path_sub != float('inf'))
             weights_layer = torch.exp(-(path_sub ** 2)) * mask
             sum_weights = weights_layer.sum(dim=1)
             
-            dist_prev = weights_layer / sum_weights[:, None, :]
+            dist_prev = ((1.0 - _alpha) * weights_layer) / sum_weights[:, None, :]
             
             indices = torch.where(sum_weights <= EPSILON)[1]
             mask1 = (path_sub[:,:,indices] != float('inf'))
@@ -270,13 +361,13 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda'):
             distribution_in[layer] = dist_prev.cpu().numpy()
 
     for layer in range(len(dims)-1):
-        if (layer, layer+1) in sp_dict:
-            path_sub = sp_dict[(layer, layer+1)]
+        if (layer, layer+1) in dis_w:
+            path_sub = dis_w[(layer, layer+1)]
             mask = (path_sub != float('inf'))
             weights_layer = torch.exp(-(path_sub ** 2)) * mask
             sum_weights = weights_layer.sum(dim=2)
             
-            dist_next = weights_layer / sum_weights[:, :, None]
+            dist_next = ((1.0 - _alpha) * weights_layer) / sum_weights[:, :, None]
   
             indices = torch.where(sum_weights <= EPSILON)[1]
             mask1 = (path_sub[:,indices,:] != float('inf'))
