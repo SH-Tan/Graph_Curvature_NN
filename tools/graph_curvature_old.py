@@ -21,7 +21,6 @@ _sp_dict = {}
 _distribution_in = {}
 _distribution_out = {}
 _alpha = 0.
-_num_layers = 0.
 
 
 # For CNN
@@ -246,17 +245,7 @@ def process_edge(b, edge):
     
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
-    in_dis = 0.
-    out_dis = 0.
-    if i_layer > 0:
-        in_d = _sp_dict[(i_layer-1, i_layer)][b, :, i_idx]
-        in_dis = np.mean(in_d[in_d!=0])
-        
-    if j_layer < _num_layers:
-        out_d = _sp_dict[(j_layer, j_layer+1)][b, j_idx, :]
-        out_dis = np.mean(out_d[out_d!=0])
-    
-    sp = in_dis + _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item() + out_dis
+    sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
 
     # In-neighbors distribution
     if i_layer == 0:
@@ -324,10 +313,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     global _distribution_in 
     global _distribution_out
     global _alpha
-    global _num_layers
     
     _alpha = alpha
-    _num_layers = len(dims) - 1
 
     weights = weights.to(device)
     batch_size = weights.shape[0]
