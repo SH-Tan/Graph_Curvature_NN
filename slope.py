@@ -21,7 +21,7 @@ from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
 from tools.LeNet5_custom import LeNet_custom
 from tools.cnn_costom import CNN_custom
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+# os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
 
