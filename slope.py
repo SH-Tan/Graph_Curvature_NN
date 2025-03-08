@@ -215,7 +215,7 @@ def draw(frac, loss, res_path, mark = ''):
     plt.legend(loc = 'best', prop={'size':22, 'weight':'semibold'})
     plt.grid(True)
     
-    plt.savefig(res_path + mark + "_loss.eps")
+    plt.savefig(res_path + mark + "_loss.png")
     plt.close()
     
     return a1
