@@ -21,6 +21,7 @@ _sp_dict = {}
 _distribution_in = {}
 _distribution_out = {}
 _alpha = 0.
+_num_layers = 0.
 
 
 # For CNN
@@ -243,61 +244,32 @@ def process_edge(b, edge):
     if (i_layer, j_layer) not in _sp_dict:
         return (b, i, j, 2.0)
     
-    i_idx = i - _prefix_dims[i_layer]
-    j_idx = j - _prefix_dims[j_layer]
-    sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
-
-    # In-neighbors distribution
-    if i_layer == 0:
-        mu = np.array([1.0])
-        in_neigh = [i]
-    else:
-        mu = _distribution_in[i_layer][b, :, i - _prefix_dims[i_layer]]
-        if len(np.nonzero(mu)[0]) == 0:   
-            mu = np.array([1.0])
-            in_neigh = [i]
-        else:
-            if (np.any(mu == -1.)):
-                tmp = (1.0 - _alpha) / len(np.nonzero(mu)[0])
-                mu[mu==-1] = tmp
-            non_zero = np.nonzero(mu)[0]
-            in_neigh = np.array(range(_prefix_dims[i_layer-1], _prefix_dims[i_layer]))
-            in_neigh = list(in_neigh[non_zero]) + [i]
-            mu = np.hstack((mu[non_zero], np.array(_alpha)))
-
-    # Out-neighbors distribution
-    if j_layer == len(_dims)-1:
-        nu = np.array([1.0])
-        out_neigh = [j]
-    else:
-        nu = _distribution_out[j_layer][b, j - _prefix_dims[j_layer], :]
-        if len(np.nonzero(nu)[0]) == 0:     
-            nu = np.array([1.0])
-            out_neigh = [j]
-        else:
-            if (np.any(nu == -1.)):
-                tmp = (1.0 - _alpha) / len(np.nonzero(nu)[0])
-                nu[nu==-1] = tmp
-            non_zero = np.nonzero(nu)[0]
-            out_neigh = np.array(range(_prefix_dims[j_layer+1], _prefix_dims[j_layer+2]))
-            out_neigh = list(out_neigh[non_zero]) + [j]
-            nu = np.hstack((nu[non_zero], np.array(_alpha)))
-
-    # Get submatrix for neighbors
-    d_np = np.zeros((len(in_neigh), len(out_neigh)))
-    for m_idx, m in enumerate(in_neigh):
-        for n_idx, n in enumerate(out_neigh):
-            if (m == n):
-                d_np[m_idx, n_idx] = 0.
-            else:
-                d_np[m_idx, n_idx] = get_layer_path(_sp_dict, _prefix_dims, b, m, n)
-    
-    if d_np.size == 0 or np.isinf(d_np).all():
+    if j_layer == len(_dims) - 1:
         return (b, i, j, 2.0)
-
-    m = ot.emd2(mu, nu, d_np)
     
-    return (b, i, j, 1.0 - m)
+    i1 = i - _prefix_dims[i_layer]
+    j1 = j - _prefix_dims[j_layer]
+    
+    # layer i to j
+    sp_ij = _sp_dict[(i_layer, j_layer)][b, i1, :]
+    
+    # layer j to j + 1
+    sp_jl = _sp_dict[(j_layer, j_layer+1)][b, :, :]
+    
+    # layer j: find b_k
+    k = np.where(sp_ij > 0)[0]
+    k = set(k) - {j1}
+    k = list(k)
+    
+    # layer j+1: find c_l
+    l1 = np.where(sp_jl[j1] > 0)[0]
+    i_jl, j_jl= np.where(sp_jl[k,:][:,l1] != 0)
+    # l = list(zip(i_jl, jjl))
+    
+    sp = _sp_dict[(i_layer, j_layer)][b, i1, j1].item()
+    k = 1.0 - np.mean(sp_jl[i_jl,j_jl]/sp)
+    
+    return (b, i, j, k)
 
 
 
@@ -313,8 +285,10 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     global _distribution_in 
     global _distribution_out
     global _alpha
+    global _num_layers
     
     _alpha = alpha
+    _num_layers = len(dims) - 1
 
     weights = weights.to(device)
     batch_size = weights.shape[0]
@@ -336,49 +310,49 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
         
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
     
-    if probability_w != None:
-        dis_w = sp1
-    else:
-        dis_w = sp_dict
+    # if probability_w != None:
+    #     dis_w = sp1
+    # else:
+    #     dis_w = sp_dict
     
-    # Precompute distributions using dictionary
-    distribution_in, distribution_out = {}, {}
-    for layer in range(1, len(dims)):
-        if (layer-1, layer) in dis_w:
-            path_sub = dis_w[(layer-1, layer)]
-            mask = (path_sub != float('inf'))
-            weights_layer = torch.exp(-(path_sub ** 2)) * mask
-            sum_weights = weights_layer.sum(dim=1)
+    # # Precompute distributions using dictionary
+    # distribution_in, distribution_out = {}, {}
+    # for layer in range(1, len(dims)):
+    #     if (layer-1, layer) in dis_w:
+    #         path_sub = dis_w[(layer-1, layer)]
+    #         mask = (path_sub != float('inf'))
+    #         weights_layer = torch.exp(-(path_sub ** 2)) * mask
+    #         sum_weights = weights_layer.sum(dim=1)
             
-            dist_prev = ((1.0 - _alpha) * weights_layer) / sum_weights[:, None, :]
+    #         dist_prev = ((1.0 - _alpha) * weights_layer) / sum_weights[:, None, :]
             
-            indices = torch.where(sum_weights <= EPSILON)[1]
-            mask1 = (path_sub[:,:,indices] != float('inf'))
-            dist_prev[:,:,indices] = -1
-            dist_prev[:,:,indices] *= mask1
-            dist_prev *= mask
+    #         indices = torch.where(sum_weights <= EPSILON)[1]
+    #         mask1 = (path_sub[:,:,indices] != float('inf'))
+    #         dist_prev[:,:,indices] = -1
+    #         dist_prev[:,:,indices] *= mask1
+    #         dist_prev *= mask
             
-            distribution_in[layer] = dist_prev.cpu().numpy()
+    #         distribution_in[layer] = dist_prev.cpu().numpy()
 
-    for layer in range(len(dims)-1):
-        if (layer, layer+1) in dis_w:
-            path_sub = dis_w[(layer, layer+1)]
-            mask = (path_sub != float('inf'))
-            weights_layer = torch.exp(-(path_sub ** 2)) * mask
-            sum_weights = weights_layer.sum(dim=2)
+    # for layer in range(len(dims)-1):
+    #     if (layer, layer+1) in dis_w:
+    #         path_sub = dis_w[(layer, layer+1)]
+    #         mask = (path_sub != float('inf'))
+    #         weights_layer = torch.exp(-(path_sub ** 2)) * mask
+    #         sum_weights = weights_layer.sum(dim=2)
             
-            dist_next = ((1.0 - _alpha) * weights_layer) / sum_weights[:, :, None]
+    #         dist_next = ((1.0 - _alpha) * weights_layer) / sum_weights[:, :, None]
   
-            indices = torch.where(sum_weights <= EPSILON)[1]
-            mask1 = (path_sub[:,indices,:] != float('inf'))
-            dist_next[:,indices,:] = -1
-            dist_next[:,indices,:] *= mask1
-            dist_next *= mask
+    #         indices = torch.where(sum_weights <= EPSILON)[1]
+    #         mask1 = (path_sub[:,indices,:] != float('inf'))
+    #         dist_next[:,indices,:] = -1
+    #         dist_next[:,indices,:] *= mask1
+    #         dist_next *= mask
      
-            distribution_out[layer] = dist_next.cpu().numpy()
+    #         distribution_out[layer] = dist_next.cpu().numpy()
             
-    _distribution_in = distribution_in
-    _distribution_out = distribution_out
+    # _distribution_in = distribution_in
+    # _distribution_out = distribution_out
 
     # Generate edges from original weights
     edges = []

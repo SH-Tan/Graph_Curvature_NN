@@ -300,7 +300,7 @@ class FC_MD(nn.Module):
             # values1 = (sub_pos_a1 * (sum[positive_s_i] / pos_sum[positive_s_i]))
             values2 = (sub_pos_a2 * (sum[positive_s_i] / pos_sum[positive_s_i]))
             
-            # sub_pos_a_inv1 = torch.where(mask, 1./values1, torch.tensor(0.))
+            # sub_pos_a_inv1 = torch.where(mask, values2, torch.tensor(0.))
             sub_pos_a_inv2 = torch.where(mask, 1./values2, torch.tensor(0.))
             # weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv1
             weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
