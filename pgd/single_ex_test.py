@@ -24,7 +24,7 @@ import tools.utils as utils
 from tools.small_model import FC_MD
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.FC_linear import FC_Linear
-from tools.parallel_curvature import graph_curvature_main_torch
+from tools.graph_curvature_v1 import graph_curvature_main_torch
 
 
 import warnings

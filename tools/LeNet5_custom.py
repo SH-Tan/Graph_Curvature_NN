@@ -406,7 +406,6 @@ class LeNet_custom(nn.Module):
         start_col = 0
         end_col = 0
         weights_inv = torch.zeros_like(weights)
-        weights_new = torch.zeros_like(weights)
         
         n = dims[0]  # Start from the first node of the second layer
 
@@ -464,9 +463,6 @@ class LeNet_custom(nn.Module):
                         values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
                         
                         sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
-                        sub_pos = torch.where(mask, values, torch.tensor(0.))
-    
-                        weights_new[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos
                         weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
                     
                         n += 1
@@ -492,13 +488,11 @@ class LeNet_custom(nn.Module):
                 values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
                 
                 sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
-                sub_pos = torch.where(mask, values, torch.tensor(0.))
 
-                weights_new[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos
                 weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
                 n += 1
         
-        return weights_new, weights_inv
+        return weights_inv
     
     
     def normalization_weight_w6(self, nodes, weights, dims, model_dims, q):

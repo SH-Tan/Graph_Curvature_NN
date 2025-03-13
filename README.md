@@ -39,7 +39,7 @@
 
 - python main.py --image 1 --cifar small --lidar 0 --metric q_inv --model_type cnn --model_name ori --model_path CNN/models/ --mnist_res_path res/q_inv/ --dataset cifar
 
-- python main.py --image 1 --cifar small --lidar 0 --metric q_ngr --model_type cnn --model_name adv --model_path CNN/models/ --mnist_res_path res/q_ngr/ --dataset cifar
+- python main.py --image 1 --cifar small --lidar 0 --metric q_ngr --model_type cnn --model_name ori --model_path CNN/models/ --mnist_res_path res/q_ngr/ --dataset cifar
 
 - python main.py --image 1 --cifar big --lidar 0 --metric q_inv --model_type cnn --model_name adv --model_path CNN/models/ --mnist_res_path res/q_inv/ --dataset cifar
 

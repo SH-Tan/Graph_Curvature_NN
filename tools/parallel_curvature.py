@@ -81,30 +81,7 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
                     n += 1
             
             shortest_paths[(i, i+1)] = torch.where(adjacent_m > 0, adjacent_m, inf)
-
-    def min_plus_mult(a, b):
-        return (a.unsqueeze(3) + b.unsqueeze(1)).min(dim=2)[0]
-
-    # Dynamic programming approach remains the same
-    for d in range(2, num_layers):
-        for i in range(num_layers - d):
-            j = i + d
-            current_min = torch.full((batch_size, prefix_dims[i+1]-prefix_dims[i], 
-                                    prefix_dims[j+1]-prefix_dims[j]), float('inf'), device=device)
-            
-            for k in range(i+1, j):
-                if (i, k) in shortest_paths and (k, j) in shortest_paths:
-                    current_min = torch.minimum(current_min, 
-                                              min_plus_mult(shortest_paths[(i, k)], 
-                                                          shortest_paths[(k, j)]))
-            
-            if (i, j-1) in shortest_paths and (j-1, j) in shortest_paths:
-                current_min = torch.minimum(current_min,
-                                          min_plus_mult(shortest_paths[(i, j-1)],
-                                                      shortest_paths[(j-1, j)]))
-            
-            shortest_paths[(i, j)] = current_min
-            
+           
     return shortest_paths
 
 
@@ -123,105 +100,8 @@ def layerwise_shortest_path_torch(dims, weights, device='cuda'):
         shortest_paths[(i, i+1)] = torch.where(direct_dist > 0, direct_dist, inf)
         weight_idx += src_size * dst_size
 
-    def min_plus_mult(a, b):
-        return (a.unsqueeze(3) + b.unsqueeze(1)).min(dim=2)[0]
-
-    for d in range(2, num_layers):
-        for i in range(num_layers - d):
-            j = i + d
-            current_min = torch.full((batch_size, dims[i], dims[j]), float('inf'), device=device)
-            
-            for k in range(i+1, j):
-                if (i, k) in shortest_paths and (k, j) in shortest_paths:
-                    current_min = torch.minimum(current_min, 
-                                              min_plus_mult(shortest_paths[(i, k)], 
-                                                          shortest_paths[(k, j)]))
-            
-            if (i, j-1) in shortest_paths and (j-1, j) in shortest_paths:
-                current_min = torch.minimum(current_min,
-                                          min_plus_mult(shortest_paths[(i, j-1)],
-                                                      shortest_paths[(j-1, j)]))
-            
-            shortest_paths[(i, j)] = current_min
-
     return shortest_paths
 
-
-def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda'):
-    batch_size, weight_num = weights.shape
-    layers = sorted(model_dims.items(), key=lambda x: x[0])
-    num_layers = len(layers)
-    shortest_paths = {}
-    inf = torch.tensor(float('inf'), device=device)
-    
-    
-    weight_idx = 0
-    for i in range(num_layers - 1):
-        l = i + 1
-        current_layer = model_dims[l+1]
-        src_size = prefix_dims[i+1] - prefix_dims[i]
-        dst_size = prefix_dims[i+2] - prefix_dims[i+1]
-        
-        if current_layer['name'] == 'fc':
-            # FC layer handling
-            direct_dist = weights[:, weight_idx:weight_idx+src_size*dst_size]
-            direct_dist = direct_dist.view(batch_size, src_size, dst_size)
-            
-            shortest_paths[(i, i+1)] = torch.where(direct_dist > 0, direct_dist, inf)
-            weight_idx += src_size * dst_size
-            
-            # f.write(f'{i}-{i+1}: {shortest_paths[(i, i+1)]}\n')
-            
-        elif current_layer['name'] in ['cnn', 'pooling']:
-            adjacent_m = torch.zeros((batch_size, src_size, dst_size), dtype=torch.float32, device=device)
-            
-            # CNN layer handling
-            k = current_layer['dim']['kernel']
-            s = current_layer['dim']['stride']
-            in_size = model_dims[l]['dim']['out_size']
-            pre_ch = model_dims[l]['dim'].get('channel', 1)
-            cur_ch = current_layer['dim']['channel']
-            # Generate receptive field indices
-            dummy = torch.arange(src_size, device=device).reshape(1, pre_ch, in_size, in_size).float()
-
-            # Unfold operation to get receptive field indices
-            unfolded = F.unfold(dummy, kernel_size=k, stride=s).transpose(1, 2).int()
-            patches = unfolded.shape[1]
-
-            step = k**2 
-            
-            # Create indices matrix
-            n = 0
-            end_col = weight_idx + step*pre_ch
-            for c in range(cur_ch):
-                for p in range(patches):
-                    cur_idx = unfolded[0,p].tolist()
-                    adjacent_m[:, cur_idx, n] = weights[:, weight_idx : end_col]
-                    
-                    weight_idx = end_col
-                    end_col = weight_idx + step*pre_ch
-                    n += 1
-            
-            shortest_paths[(i, i+1)] = torch.where(adjacent_m > 0, adjacent_m, inf)
-            
-    return shortest_paths
-
-
-def fc_adjacent_layer(dims, weights, device='cuda'):
-    batch_size, edge_num = weights.shape
-    num_layers = len(dims)
-    shortest_paths = {}
-
-    weight_idx = 0
-    for i in range(num_layers - 1):
-        src_size, dst_size = dims[i], dims[i+1]
-        direct_dist = weights[:, weight_idx:weight_idx+src_size*dst_size]
-        direct_dist = direct_dist.view(batch_size, src_size, dst_size)
-        inf = torch.tensor(float('inf'), device=device)
-        shortest_paths[(i, i+1)] = torch.where(direct_dist > 0, direct_dist, inf)
-        weight_idx += src_size * dst_size
-        
-    return shortest_paths
 
 
 def get_layer_path(sp_dict, prefix_dims, b, i, j):     
@@ -300,14 +180,10 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     # Compute shortest paths
     if model_dims:
         sp_dict = cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='cuda')
-        if probability_w != None:
-            sp1 = cnn_adjacent_layer(model_dims, probability_w, prefix_dims, device='cuda')
+
     else:
         sp_dict = layerwise_shortest_path_torch(dims, weights, device)
-        if probability_w != None:
-            sp1 = fc_adjacent_layer(dims, probability_w, device)
-            
-        
+    
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
     
     # if probability_w != None:
