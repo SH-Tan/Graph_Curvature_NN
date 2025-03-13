@@ -22,7 +22,7 @@ sys.path.append("..")
 import tools.utils as utils
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.LeNet5_custom import LeNet_custom
-from tools.graph_curvature import graph_curvature_main_torch
+from tools.graph_curvature_v1 import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -165,7 +165,7 @@ def cifar_small_main(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     selected_classes = [0,1,2,3,4,5,6,7,8,9]
@@ -240,7 +240,7 @@ def cifar_small_main(args):
                                 _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
                                 
                             elif metric.lower() == "q_inv":
-                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
+                                weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
                 
                             elif metric.lower() == "q_exp":
                                 weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, model_dims, q)
@@ -280,7 +280,7 @@ def cifar_small_main(args):
                                 _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
                                 
                             elif metric.lower() == "q_inv":
-                                _, weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
+                                weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
                 
                             elif metric.lower() == "q_exp":
                                 weights_inv = net_H.normalization_weight_w6(nodes_ori, weights, dims, model_dims, q)
