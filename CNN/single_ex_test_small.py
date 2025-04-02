@@ -136,15 +136,29 @@ def test(n, loader, eps, alpha, iters, device):
         print(f'Finish label {l}....')
     return succ_pair, robust_pair
 
-def get_fraction(curvature, b):
+
+
+
+def get_fraction(curvature, b, dims):
     c = []
-    neg = []
-    total_e = []
-    for i in range(b):
-        curr = np.array(curvature[i])
-        neg.append(len(curr[curr<0]))
-        total_e.append(len(curr))
-    return np.array(neg), np.array(total_e), curr
+    layers = sorted(dims.items(), key=lambda x: x[0])
+    num_layers = len(layers)-1
+    neg = np.zeros((num_layers), dtype=np.float32)
+    total_e = np.zeros((num_layers), dtype=np.float32)
+    # neg = 0.
+    # total_e = 0.
+    
+    for batch in range(b):
+        ricci_curv = np.array(curvature[batch])
+        for (i, j, curr) in ricci_curv:
+            l = int(i)
+            if curr < 0:
+                neg[l] += 1
+            total_e[l] += 1
+            c.append(curr)
+    return neg, total_e, c
+
+
 
 
 def cal_dims(model_dims):
@@ -168,116 +182,6 @@ def cal_dims(model_dims):
     return dims
 
     
-
-def build_cnn_adj(nodes_num, model_dims, net, im, device, metric):
-    # raw value: edge weights
-    net.eval()
-    d = im.to(device)
-    
-    edge_array, nodes = net.edge_w_batch(d)
-    edge_array = edge_array.cpu().detach().numpy() 
-    
-    if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
-        output = net.get_weights(d)
-        output = output.cpu().detach().numpy() 
-        output[edge_array == 0] = 0.
-        
-    elif metric.lower() == "q_exp":
-        output = edge_array
-    else:
-        raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-    
-    w_avg = np.mean(output, axis=0)
-    
-    # build adjacent matrix
-    adjacent_m = np.zeros((nodes_num, nodes_num), dtype=np.float32)
-
-    current_l = 1
-    start_col = 0
-    cur_s_col = 0
-    nodes_total = 0
-
-    layer_num = len(model_dims)
-
-    for i in range(1, layer_num):
-        current_l = i
-        next_l= i + 1
-
-        cur_name = model_dims[current_l]["name"]
-        cur_dim = model_dims[current_l]["dim"]
-        cur_size = cur_dim['out_size']
-
-        cur_channel = 1 if (cur_name == "fc") else cur_dim['channel']
-
-        if cur_name == "input":
-            cur_nodes = cur_channel * cur_size**2
-        else:
-            cur_nodes = cur_size if (cur_name == "fc") else cur_dim['channel']*(cur_size**2)
-
-        nxt_name = model_dims[next_l]["name"]
-        nxt_dim = model_dims[next_l]["dim"]
-        out_size = nxt_dim['out_size']
-
-        # cnn layer
-        if (nxt_name == "cnn" or nxt_name == "pooling"):
-            k = nxt_dim['kernel']
-            s = nxt_dim['stride']
-            c = nxt_dim['channel']
-            
-            step = k**2      
-            n = 0
-            tensor_2d = torch.arange(cur_nodes).reshape(1,cur_channel,cur_size,cur_size).float()
-            
-            if (nxt_name == "cnn"):
-                indices = F.unfold(tensor_2d, (k,k), stride = s).transpose(1,2).int()
-                end_col = start_col + step*cur_channel
-                for ur_c in range(c): 
-                    for l in range(indices.shape[1]):
-                        cur_idx = indices[0,l] + nodes_total 
-                        cur_idx = cur_idx.tolist()
-                        assert(len(cur_idx) == step*cur_channel)
-                        adjacent_m[cur_idx, nodes_total+cur_nodes+n] = w_avg[start_col : end_col]
-            
-                        start_col = end_col
-                        end_col = start_col + step*cur_channel
-                        n += 1
-            else:
-                indices = F.unfold(tensor_2d, (k,k), stride = s)
-                i_unf = indices.view(1, cur_channel, k*k, -1).transpose(2,3)
-                indices = i_unf.reshape(i_unf.shape[0], i_unf.shape[1]*i_unf.shape[2], i_unf.shape[3]).int()
-                
-                for l in range(indices.shape[1]):
-                    end_col = start_col + step
-                    cur_idx = indices[0,l] + nodes_total 
-                    cur_idx = cur_idx.tolist()
-                    assert(len(cur_idx) == step)
-                    adjacent_m[cur_idx, nodes_total+cur_nodes+n] = w_avg[start_col : end_col]
-
-                    start_col = end_col
-                    end_col = start_col + step
-                    n += 1
-                    
-            nodes_total += cur_nodes
-            # print(start_col)  
-
-        # fc layer
-        elif (nxt_name == "fc"):  
-            cur_s_col = nodes_total + cur_nodes
-            cur_e_col = nodes_total + cur_nodes + out_size
-
-            end_col = start_col + out_size
-
-            for node in range(nodes_total, nodes_total + cur_nodes, 1):
-                # print(f'i : {node}, start col : {cur_s_col}, end_col : {cur_e_col}, from {start_col} to {end_col}')
-                adjacent_m[node, cur_s_col : cur_e_col] = w_avg[start_col : end_col]        
-                
-                start_col = end_col
-                end_col = end_col + out_size            
-                    
-            nodes_total += cur_nodes
-        # print(nodes_total)
-        
-    return adjacent_m, nodes
 
 
 
@@ -347,6 +251,8 @@ def cnn_main(args):
             nonrobust_c = defaultdict(list)
             non_fraction = defaultdict(list)
             rob_fraction = defaultdict(list)
+            edge_num =  defaultdict(list)
+            non_edge_num =  defaultdict(list)
             
             for l in selected_classes:
                 print(f'For label {l}....\n')
@@ -382,10 +288,11 @@ def cnn_main(args):
                         else:
                             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                         
-                        neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
+                        neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0], model_dims)
                     
-                        nonrobust_c[l].append(c)
-                        non_fraction[l].append(neg_num/total_edge)
+                        nonrobust_c[l].append(total_edge)
+                        non_fraction[l].append(neg_num)
+                        non_edge_num[l].append((len(weights[weights!=0]), len(weights_inv[weights_inv!=0]), np.sum(total_edge)))
                         
                         count += 1
                         if (count % 10 == 0):
@@ -425,10 +332,12 @@ def cnn_main(args):
                         else:
                             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
     
-                        neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
+                        neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0], model_dims)
         
-                        robust_c[l].append(c)
-                        rob_fraction[l].append(neg_num/total_edge)
+                        robust_c[l].append(total_edge)
+                        rob_fraction[l].append(neg_num)
+                        edge_num[l].append((len(weights[weights!=0]), len(weights_inv[weights_inv!=0]), np.sum(total_edge)))
+                        
                         
                         count += 1
                         if (count % 10 == 0):
@@ -446,3 +355,8 @@ def cnn_main(args):
                 pickle.dump(robust_c, file)
             with open(res_path + model_full_n + str(e) + metric + str(q) + "curv_norobust_cnn.pkl", 'wb') as file:
                 pickle.dump(nonrobust_c, file)
+                
+            with open(res_path + model_full_n + str(e) + metric + str(q) + "edge_robust_cnn.pkl", 'wb') as file:
+                pickle.dump(edge_num, file)
+            with open(res_path + model_full_n + str(e) + metric + str(q) + "edge_norobust_cnn.pkl", 'wb') as file:
+                pickle.dump(non_edge_num, file)

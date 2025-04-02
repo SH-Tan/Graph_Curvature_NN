@@ -111,15 +111,25 @@ def test(n, loader, eps, alpha, iters, device):
     return succ_pair, robust_pair
 
 
-def get_fraction(curvature, b):
+
+def get_fraction(curvature, b, dims):
     c = []
-    neg = []
-    total_e = []
-    for i in range(b):
-        curr = np.array(curvature[i])
-        neg.append(len(curr[curr<0]))
-        total_e.append(len(curr))
-    return np.array(neg), np.array(total_e), curr
+    layers = sorted(dims.items(), key=lambda x: x[0])
+    num_layers = len(layers)-1
+    neg = np.zeros((num_layers), dtype=np.float32)
+    total_e = np.zeros((num_layers), dtype=np.float32)
+    # neg = 0.
+    # total_e = 0.
+    
+    for batch in range(b):
+        ricci_curv = np.array(curvature[batch])
+        for (i, j, curr) in ricci_curv:
+            l = int(i)
+            if curr < 0:
+                neg[l] += 1
+            total_e[l] += 1
+            c.append(curr)
+    return neg, total_e, c
 
 
 def cal_dims(model_dims):
@@ -217,6 +227,8 @@ def cifar_small_main(args):
                 nonrobust_c = defaultdict(list)
                 non_fraction = defaultdict(list)
                 rob_fraction = defaultdict(list)
+                edge_num =  defaultdict(list)
+                non_edge_num =  defaultdict(list)
                     
             
                 for l in selected_classes:
@@ -251,10 +263,11 @@ def cifar_small_main(args):
 
                             ricci_curvature = graph_curvature_main_torch(dims, weights_inv, model_dims=model_dims, device=device)
         
-                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
-                        
-                            nonrobust_c[l].append(c)
-                            non_fraction[l].append(neg_num/total_edge)
+                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0], model_dims)
+                    
+                            nonrobust_c[l].append(total_edge)
+                            non_fraction[l].append(neg_num)
+                            non_edge_num[l].append((len(weights[weights!=0]), len(weights_inv[weights_inv!=0]), np.sum(total_edge)))
                             
                             count += 1
                             if (count % 10 == 0):
@@ -291,10 +304,11 @@ def cifar_small_main(args):
                             
                             ricci_curvature = graph_curvature_main_torch(dims, weights_inv, model_dims=model_dims, device=device)
         
-                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
-           
-                            robust_c[l].append(c)
-                            rob_fraction[l].append(neg_num/total_edge)
+                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0], model_dims)
+        
+                            robust_c[l].append(total_edge)
+                            rob_fraction[l].append(neg_num)
+                            edge_num[l].append((len(weights[weights!=0]), len(weights_inv[weights_inv!=0]), np.sum(total_edge)))
                             
                             count += 1
                             if (count % 10 == 0):
@@ -312,3 +326,8 @@ def cifar_small_main(args):
                     pickle.dump(robust_c, file)
                 with open(res_path + model_full_n + str(e) + metric + str(q) + "curv_norobust_cifar.pkl", 'wb') as file:
                     pickle.dump(nonrobust_c, file)
+                    
+                with open(res_path + model_full_n + str(e) + metric + str(q) + "edge_robust_cifar.pkl", 'wb') as file:
+                    pickle.dump(edge_num, file)
+                with open(res_path + model_full_n + str(e) + metric + str(q) + "edge_norobust_cifar.pkl", 'wb') as file:
+                    pickle.dump(non_edge_num, file)

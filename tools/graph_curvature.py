@@ -31,7 +31,6 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
     shortest_paths = {}
     inf = torch.tensor(float('inf'), device=device)
     
-    
     weight_idx = 0
     for i in range(num_layers - 1):
         l = i + 1
@@ -408,7 +407,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     
 
     for b, i, j, val in results:
-        ricci_results[b].append(val)
+        ricci_results[b].append((i,j,val))
 
     return ricci_results
 
