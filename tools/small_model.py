@@ -76,6 +76,7 @@ class FC_MD(nn.Module):
     def NN_info_batch(self, x):
         x = x.view(-1, self.in_dim) # batch * input size
         x_tmp = x
+        node_tmp = x
         
         nodes = x
 
@@ -89,25 +90,32 @@ class FC_MD(nn.Module):
             # edges
             w = self.layer_list[i].f4.f4.weight.T
             cur_shape = self.layer_list[i].f4.f4.weight.shape[0]*self.layer_list[i].f4.f4.weight.shape[1]
+            w_tmp = torch.ones_like(w)
             
             x_tmp = torch.cat([torch.reshape(w * xx[np.newaxis,:].T, (1, cur_shape)) for xx in x_tmp], axis=0)
             ones_tmp = torch.cat([torch.reshape(w * xx[np.newaxis,:].T, (1, cur_shape)) for xx in ones_tmp], axis=0)
+            node_tmp = torch.cat([torch.reshape(w_tmp * xx[np.newaxis,:].T, (1, cur_shape)) for xx in node_tmp], axis=0)
 
             output = x_tmp if i == 0 else torch.cat((output,x_tmp), axis=1)
             weights = ones_tmp if i == 0 else torch.cat((weights,ones_tmp), axis=1)
+            all_node = node_tmp if i == 0 else torch.cat((all_node,node_tmp), axis=1)
    
             x_tmp = x
+            node_tmp = x
             ones_tmp = torch.ones_like(x) 
             
         # last layer
         w = self.layer_list[self.num_hidden_layers].weight.T
         cur_shape = self.layer_list[self.num_hidden_layers].weight.shape[0]*self.layer_list[self.num_hidden_layers].weight.shape[1]
-            
+        w_tmp = torch.ones_like(w)
+        
         x_tmp = torch.cat([torch.reshape(w * x1[np.newaxis,:].T, (1, cur_shape)) for x1 in x_tmp], axis=0)
         ones_tmp = torch.cat([torch.reshape(w * xx[np.newaxis,:].T, (1, cur_shape)) for xx in ones_tmp], axis=0)
+        node_tmp = torch.cat([torch.reshape(w_tmp * xx[np.newaxis,:].T, (1, cur_shape)) for xx in node_tmp], axis=0)
 
         output = torch.cat((output, x_tmp), axis=1)
         weights = torch.cat((weights,ones_tmp), axis=1)
+        all_node = node_tmp if i == 0 else torch.cat((all_node,node_tmp), axis=1)
         
         # output layer nodes
         x1 = x @ self.layer_list[self.num_hidden_layers].weight.T
@@ -115,7 +123,7 @@ class FC_MD(nn.Module):
         x =  self.layer_list[self.num_hidden_layers](x)
         nodes = torch.cat((nodes, x), axis = 1)
         
-        return output, nodes, weights
+        return output, nodes, weights, all_node
     
 
     

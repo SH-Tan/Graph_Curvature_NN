@@ -12,7 +12,7 @@ import sys
 sys.path.append("..")
 
 from slope import cal_slope
-from avg_fraction import avg_f_cal
+from avg_fraction_edge import avg_f_cal
 from Lidar.draw_traj import lidar_draw
 
 
@@ -57,7 +57,7 @@ if __name__=='__main__':
     
     if args.image:
         print(f'Start calculate slopes...\n')
-        cal_slope(args)
+        # cal_slope(args)
         
         print(f'Start calculate average fraction per label...\n')
         avg_f_cal(args)
