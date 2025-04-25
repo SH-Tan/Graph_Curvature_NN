@@ -127,9 +127,9 @@ def test(n, loader, eps, alpha, iters, device):
             adv_out = n(adv_img)
             adv_pred = adv_out.detach().max(1)[1]
  
-            robust_l = pred.eq(labels.view_as(pred)) & adv_pred.eq(labels.view_as(pred))
+            robust_l = pred.eq(labels.view_as(pred)) & adv_pred.eq(labels.view_as(adv_pred))
             
-            succ_l = pred.eq(labels.view_as(pred)) & ~adv_pred.eq(labels.view_as(pred))
+            succ_l = pred.eq(labels.view_as(pred)) & ~adv_pred.eq(labels.view_as(adv_pred))
    
             succ_pair[l].append((images[succ_l].cpu(), adv_img[succ_l].cpu()))
             robust_pair[l].append((images[robust_l].cpu(), adv_img[robust_l].cpu()))
@@ -139,36 +139,40 @@ def test(n, loader, eps, alpha, iters, device):
     return succ_pair, robust_pair
 
 
-
-
-# def get_fraction(curvature, b, dims):
-#     c = []
-#     layer_num = len(dims) - 1
-#     neg = np.zeros((layer_num), dtype=np.float32)
-#     total_e = np.zeros((layer_num), dtype=np.float32)
-#     # neg = 0.
-#     # total_e = 0.
-    
-#     for batch in range(b):
-#         ricci_curv = np.array(curvature[batch])
-#         for (i, j, curr) in ricci_curv:
-#             l = int(i)
-#             if curr < 0:
-#                 neg[l] += 1
-#             total_e[l] += 1
-#             c.append(curr)
-#     return neg, total_e, c
-
-
-def get_fraction(curvature, b):
+def get_fraction(curvature, b, dims):
     c = []
-    neg = []
-    total_e = []
-    for i in range(b):
-        curr = np.array(curvature[i])
-        neg.append(len(curr[curr<0]))
-        total_e.append(len(curr))
-    return np.array(neg), np.array(total_e), curr
+    layer_num = len(dims) - 1
+    neg = np.zeros((layer_num), dtype=np.float32)
+    top_neg = np.zeros((layer_num), dtype=np.float32)
+    total_e = np.zeros((layer_num), dtype=np.float32)
+    # neg = 0.
+    # total_e = 0.
+    
+    for batch in range(b):
+        ricci_curv = np.array(curvature[batch])
+        for (i, j, curr) in ricci_curv:
+            if curr > 1:
+                continue
+    
+            l = int(i)
+            if curr < 0:
+                neg[l] += 1
+            if curr < -10:
+                top_neg[l] += 1
+            total_e[l] += 1
+            c.append(curr)
+    return neg, total_e, top_neg, c
+
+
+# def get_fraction(curvature, b):
+#     c = []
+#     neg = []
+#     total_e = []
+#     for i in range(b):
+#         curr = np.array(curvature[i])
+#         neg.append(len(curr[curr<0]))
+#         total_e.append(len(curr))
+#     return np.array(neg), np.array(total_e), curr
 
 
 
@@ -241,7 +245,6 @@ def fc_main(args):
                 raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
             
             
-                
             print(f'Now for model {model_name}....\n')
 
             net_H = FC_MD(dims, layer_num)
@@ -267,18 +270,23 @@ def fc_main(args):
                 
                 sample_size = args.sample_num
                 
-                robust_c = defaultdict(list)
-                nonrobust_c = defaultdict(list)
-                non_fraction = defaultdict(list)
-                rob_fraction = defaultdict(list)
-                edge_num =  defaultdict(list)
-                non_edge_num =  defaultdict(list)
+                gs_l = defaultdict(list) # graph size
+                en_l = defaultdict(list) # edge num
+                el_l = defaultdict(list) # per layer
+                curv_l = defaultdict(list) # curvature
+                res_l = defaultdict(list)
+                
+                gs_l_non = defaultdict(list) # graph size
+                en_l_non = defaultdict(list) # edge num
+                el_l_non = defaultdict(list) # per layer
+                curv_l_non = defaultdict(list) # curvature
+                res_l_non = defaultdict(list)
                     
                 for l in selected_classes:
                     print(f'For label {l}....\n')
                     # non robust images
                     count = 0
-                    l_ori = 0.
+
                     for (ori_im, adv_im) in succ_pair[l]:
                         for im in ori_im:
                             img = im.to(device)
@@ -286,11 +294,11 @@ def fc_main(args):
                             
                             if metric.lower() == "q_ngr":
                                 weights = output.detach().clone().to(device)                   
-                                # weights[edge_array == 0] = 0.
+                                weights[edge_array == 0] = 0.
                             
                             elif metric.lower() == "q_inv":
                                 weights = output.detach().clone().to(device)                   
-                                # weights[edge_array == 0] = 0.
+                                weights[edge_array == 0] = 0.
                                 
                             elif metric.lower() == "q_exp":
                                 weights = edge_array.detach().clone().to(device) 
@@ -313,10 +321,13 @@ def fc_main(args):
                             else:
                                 raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
 
-                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
+                            # neg_num, total_edge, top_neg_num, curv = get_fraction(ricci_curvature, weights_inv.shape[0], dims)
 
-                            nonrobust_c[l].append(c)
-                            non_fraction[l].append(neg_num/total_edge)
+                            gs_l_non[l].append((len(weights[weights!=0]),len(weights[weights==0]),len(weights_inv[weights_inv!=0])))
+                            # en_l_non[l].append((len(weights[weights==0]), len(weights[weights!=0])))
+                            # el_l_non[l].append((neg_num, top_neg_num, total_edge))
+                            # curv_l_non[l].append(curv)
+                            res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims))
                             
                             count += 1
                             if (count % 10 == 0):
@@ -336,11 +347,11 @@ def fc_main(args):
                             
                             if metric.lower() == "q_ngr":
                                 weights = output.detach().clone().to(device)                   
-                                # weights[edge_array == 0] = 0.
+                                weights[edge_array == 0] = 0.
                             
                             elif metric.lower() == "q_inv":
                                 weights = output.detach().clone().to(device)                   
-                                # weights[edge_array == 0] = 0.
+                                weights[edge_array == 0] = 0.
                                 
                             elif metric.lower() == "q_exp":
                                 weights = edge_array.detach().clone().to(device)  
@@ -363,10 +374,13 @@ def fc_main(args):
                             else:
                                 raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
 
-                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
-
-                            robust_c[l].append(c)
-                            rob_fraction[l].append(neg_num/total_edge)
+                            # neg_num, total_edge, top_neg_num, curv = get_fraction(ricci_curvature, weights_inv.shape[0], dims)
+                            
+                            gs_l[l].append((len(weights[weights!=0]),len(weights[weights==0]),len(weights_inv[weights_inv!=0])))
+                            # en_l[l].append((len(weights[weights==0]), len(weights[weights!=0])))
+                            # el_l[l].append((neg_num, top_neg_num, total_edge))
+                            # curv_l[l].append(curv)
+                            res_l[l].append((ricci_curvature, weights_inv.shape[0], dims))
                             
                             count += 1
                             if (count % 10 == 0):
@@ -374,20 +388,31 @@ def fc_main(args):
                                 
                             if (count >= sample_size):
                                 break
-                            
+                
+                
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "_res_robust.pkl", 'wb') as file:
+                    pickle.dump(res_l, file)
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "_res_norobust.pkl", 'wb') as file:
+                    pickle.dump(res_l_non, file)
                     
-                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "frac_robust.pkl", 'wb') as file:
-                    pickle.dump(rob_fraction, file)
-                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "frac_norobust.pkl", 'wb') as file:
-                    pickle.dump(non_fraction, file)
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "_graphsize_robust.pkl", 'wb') as file:
+                    pickle.dump(gs_l, file)
+                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "_graphsize_norobust.pkl", 'wb') as file:
+                    pickle.dump(gs_l_non, file)
                     
-                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "curv_robust.pkl", 'wb') as file:
-                    pickle.dump(robust_c, file)
-                with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "curv_norobust.pkl", 'wb') as file:
-                    pickle.dump(nonrobust_c, file)
+                # with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "_edgenum_robust.pkl", 'wb') as file:
+                #     pickle.dump(en_l, file)
+                # with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "_edgenum_norobust.pkl", 'wb') as file:
+                #     pickle.dump(en_l_non, file)
                     
-                # with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "edge_robust.pkl", 'wb') as file:
-                #     pickle.dump(edge_num, file)
-                # with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "edge_norobust.pkl", 'wb') as file:
-                #     pickle.dump(non_edge_num, file)
+                # with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "_perlayer_robust.pkl", 'wb') as file:
+                #     pickle.dump(el_l, file)
+                # with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "_perlayer_norobust.pkl", 'wb') as file:
+                #     pickle.dump(el_l_non, file)
+                    
+                # with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "_curv_robust.pkl", 'wb') as file:
+                #     pickle.dump(curv_l, file)
+                # with open(res_path + model_full_n + str(e) + metric + str(q) + '_' + str(layer_num) + dataset + "_curv_norobust.pkl", 'wb') as file:
+                #     pickle.dump(curv_l_non, file)
+
                         

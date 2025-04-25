@@ -23,7 +23,7 @@ sys.path.append("..")
 import tools.utils as utils
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
-from tools.graph_curvature_v1_multihops import graph_curvature_main_torch
+from tools.graph_curvature_multihops import graph_curvature_main_torch
 
 
 import warnings
@@ -139,35 +139,35 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 
-# def get_fraction(curvature, b, dims):
-#     c = []
-#     layers = sorted(dims.items(), key=lambda x: x[0])
-#     num_layers = len(layers)-1
-#     neg = np.zeros((num_layers), dtype=np.float32)
-#     total_e = np.zeros((num_layers), dtype=np.float32)
-#     # neg = 0.
-#     # total_e = 0.
-    
-#     for batch in range(b):
-#         ricci_curv = np.array(curvature[batch])
-#         for (i, j, curr) in ricci_curv:
-#             l = int(i)
-#             if curr < 0:
-#                 neg[l] += 1
-#             total_e[l] += 1
-#             c.append(curr)
-#     return neg, total_e, c
-
-
-def get_fraction(curvature, b):
+def get_fraction(curvature, b, dims):
     c = []
-    neg = []
-    total_e = []
-    for i in range(b):
-        curr = np.array(curvature[i])
-        neg.append(len(curr[curr<0]))
-        total_e.append(len(curr))
-    return np.array(neg), np.array(total_e), curr
+    layers = sorted(dims.items(), key=lambda x: x[0])
+    num_layers = len(layers)-1
+    neg = np.zeros((num_layers), dtype=np.float32)
+    total_e = np.zeros((num_layers), dtype=np.float32)
+    # neg = 0.
+    # total_e = 0.
+    
+    for batch in range(b):
+        ricci_curv = np.array(curvature[batch])
+        for (i, j, curr) in ricci_curv:
+            l = int(i)
+            if curr < 0:
+                neg[l] += 1
+            total_e[l] += 1
+            c.append(curr)
+    return neg, total_e, c
+
+
+# def get_fraction(curvature, b):
+#     c = []
+#     neg = []
+#     total_e = []
+#     for i in range(b):
+#         curr = np.array(curvature[i])
+#         neg.append(len(curr[curr<0]))
+#         total_e.append(len(curr))
+#     return np.array(neg), np.array(total_e), curr
 
 
 
@@ -258,13 +258,11 @@ def cnn_main(args):
     for q in Q:
         for e in eps:
             succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
-    
-            robust_c = defaultdict(list)
-            nonrobust_c = defaultdict(list)
-            non_fraction = defaultdict(list)
-            rob_fraction = defaultdict(list)
-            edge_num =  defaultdict(list)
-            non_edge_num =  defaultdict(list)
+            
+            gs_l = defaultdict(list) # graph size
+            gs_l_non = defaultdict(list) # graph size
+            res_l = defaultdict(list)
+            res_l_non = defaultdict(list)
             
             for l in selected_classes:
                 print(f'For label {l}....\n')
@@ -277,10 +275,11 @@ def cnn_main(args):
                         
                         if metric.lower() == "q_ngr":
                             weights = output.detach().clone().to(device)  
+                            weights[edge_array == 0] = 0.
                             
                         elif metric.lower() == "q_inv":
                             weights = output.detach().clone().to(device)                   
-                            # weights[edge_array == 0] = 0.
+                            weights[edge_array == 0] = 0.
                             
                         elif metric.lower() == "q_exp":
                             weights = edge_array.detach().clone().to(device)  
@@ -303,10 +302,10 @@ def cnn_main(args):
                         else:
                             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                         
-                        neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
+                        # neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
                     
-                        nonrobust_c[l].append(c)
-                        non_fraction[l].append(neg_num/total_edge)
+                        gs_l_non[l].append((len(weights[weights!=0]),len(weights[weights==0]),len(weights_inv[weights_inv!=0])))
+                        res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims))
                         
                         count += 1
                         if (count % 10 == 0):
@@ -322,13 +321,13 @@ def cnn_main(args):
                         edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
                         
                         if metric.lower() == "q_ngr":
-                            weights = output.detach().clone().to(device)  
+                            weights = output.detach().clone().to(device)
+                            weights[edge_array == 0] = 0.  
                             
                         elif metric.lower() == "q_inv":
                             weights = output.detach().clone().to(device)                   
-                            # weights[edge_array == 0] = 0.
-                            
-                            
+                            weights[edge_array == 0] = 0.
+                             
                         elif metric.lower() == "q_exp":
                             weights = edge_array.detach().clone().to(device)  
                         
@@ -350,10 +349,10 @@ def cnn_main(args):
                         else:
                             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
     
-                        neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
+                        # neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0])
         
-                        robust_c[l].append(c)
-                        rob_fraction[l].append(neg_num/total_edge)
+                        gs_l[l].append((len(weights[weights!=0]),len(weights[weights==0]),len(weights_inv[weights_inv!=0])))
+                        res_l[l].append((ricci_curvature, weights_inv.shape[0], dims))
 
                         count += 1
                         if (count % 10 == 0):
@@ -362,15 +361,15 @@ def cnn_main(args):
                         if (count >= sample_size):
                             break
             
-            with open(res_path + model_full_n + str(e) + metric + str(q) + "frac_robust_cnn.pkl", 'wb') as file:
-                pickle.dump(rob_fraction, file)
-            with open(res_path + model_full_n + str(e) + metric + str(q) +  "frac_norobust_cnn.pkl", 'wb') as file:
-                pickle.dump(non_fraction, file)
+            with open(res_path + model_full_n + str(e) + metric + str(q) + "_res_robust_cnn.pkl", 'wb') as file:
+                pickle.dump(res_l, file)
+            with open(res_path + model_full_n + str(e) + metric + str(q) +  "_res_norobust_cnn.pkl", 'wb') as file:
+                pickle.dump(res_l_non, file)
                 
-            with open(res_path + model_full_n + str(e) + metric + str(q) + "curv_robust_cnn.pkl", 'wb') as file:
-                pickle.dump(robust_c, file)
-            with open(res_path + model_full_n + str(e) + metric + str(q) + "curv_norobust_cnn.pkl", 'wb') as file:
-                pickle.dump(nonrobust_c, file)
+            with open(res_path + model_full_n + str(e) + metric + str(q) + "_graphsize_robust_cnn.pkl", 'wb') as file:
+                pickle.dump(gs_l, file)
+            with open(res_path + model_full_n + str(e) + metric + str(q) + "_graphsize_norobust_cnn.pkl", 'wb') as file:
+                pickle.dump(gs_l_non, file)
                 
             # with open(res_path + model_full_n + str(e) + metric + str(q) + "edge_robust_cnn.pkl", 'wb') as file:
             #     pickle.dump(edge_num, file)

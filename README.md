@@ -88,6 +88,6 @@
 
 ## LiDAR
 
-- python main.py --mnist 0 --metric q_inv --lidar_res_path res/lidar/
+- python main.py --image 0 --lidar 1 --metric q_inv --lidar_res_path res/lidar/q_inv/
 
-- python test.py --mnist 0 --metric q_inv --lidar_data_path res/lidar/ --lidar_res_path statistics/lidar/
+- python test.py --image 0 --lidar 1 --metric q_inv --lidar_data_path res/lidar/ --lidar_res_path statistics/lidar/
