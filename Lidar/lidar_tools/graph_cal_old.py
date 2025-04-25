@@ -81,7 +81,7 @@ def show_results(G, curvature="ricciCurvature"):
     return edge_set, remain_edges, weights, curvatures
 
 
-def cal_curvature(adj, nodes, dims, nodes_ori):
+def cal_curvature(adj, nodes, dims):
     G = nx.from_numpy_array(adj, create_using=nx.DiGraph)
     # print(G)
     

@@ -12,8 +12,9 @@ import sys
 sys.path.append("..")
 
 from slope import cal_slope
-from avg_fraction import avg_f_cal
+from avg_fraction_edge_mnist import avg_f_cal
 from Lidar.draw_traj import lidar_draw
+from Lidar.avg_fraction_edge import avg_statics_lidar
 
 
 import warnings
@@ -56,13 +57,13 @@ if __name__=='__main__':
     args = parse_args()
     
     if args.image:
-        print(f'Start calculate slopes...\n')
-        cal_slope(args)
+        # print(f'Start calculate slopes...\n')
+        # cal_slope(args)
         
         print(f'Start calculate average fraction per label...\n')
         avg_f_cal(args)
         
     if args.lidar:
-        lidar_draw(args)
-        
+        # lidar_draw(args)
+        avg_statics_lidar(args)
         

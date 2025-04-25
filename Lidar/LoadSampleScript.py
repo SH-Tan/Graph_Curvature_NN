@@ -14,8 +14,10 @@ import numpy as np
 import os
 import random
 import pickle
-from Lidar.getNNweights import getNN_info
-from Lidar.graph_cal import *
+from collections import defaultdict
+from Lidar.lidar_tools.getNNweights import getNN_info
+from Lidar.lidar_tools.graph_cal import *
+from Lidar.lidar_tools.graph_curvature_multihops import graph_curvature_main_torch
 
 import warnings
 
@@ -102,6 +104,43 @@ def load_all_controllers(controller_dir = 'Lidar/controllers/'):
 
 
 
+# def get_fraction(curvature, b):
+#     c = []
+#     neg = []
+#     total_e = []
+#     for i in range(b):
+#         curr = np.array(curvature[i])
+#         neg.append(len(curr[curr<0]))
+#         total_e.append(len(curr))
+#     return np.array(neg), np.array(total_e), curr
+
+
+def get_fraction(curvature, b, dims):
+    c = []
+    layer_num = len(dims) - 1
+    neg = np.zeros((layer_num), dtype=np.float32)
+    top_neg = np.zeros((layer_num), dtype=np.float32)
+    total_e = np.zeros((layer_num), dtype=np.float32)
+    # neg = 0.
+    # total_e = 0.
+    
+    for batch in range(b):
+        ricci_curv = np.array(curvature[batch])
+        for (i, j, curr) in ricci_curv:
+            if curr > 1:
+                continue
+    
+            l = int(i)
+            if curr < 0:
+                neg[l] += 1
+            if curr < -10:
+                top_neg[l] += 1
+            total_e[l] += 1
+            c.append(curr)
+    return neg, total_e, top_neg, c
+
+
+
 def start_lidar(args):
     seed = 59
     
@@ -114,16 +153,22 @@ def start_lidar(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device} device")
+    
     controllers = load_all_controllers()
     
     res_path = args.lidar_res_path
     metric = args.metric
+    alpha = args.alpha
+    hops = args.hops
     
     if not os.path.exists(res_path):
         os.makedirs(res_path)
     
     
-    with open("Lidar/lidar_trajectories_by_controller.yml", 'r') as f:
+    with open("Lidar/synthetic.yml", 'r') as f:
         lidar_traj_by_controller = yaml.full_load(f)
     
     keys = lidar_traj_by_controller.keys()
@@ -132,14 +177,18 @@ def start_lidar(args):
   
     types = ['DDPG', 'TD3']
     cs = ['1','2','3']
-    szs = ['64', '128']
- 
+    szs = ['64','128']
     
+    num_samples = 80
+
     for t in types:
         for s in szs:
             for c in cs:
-                c_l = defaultdict(list)
-                f_l = defaultdict(list)
+                gs_l = defaultdict(list) # graph size
+                en_l = defaultdict(list) # edge num
+                el_l = defaultdict(list) # per layer
+                curv_l = defaultdict(list) # curvature
+                res_l = defaultdict(list)
     
                 name = '_'.join([t,s,c])
                 cur_c = controllers[name]
@@ -148,33 +197,89 @@ def start_lidar(args):
                 
                 traj_l = lidar_traj_by_controller[name]
 
+                # all the trajectories for one controller
                 for i in range(len(traj_l)):
-                    traj = traj_l[i]
-                    tmp_f = []
-                    tmp_c = []
+                    traj = np.array(traj_l[i]) # 219 * 21
+                    sampled_inputs = traj[np.random.randint(traj.shape[0], size=num_samples), :] # sample * 21
+                     
+                    graph_size = []
+                    edge_n = []
+                    edge_layer = []
+                    curv_n = []
+                    res = []
                     
-                    for index, input in enumerate(traj):
+                    for index, input in enumerate(sampled_inputs):
                         input = np.array(input)
                         input = input.reshape(1, -1)
                         input = torch.tensor(input)
-                        dims, nodes_num, edges_num, NN_w, edge_v, nodes, nodes_ori = getNN_info(cur_c, input)
+                        dims, nodes_num, edges_num, NN_w, edge_v, nodes = getNN_info(cur_c, input, device)
                         
-                        # build graph
-                        adj = build_adjm(nodes_num, dims, edge_v, nodes, NN_w)
-                        adj = adj.cpu().detach().numpy()
-                        curv, ratio, G = cal_curvature(adj, nodes, dims, nodes_ori.cpu())
+                        if metric.lower() == "q_ngr":
+                            weights = NN_w.detach().clone().to(device)                   
+                            weights[edge_v == 0] = 0.
+                        
+                        elif metric.lower() == "q_inv":
+                            weights = NN_w.detach().clone().to(device)                   
+                            weights[edge_v == 0] = 0.
+                            
+                        elif metric.lower() == "q_exp":
+                            weights = edge_v.detach().clone().to(device) 
+                            
+                        if metric.lower() == "q_ngr":
+                            weights_inv, weights_inv2 = normalization_weight_w1(nodes, weights, dims)
+                            weights_inv = weights_inv.detach()
+                            weights_inv2 = weights_inv2.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha, hops=hops)
+                            
+                        elif metric.lower() == "q_inv":
+                            weights_inv = normalization_weight_w2(nodes, weights, dims)
+                            weights_inv = weights_inv.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, alpha=alpha, hops=hops)
+            
+                        elif metric.lower() == "q_exp":
+                            weights_inv = normalization_weight_w6(nodes, weights, dims, q=1)
+                            weights_inv = weights_inv.detach()
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, alpha=alpha)
+                        else:
+                            raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
 
-                        tmp_f.append(ratio)
-                        tmp_c.append(curv)
+                        # neg_num, total_edge, top_neg_num, curv = get_fraction(ricci_curvature, weights_inv.shape[0], dims)
+
+                        # graph size before/after normalization
+                        graph_size.append((len(weights[weights!=0]),len(weights[weights==0]),len(weights_inv[weights_inv!=0])))
+                        # # edge num
+                        # edge_n.append((len(weights[weights==0]), len(weights[weights!=0])))
+                        # # per layer
+                        # edge_layer.append((neg_num, top_neg_num, total_edge))
+                        # # curvature
+                        # curv_n.append(curv)
+                        # all the results
+                        res.append((ricci_curvature, weights_inv.shape[0], dims))
+                        
+                 
+                    print(f'Finish {i} trajectory...')
                   
-                    c_l[i].append(tmp_c)
-                    f_l[i].append(tmp_f)
+                    gs_l[i].append(graph_size)
+                    # en_l[i].append(edge_n)
+                    # el_l[i].append(edge_layer)
+                    # curv_l[i].append(curv_n)
+                    res_l[i].append(res)
+                
+                
+                with open(res_path + metric + name + "_res.pkl", 'wb') as file:
+                    pickle.dump(res_l, file)
                     
-                    
-                with open(res_path + metric + name + "_frac.pkl", 'wb') as file:
-                    pickle.dump(f_l, file)
+                with open(res_path + metric + name + "_graphsize.pkl", 'wb') as file:
+                    pickle.dump(gs_l, file)
 
-                with open(res_path + metric + name + "_curvature.pkl", 'wb') as file:
-                    pickle.dump(c_l, file)
+                # with open(res_path + metric + name + "_edgenum.pkl", 'wb') as file:
+                #     pickle.dump(en_l, file)
+                
+                # with open(res_path + metric + name + "_perlayer.pkl", 'wb') as file:
+                #     pickle.dump(el_l, file)
+                    
+                # with open(res_path + metric + name + "_curv.pkl", 'wb') as file:
+                #     pickle.dump(curv_l, file)
+ 
  
         

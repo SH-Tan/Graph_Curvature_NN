@@ -31,6 +31,7 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
     shortest_paths = {}
     inf = torch.tensor(float('inf'), device=device)
     
+    
     weight_idx = 0
     for i in range(num_layers - 1):
         l = i + 1
@@ -236,11 +237,11 @@ def process_edge(b, edge):
     i_layer = np.searchsorted(_prefix_dims, i, side='right') - 1
     j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
     
-    # if j_layer != i_layer + 1:
-    #     return (b, i, j, 2.0)
+    if j_layer != i_layer + 1:
+        return (b, i, j, 2.0)
     
     if (i_layer, j_layer) not in _sp_dict:
-        return (b, i_layer, j_layer, 2.0)
+        return (b, i, j, 2.0)
     
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
@@ -265,22 +266,25 @@ def process_edge(b, edge):
             mu = np.hstack((mu[non_zero], np.array(_alpha)))
 
     # Out-neighbors distribution
-    if j_layer == len(_dims)-1:
-        nu = np.array([1.0])
-        out_neigh = [j]
-    else:
-        nu = _distribution_out[j_layer][b, j - _prefix_dims[j_layer], :]
-        if len(np.nonzero(nu)[0]) == 0:     
-            nu = np.array([1.0])
-            out_neigh = [j]
-        else:
-            if (np.any(nu == -1.)):
-                tmp = (1.0 - _alpha) / len(np.nonzero(nu)[0])
-                nu[nu==-1] = tmp
-            non_zero = np.nonzero(nu)[0]
-            out_neigh = np.array(range(_prefix_dims[j_layer+1], _prefix_dims[j_layer+2]))
-            out_neigh = list(out_neigh[non_zero]) + [j]
-            nu = np.hstack((nu[non_zero], np.array(_alpha)))
+    nu = np.array([1.0])
+    out_neigh = [j]
+    
+    # if j_layer == len(_dims)-1:
+    #     nu = np.array([1.0])
+    #     out_neigh = [j]
+    # else:
+    #     nu = _distribution_out[j_layer][b, j - _prefix_dims[j_layer], :]
+    #     if len(np.nonzero(nu)[0]) == 0:     
+    #         nu = np.array([1.0])
+    #         out_neigh = [j]
+    #     else:
+    #         if (np.any(nu == -1.)):
+    #             tmp = (1.0 - _alpha) / len(np.nonzero(nu)[0])
+    #             nu[nu==-1] = tmp
+    #         non_zero = np.nonzero(nu)[0]
+    #         out_neigh = np.array(range(_prefix_dims[j_layer+1], _prefix_dims[j_layer+2]))
+    #         out_neigh = list(out_neigh[non_zero]) + [j]
+    #         nu = np.hstack((nu[non_zero], np.array(_alpha)))
 
     # Get submatrix for neighbors
     d_np = np.zeros((len(in_neigh), len(out_neigh)))
@@ -292,7 +296,7 @@ def process_edge(b, edge):
                 d_np[m_idx, n_idx] = get_layer_path(_sp_dict, _prefix_dims, b, m, n)
     
     if d_np.size == 0 or np.isinf(d_np).all():
-        return (b, i_layer, j_layer, 2.0)
+        return (b, i, j, 2.0)
 
     m = ot.emd2(mu, nu, d_np)
     
@@ -305,7 +309,7 @@ def _wrap_compute_single_edge(stuff):
     return process_edge(*stuff)
 
 
-def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., hops = 1):
+def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0.):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
@@ -381,14 +385,14 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
 
     # Generate edges from original weights
     edges = []
-    for layer in range(len(dims)-hops):
-        sp_array = sp_dict[(layer, layer+hops)]
+    for layer in range(len(dims)-1):
+        sp_array = sp_dict[(layer, layer+1)]
         
         for b in range(batch_size):
             non_inf = torch.nonzero(~torch.isinf(sp_array[b])).cpu().numpy()
             for src, dst in non_inf:
                 global_src = prefix_dims[layer] + src
-                global_dst = prefix_dims[layer+hops] + dst
+                global_dst = prefix_dims[layer+1] + dst
                 edges.append((b, (global_src, global_dst)))
 
     args = [(b, edge) for b, edge in edges]
