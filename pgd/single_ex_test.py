@@ -24,7 +24,7 @@ import tools.utils as utils
 from tools.small_model import FC_MD
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.FC_linear import FC_Linear
-from tools.graph_curvature_multihops import graph_curvature_main_torch
+from tools.graph_curvature_v1_multihops import graph_curvature_main_torch
 
 
 import warnings
@@ -238,14 +238,17 @@ def fc_main(args):
                 model_name = "best_ori_10l_" + str(layer_num) + ".pth"
             elif model_pre_name.lower() == "adv":
                 model_name = "pgdtrain_" + str(layer_num) + ".pth"
-            elif model_pre_name.lower() == 'big':
+            elif model_pre_name.lower() == 'big_adv':
                 model_name = "best_21_adv.pth"
+                dims = model_zoo[21]
+            elif model_pre_name.lower() == 'big_ori':
+                model_name = "fc_big_ori.pth"
                 dims = model_zoo[21]
             else:
                 raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
             
             
-            print(f'Now for model {model_name}....\n')
+            print(f'Now for model {model_path + model_name}....\n')
 
             net_H = FC_MD(dims, layer_num)
 
@@ -322,6 +325,8 @@ def fc_main(args):
                                 raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
 
                             # neg_num, total_edge, top_neg_num, curv = get_fraction(ricci_curvature, weights_inv.shape[0], dims)
+                            # curv = np.array(curv)
+                            # print(np.min(curv))
 
                             gs_l_non[l].append((len(weights[weights!=0]),len(weights[weights==0]),len(weights_inv[weights_inv!=0])))
                             # en_l_non[l].append((len(weights[weights==0]), len(weights[weights!=0])))

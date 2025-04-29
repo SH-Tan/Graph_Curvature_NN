@@ -180,6 +180,11 @@ def avg_f_cal(args):
                         # ff.write(f'For label {l}:\n')
                         for (ricci, batch, dim) in res_dict[l]:
                             neg, total, top, curv, curv_per_l = get_fraction(ricci, batch, dim)
+                            c_num = len(curv)
+                            curv = np.array(curv)
+                            if (np.min(curv) < -10000):
+                                continue
+                            
                             neg_c += neg
                             topneg_c += top
                             total_e += total
@@ -189,10 +194,8 @@ def avg_f_cal(args):
                             min_values = [min(sublist) for sublist in curv_per_l if sublist]
                             min_layer += np.array(min_values)
                             
-                            c_num = len(curv)
-                            curv = np.array(curv)
                             total_c += c_num
-                            total_top_c += (len(curv[curv < -15])/c_num)
+                            total_top_c += (len(curv[curv < -10])/c_num)
                             c_neg += len(curv[curv<0])
                             c_zero += len(curv[curv==0])
                             c_pos += len(curv[curv>0])
@@ -232,7 +235,6 @@ def avg_f_cal(args):
                         ff.write(f'The average min value of each layer is {min_layer}\n\n')
                     # ff.write(f'For last layer the average total edge is {total_e_last}, the average negavtive curvature edge {neg_c_last}, the average top-k (<-10) negavtive curvature edge is {topneg_c_last}...\n')
                     # ff.write(f'For last layer, the average negavtive curvature edge fraction {frac_neg_last}, the average top-k (<-10) negavtive curvature edge fraction {frac_top_last}...\n\n')
-
                     avg_c = avg_c/count if count > 0 else 0.
                     med_c = med_c/count if count > 0 else 0.
                     low_c = low_c/count if count > 0 else 0.
@@ -299,6 +301,11 @@ def avg_f_cal(args):
                         # ff.write(f'For label {l}:\n')
                         for (ricci, batch, dim) in nores_dict[l]:
                             neg, total, top, curv, curv_per_l = get_fraction(ricci, batch, dim)
+                            c_num = len(curv)
+                            curv = np.array(curv)
+                            # if (np.min(curv) < -10000):
+                            #     continue
+                            
                             neg_c += neg
                             topneg_c += top
                             total_e += total
@@ -308,10 +315,8 @@ def avg_f_cal(args):
                             min_values = [min(sublist) for sublist in curv_per_l if sublist]
                             min_layer += np.array(min_values)
                             
-                            c_num = len(curv)
-                            curv = np.array(curv)
                             total_c += c_num
-                            total_top_c += (len(curv[curv < -15])/c_num)
+                            total_top_c += (len(curv[curv < -10])/c_num)
                             c_neg += len(curv[curv<0])
                             c_zero += len(curv[curv==0])
                             c_pos += len(curv[curv>0])

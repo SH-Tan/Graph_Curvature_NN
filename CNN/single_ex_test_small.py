@@ -23,7 +23,7 @@ sys.path.append("..")
 import tools.utils as utils
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
-from tools.graph_curvature_multihops import graph_curvature_main_torch
+from tools.graph_curvature_v1_multihops import graph_curvature_main_torch
 
 
 import warnings
