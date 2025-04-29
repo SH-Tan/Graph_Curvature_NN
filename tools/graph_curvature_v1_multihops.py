@@ -237,11 +237,11 @@ def process_edge(b, edge):
     i_layer = np.searchsorted(_prefix_dims, i, side='right') - 1
     j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
     
-    if j_layer != i_layer + 1:
-        return (b, i, j, 2.0)
+    # if j_layer != i_layer + 1:
+    #     return (b, i, j, 2.0)
     
     if (i_layer, j_layer) not in _sp_dict:
-        return (b, i, j, 2.0)
+        return (b, i_layer, j_layer, 2.0)
     
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
@@ -296,7 +296,7 @@ def process_edge(b, edge):
                 d_np[m_idx, n_idx] = get_layer_path(_sp_dict, _prefix_dims, b, m, n)
     
     if d_np.size == 0 or np.isinf(d_np).all():
-        return (b, i, j, 2.0)
+        return (b, i_layer, j_layer, 2.0)
 
     m = ot.emd2(mu, nu, d_np)
     

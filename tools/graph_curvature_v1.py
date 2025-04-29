@@ -237,8 +237,8 @@ def process_edge(b, edge):
     i_layer = np.searchsorted(_prefix_dims, i, side='right') - 1
     j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
     
-    if j_layer != i_layer + 1:
-        return (b, i, j, 2.0)
+    # if j_layer != i_layer + 1:
+    #     return (b, i, j, 2.0)
     
     if (i_layer, j_layer) not in _sp_dict:
         return (b, i, j, 2.0)
@@ -300,7 +300,7 @@ def process_edge(b, edge):
 
     m = ot.emd2(mu, nu, d_np)
     
-    return (b, i_layer, j_layer, 1.0 - m/sp)
+    return (b, i, j, 1.0 - m/sp)
 
 
 
@@ -309,7 +309,7 @@ def _wrap_compute_single_edge(stuff):
     return process_edge(*stuff)
 
 
-def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0.):
+def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., hops=1):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
@@ -385,14 +385,14 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
 
     # Generate edges from original weights
     edges = []
-    for layer in range(len(dims)-1):
-        sp_array = sp_dict[(layer, layer+1)]
+    for layer in range(len(dims)-hops):
+        sp_array = sp_dict[(layer, layer+hops)]
         
         for b in range(batch_size):
             non_inf = torch.nonzero(~torch.isinf(sp_array[b])).cpu().numpy()
             for src, dst in non_inf:
                 global_src = prefix_dims[layer] + src
-                global_dst = prefix_dims[layer+1] + dst
+                global_dst = prefix_dims[layer+hops] + dst
                 edges.append((b, (global_src, global_dst)))
 
     args = [(b, edge) for b, edge in edges]
@@ -413,7 +413,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     for b, i, j, val in results:
         ricci_results[b].append((i,j,val))
 
-    return ricci_results
+    return ricci_results, _sp_dict
 
 
 if __name__ == '__main__':
