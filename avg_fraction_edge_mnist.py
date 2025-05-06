@@ -54,7 +54,7 @@ def avg_f_cal(args):
         os.makedirs(res_path)
 
     layer = [2]
-    if model_type.lower() == "fc" and model_pre_name.lower() != 'big':
+    if model_type.lower() == "fc" and "big" not in model_pre_name.lower():
         layer = [2,4]
         
     selected_classes = [0,1,2,3,4,5,6,7,8,9]
@@ -68,7 +68,7 @@ def avg_f_cal(args):
     robust_suffix = "frac_robust.pkl"
     norobust_suffix = "frac_norobust.pkl"
 
-    with open(res_path + "avg_stats_avg.txt", "w+") as ff:
+    with open(res_path + "net_anysis.txt", "w+") as ff:
         # Plot the data
         for layer_num in layer:
             ff.write(f'W = {metric}: For model {model_type} - {model_pre_name}, layer {layer_num}: \n')
@@ -191,7 +191,7 @@ def avg_f_cal(args):
                             frac_neg += (neg/total)
                             frac_top += (top/total)
                             
-                            min_values = [min(sublist) for sublist in curv_per_l if sublist]
+                            min_values = [np.min(sublist) for sublist in curv_per_l if sublist]      
                             min_layer += np.array(min_values)
                             
                             total_c += c_num
@@ -209,7 +209,12 @@ def avg_f_cal(args):
                             high_c += np.max(curv)
                             var_c += np.var(curv)
                             count += 1
-        
+                            
+                    #         if (np.min(curv) != min_values[1]):
+                    #             ff.write(f'{min_values} - {np.min(curv)}\n')
+                            
+                    # ff.write(f'\n\n')
+                            
                     neg_c = neg_c/count if count > 0 else 0.
                     topneg_c = topneg_c/count if count > 0 else 0.
                     total_e = total_e/count if count > 0 else 0.
@@ -303,8 +308,8 @@ def avg_f_cal(args):
                             neg, total, top, curv, curv_per_l = get_fraction(ricci, batch, dim)
                             c_num = len(curv)
                             curv = np.array(curv)
-                            # if (np.min(curv) < -10000):
-                            #     continue
+                            if (np.min(curv) < -10000):
+                                continue
                             
                             neg_c += neg
                             topneg_c += top

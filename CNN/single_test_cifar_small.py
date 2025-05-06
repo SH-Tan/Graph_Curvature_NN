@@ -22,7 +22,7 @@ sys.path.append("..")
 import tools.utils as utils
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.LeNet5_custom import LeNet_custom
-from tools.graph_curvature_v1 import graph_curvature_main_torch
+from tools.graph_curvature_multihops import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -175,7 +175,7 @@ def cifar_small_main(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    # os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     selected_classes = [0,1,2,3,4,5,6,7,8,9]
@@ -192,17 +192,19 @@ def cifar_small_main(args):
     model_path = args.model_path
     metric = args.metric
     sample_size = args.sample_num
+    alpha = args.alpha
+    hops = args.hops
     
     model_full_n = model_type.lower() + model_pre_name.lower()
     if not os.path.exists(res_path):
         os.makedirs(res_path)
     
     # build model
-    model_name= "best_cifar.pth"
+    model_name= "cnn_cifar_ori.pth"
     if model_pre_name.lower() == 'ori':
-        model_name= "best_cifar.pth"
+        model_name= "cnn_cifar_ori.pth"
     elif model_pre_name.lower() == 'adv':
-        model_name= "best_cifar_adv.pth"
+        model_name= "cnn_cifar_adv.pth"
         
     print(model_name)
     
@@ -221,16 +223,14 @@ def cifar_small_main(args):
                 
                 succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e/255, alpha=2/255, iters=40, device = device)
                     
-                sample_size = 50
+                sample_size = args.sample_num
                 
-                robust_c = defaultdict(list)
-                nonrobust_c = defaultdict(list)
-                non_fraction = defaultdict(list)
-                rob_fraction = defaultdict(list)
-                edge_num =  defaultdict(list)
-                non_edge_num =  defaultdict(list)
+                gs_l = defaultdict(list) # graph size
+                res_l = defaultdict(list)
+                
+                gs_l_non = defaultdict(list) # graph size
+                res_l_non = defaultdict(list)
                     
-            
                 for l in selected_classes:
                     print(f'For label {l}....\n')
                     f.write(f'Label {l}....\n')
@@ -241,12 +241,13 @@ def cifar_small_main(args):
                             img = im.to(device)
                             edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
                             
-                            if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+                            if metric.lower() == "q_ngr":
                                 weights = output.detach().clone().to(device)                   
                                 weights[edge_array == 0] = 0.
-                                
-                            elif metric.lower() == "q_exp":
-                                weights = edge_array.detach().clone().to(device)  
+                            
+                            elif metric.lower() == "q_inv":
+                                weights = output.detach().clone().to(device)                   
+                                weights[edge_array == 0] = 0.
                             
                             if metric.lower() == "q_ngr":
                                 _, weights_inv = net_H.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
@@ -261,13 +262,11 @@ def cifar_small_main(args):
                             
                             weights_inv = weights_inv.detach()
 
-                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, model_dims=model_dims, device=device)
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha, hops=hops)
         
-                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0], model_dims)
-                    
-                            nonrobust_c[l].append(total_edge)
-                            non_fraction[l].append(neg_num)
-                            non_edge_num[l].append((len(weights[weights!=0]), len(weights_inv[weights_inv!=0]), np.sum(total_edge)))
+                            # neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0], model_dims)
+                            gs_l_non[l].append((len(weights[weights!=0]),len(weights[weights==0]),len(weights_inv[weights_inv!=0])))
+                            res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims))
                             
                             count += 1
                             if (count % 10 == 0):
@@ -282,7 +281,11 @@ def cifar_small_main(args):
                             img = im.to(device)
                             edge_array, nodes_ori, output = net_H.NN_info_batch(img.unsqueeze(0))
                             
-                            if metric.lower() == "q_ngr" or metric.lower() == "q_inv":
+                            if metric.lower() == "q_ngr":
+                                weights = output.detach().clone().to(device)                   
+                                weights[edge_array == 0] = 0.
+                            
+                            elif metric.lower() == "q_inv":
                                 weights = output.detach().clone().to(device)                   
                                 weights[edge_array == 0] = 0.
                                 
@@ -302,13 +305,12 @@ def cifar_small_main(args):
                             
                             weights_inv = weights_inv.detach()
                             
-                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, model_dims=model_dims, device=device)
+                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha, hops=hops)
         
-                            neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0], model_dims)
+                            # neg_num, total_edge, c = get_fraction(ricci_curvature, weights_inv.shape[0], model_dims)
         
-                            robust_c[l].append(total_edge)
-                            rob_fraction[l].append(neg_num)
-                            edge_num[l].append((len(weights[weights!=0]), len(weights_inv[weights_inv!=0]), np.sum(total_edge)))
+                            gs_l[l].append((len(weights[weights!=0]),len(weights[weights==0]),len(weights_inv[weights_inv!=0])))
+                            res_l[l].append((ricci_curvature, weights_inv.shape[0], dims))
                             
                             count += 1
                             if (count % 10 == 0):
@@ -317,17 +319,13 @@ def cifar_small_main(args):
                             if (count >= sample_size):
                                 break
                     
-                with open(res_path + model_full_n + str(e) + metric + str(q) + "frac_robust_cifar.pkl", 'wb') as file:
-                    pickle.dump(rob_fraction, file)
-                with open(res_path + model_full_n + str(e) + metric + str(q) +  "frac_norobust_cifar.pkl", 'wb') as file:
-                    pickle.dump(non_fraction, file)
+                with open(res_path + model_full_n + str(e) + metric + str(q) + "_res_robust_cifar.pkl", 'wb') as file:
+                    pickle.dump(res_l, file)
+                with open(res_path + model_full_n + str(e) + metric + str(q) +  "_res_norobust_cifar.pkl", 'wb') as file:
+                    pickle.dump(res_l_non, file)
                     
-                with open(res_path + model_full_n + str(e) + metric + str(q) + "curv_robust_cifar.pkl", 'wb') as file:
-                    pickle.dump(robust_c, file)
-                with open(res_path + model_full_n + str(e) + metric + str(q) + "curv_norobust_cifar.pkl", 'wb') as file:
-                    pickle.dump(nonrobust_c, file)
+                with open(res_path + model_full_n + str(e) + metric + str(q) + "_graphsize_robust_cifar.pkl", 'wb') as file:
+                    pickle.dump(gs_l, file)
+                with open(res_path + model_full_n + str(e) + metric + str(q) + "_graphsize_norobust_cifar.pkl", 'wb') as file:
+                    pickle.dump(gs_l_non, file)
                     
-                with open(res_path + model_full_n + str(e) + metric + str(q) + "edge_robust_cifar.pkl", 'wb') as file:
-                    pickle.dump(edge_num, file)
-                with open(res_path + model_full_n + str(e) + metric + str(q) + "edge_norobust_cifar.pkl", 'wb') as file:
-                    pickle.dump(non_edge_num, file)
