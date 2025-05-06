@@ -23,7 +23,7 @@ sys.path.append("..")
 import tools.utils as utils
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
-from tools.graph_curvature_v1_multihops import graph_curvature_main_torch
+from tools.graph_curvature_multihops import graph_curvature_main_torch
 
 
 import warnings
@@ -243,7 +243,10 @@ def cnn_main(args):
         os.makedirs(res_path)
     
     # build model
-    model_name= "mnist_relu_small.pth"
+    if model_pre_name == 'ori':
+        model_name= "mnist_relu_small.pth"
+    elif model_pre_name == 'adv':
+        model_name= "cnn_adv.pth"
     
     net_H = LeNet_custom_v2(model_dims, None, device)
     net_H.load_state_dict(torch.load(model_path + model_name))

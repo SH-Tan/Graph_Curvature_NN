@@ -389,6 +389,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             for src, dst in non_inf:
                 global_src = prefix_dims[layer] + src
                 global_dst = prefix_dims[layer+1] + dst
+                # print(f'{src} - {dst}: {sp_array[b][src][dst]} {_sp_dict[(layer, layer+1)][b][src][dst]} - {global_src}:{global_dst}')
                 edges.append((b, (global_src, global_dst)))
 
     args = [(b, edge) for b, edge in edges]
@@ -409,7 +410,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     for b, i, j, val in results:
         ricci_results[b].append((i,j,val))
 
-    return ricci_results
+    return ricci_results, _sp_dict
 
 
 if __name__ == '__main__':

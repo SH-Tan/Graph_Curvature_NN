@@ -24,7 +24,7 @@ import tools.utils as utils
 from tools.small_model import FC_MD
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.FC_linear import FC_Linear
-from tools.graph_curvature_v1_multihops import graph_curvature_main_torch
+from tools.graph_curvature_multihops import graph_curvature_main_torch
 
 
 import warnings
@@ -226,7 +226,7 @@ def fc_main(args):
         os.makedirs(res_path)
         
     layers = [2,4]
-    if model_pre_name.lower() == 'big':
+    if 'big' in model_pre_name.lower():
         layers = [2]
     
     # build model
@@ -239,7 +239,7 @@ def fc_main(args):
             elif model_pre_name.lower() == "adv":
                 model_name = "pgdtrain_" + str(layer_num) + ".pth"
             elif model_pre_name.lower() == 'big_adv':
-                model_name = "best_21_adv.pth"
+                model_name = "fc_big_adv.pth"
                 dims = model_zoo[21]
             elif model_pre_name.lower() == 'big_ori':
                 model_name = "fc_big_ori.pth"
@@ -310,7 +310,7 @@ def fc_main(args):
                                 weights_inv, weights_inv2 = net_H.normalization_weight_w1(nodes_ori, weights, dims)
                                 weights_inv = weights_inv.detach()
                                 weights_inv2 = weights_inv2.detach()
-                                ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha, hops=hops)
+                                ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, alpha=alpha, hops=hops)
                                 
                             elif metric.lower() == "q_inv":
                                 weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
@@ -365,7 +365,7 @@ def fc_main(args):
                                 weights_inv, weights_inv2 = net_H.normalization_weight_w1(nodes_ori, weights, dims)
                                 weights_inv = weights_inv.detach()
                                 weights_inv2 = weights_inv2.detach()
-                                ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha, hops=hops)
+                                ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, alpha=alpha, hops=hops)
                                 
                             elif metric.lower() == "q_inv":
                                 weights_inv = net_H.normalization_weight_w2(nodes_ori, weights, dims)
