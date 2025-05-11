@@ -21,8 +21,7 @@ from tools.small_model import FC_MD
 from tools.FC_linear import FC_Linear
 from tools.LeNet5_custom_small import LeNet_custom_v2
 from tools.graph_curvature import graph_curvature_main_torch
-from tools.draw_net import DrawNN
-from tools.edge_remove import Edge_Remove
+from tools.get_c import get_c
 
 
 np.set_printoptions(threshold=np.inf)
@@ -216,7 +215,7 @@ def remove_edge_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -262,15 +261,14 @@ def remove_edge_cnn(args):
     # remove_frac = [0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.8, 1]
     remove_num = [5,20,50,100,150,300,500,700,1000,1500,2000,2500,3000,3500,5000,8000]
     
-    with open(res_path + "edge_remove_acc_neg_pos_cnn.txt", "w+") as ff:
-        ff.write(f'For model {model_name}: \n')
             
-        test_cleanacc = test_clean(net_full, test_loader)
-        
-        ff.write(f'The clean accuracy for original model is {test_cleanacc}\n')
-        # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
+    test_cleanacc = test_clean(net_full, test_loader)
+    # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
 
-        for l in selected_classes:
+    for l in selected_classes:
+        with open(res_path + "edge_cnn_" + str(l) + ".txt", "w+") as ff:
+            ff.write(f'For model {model_name}: \n')
+            ff.write(f'The clean accuracy for original model is {test_cleanacc}\n\n')
             print(f'Current label {l}: \n')
             ff.write(f'Current label {l}: \n')
 
@@ -320,78 +318,97 @@ def remove_edge_cnn(args):
             torch.cuda.empty_cache()
             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, model_dims=model_dims, alpha=alpha)
 
-            c, neg_e_second, neg_e_other, pos_e = get_top_c(ricci_curvature, 1, prefix_dims, threshold = -50)
-            reversed_pos_e = list(pos_e)[::-1]
+            all_edges, neg_paths_last, neg_paths_other, edge_curvatures = get_c(ricci_curvature, 1, prefix_dims)
+                
+            ff.write(f'Found {len(neg_paths_last)} negative paths to last layer and {len(neg_paths_other)} negative paths to other layers\n')
+            ff.write(f'Total number of edges: {len(all_edges)}\n')
             
-            ff.write(f'It has {len(neg_e_second)} negative curvature edges, {len(neg_e_other)} negative curvature edges, {len(pos_e)} positive curvature egdes .. \n')
+            # reversed_pos_e = list(pos_e)[::-1]
+            ff.write("Negative paths ending in last layer:\n")
+            for path in neg_paths_last:
+                path_str = " -> ".join([f"({i},{j}): {curr:.3f}" for i,j,curr in path])
+                ff.write(f"{path_str}\n")
+            
+            ff.write("\nNegative paths in other layers:\n") 
+            for path in neg_paths_other:
+                path_str = " -> ".join([f"({i},{j}): {curr:.3f}" for i,j,curr in path])
+                ff.write(f"{path_str}\n")
+            ff.write("\n")
+
+            ff.write("\n\n\n")
+            
+            # c, neg_e_second, neg_e_other, pos_e = get_c(ricci_curvature, 1, prefix_dims, threshold = -50)
+            # reversed_pos_e = list(pos_e)[::-1]
+            
+            # ff.write(f'It has {len(neg_e_second)} negative curvature edges, {len(neg_e_other)} negative curvature edges, {len(pos_e)} positive curvature egdes .. \n')
                 
-            # start remove
-            for index, rem_f in enumerate(remove_num):
-                ff.write(f'Remove edge number {rem_f}: \n')
+            # # start remove
+            # for index, rem_f in enumerate(remove_num):
+            #     ff.write(f'Remove edge number {rem_f}: \n')
 
-                # remove second layer negative curvature edges
-                net_neg_second = copy.deepcopy(net_H)
-                net_neg_second.__build_remove_mask__(neg_e_second, rem_f)
-                # test acc
-                acc_clean_neg_second = test_clean(net_neg_second, test_loader)
+            #     # remove second layer negative curvature edges
+            #     net_neg_second = copy.deepcopy(net_H)
+            #     net_neg_second.__build_remove_mask__(neg_e_second, rem_f)
+            #     # test acc
+            #     acc_clean_neg_second = test_clean(net_neg_second, test_loader)
 
-                # remove negative curvature edges
-                net_neg = copy.deepcopy(net_H)
-                net_neg.__build_remove_mask__(neg_e_other, rem_f)
-                # test acc
-                acc_clean_neg_other = test_clean(net_neg, test_loader)
+            #     # remove negative curvature edges
+            #     net_neg = copy.deepcopy(net_H)
+            #     net_neg.__build_remove_mask__(neg_e_other, rem_f)
+            #     # test acc
+            #     acc_clean_neg_other = test_clean(net_neg, test_loader)
 
-                # remove positive curvature edges
-                net_pos = copy.deepcopy(net_H)
-                net_pos.__build_remove_mask__(reversed_pos_e, rem_f)
-                # test acc
-                acc_clean_pos = test_clean(net_pos, test_loader)
+            #     # remove positive curvature edges
+            #     net_pos = copy.deepcopy(net_H)
+            #     net_pos.__build_remove_mask__(reversed_pos_e, rem_f)
+            #     # test acc
+            #     acc_clean_pos = test_clean(net_pos, test_loader)
 
-                for e in eps:
-                    print(f'Current eps {e}: ')
-                    ff.write(f'Current eps {e}: \n')
+            #     for e in eps:
+            #         print(f'Current eps {e}: ')
+            #         ff.write(f'Current eps {e}: \n')
 
-                    test_advacc = test_adversarial(net_full, test_loader, eps=e, alpha=2/255, iters=40)
-                    ff.write(f'The adversary accuracy eps = {e} for original model is {test_advacc}\n\n')
+            #         test_advacc = test_adversarial(net_full, test_loader, eps=e, alpha=2/255, iters=40)
+            #         ff.write(f'The adversary accuracy eps = {e} for original model is {test_advacc}\n\n')
 
-                    acc_adv_neg_2 = test_adversarial(net_neg_second, test_loader, eps=e, alpha=2/255, iters=40)
-                    acc_adv_neg_other = test_adversarial(net_neg, test_loader, eps=e, alpha=2/255, iters=40)
+            #         acc_adv_neg_2 = test_adversarial(net_neg_second, test_loader, eps=e, alpha=2/255, iters=40)
+            #         acc_adv_neg_other = test_adversarial(net_neg, test_loader, eps=e, alpha=2/255, iters=40)
 
-                    neg_acc_adv_2.append(acc_adv_neg_2)
-                    neg_acc_adv_other.append(acc_adv_neg_other)
+            #         neg_acc_adv_2.append(acc_adv_neg_2)
+            #         neg_acc_adv_other.append(acc_adv_neg_other)
 
-                    neg_acc_clean_2.append(acc_clean_neg_second)
-                    neg_acc_clean_other.append(acc_clean_neg_other)
+            #         neg_acc_clean_2.append(acc_clean_neg_second)
+            #         neg_acc_clean_other.append(acc_clean_neg_other)
                 
-                    ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e_second), rem_f))} neg_e_second edges: clean acc {acc_clean_neg_second}, eps = {e}: adv acc {acc_adv_neg_2:.3f}...\n')
-                    ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e_other), rem_f))} neg_e_other edges: clean acc {acc_clean_neg_other}, eps = {e}: adv acc {acc_adv_neg_other:.3f}...\n')
+            #         ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e_second), rem_f))} neg_e_second edges: clean acc {acc_clean_neg_second}, eps = {e}: adv acc {acc_adv_neg_2:.3f}...\n')
+            #         ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e_other), rem_f))} neg_e_other edges: clean acc {acc_clean_neg_other}, eps = {e}: adv acc {acc_adv_neg_other:.3f}...\n')
                     
-                    acc_adv_pos = test_adversarial(net_pos, test_loader, eps=e, alpha=2/255, iters=40)
+            #         acc_adv_pos = test_adversarial(net_pos, test_loader, eps=e, alpha=2/255, iters=40)
                 
-                    pos_acc_adv.append(acc_adv_pos)
-                    pos_acc_clean.append(acc_clean_pos)
+            #         pos_acc_adv.append(acc_adv_pos)
+            #         pos_acc_clean.append(acc_clean_pos)
 
-                    ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_pos_e), rem_f))} reversed_pos_e1 edges: clean acc {acc_clean_pos}, eps = {e}: adv acc {acc_adv_pos:.3f}...\n')
+            #         ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_pos_e), rem_f))} reversed_pos_e1 edges: clean acc {acc_clean_pos}, eps = {e}: adv acc {acc_adv_pos:.3f}...\n')
                     
-                    ff.write("\n\n")
+            #         ff.write("\n\n")
 
-                    excel_path = res_path + f'accuracies_eps{e}.xlsx'
+            #         excel_path = res_path + f'accuracies_eps{e}.xlsx'
                     
-                    # Create DataFrame for this fraction
-                    df = pd.DataFrame({
-                        'Label': [l],
-                        'Remove Number': [rem_f],
-                        'Negative Edge Clean Acc 2': [neg_acc_clean_2[-1]], 
-                        'Negative Edge Adv Acc 2': [neg_acc_adv_2[-1]],
-                        'Negative Edge Clean Acc Other': [neg_acc_clean_other[-1]],
-                        'Negative Edge Adv Acc Other': [neg_acc_adv_other[-1]],
-                        'Positive Edge Clean Acc': [pos_acc_clean[-1]],
-                        'Positive Edge Adv Acc': [pos_acc_adv[-1]]
-                    })
+            #         # Create DataFrame for this fraction
+            #         df = pd.DataFrame({
+            #             'Label': [l],
+            #             'Remove Number': [rem_f],
+            #             'Negative Edge Clean Acc 2': [neg_acc_clean_2[-1]], 
+            #             'Negative Edge Adv Acc 2': [neg_acc_adv_2[-1]],
+            #             'Negative Edge Clean Acc Other': [neg_acc_clean_other[-1]],
+            #             'Negative Edge Adv Acc Other': [neg_acc_adv_other[-1]],
+            #             'Positive Edge Clean Acc': [pos_acc_clean[-1]],
+            #             'Positive Edge Adv Acc': [pos_acc_adv[-1]]
+            #         })
                     
-                    # If file exists, append to it, otherwise create new
-                    if os.path.exists(excel_path):
-                        existing_df = pd.read_excel(excel_path)
-                        df = pd.concat([existing_df, df], ignore_index=True)
+            #         # If file exists, append to it, otherwise create new
+            #         if os.path.exists(excel_path):
+            #             existing_df = pd.read_excel(excel_path)
+            #             df = pd.concat([existing_df, df], ignore_index=True)
                         
-                    df.to_excel(excel_path, index=False)                    
+            #         df.to_excel(excel_path, index=False)                    
