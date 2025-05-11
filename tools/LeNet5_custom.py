@@ -10,7 +10,7 @@ from .q_exponential import q_exponential
 class LeNet_custom(nn.Module):
 
     # network structure
-    def __init__(self, model_info, device, input_c = 1):
+    def __init__(self, model_info, device, input_c = 1, edge_set = None):
         super(LeNet_custom, self).__init__()
         self.conv1 = nn.Conv2d(input_c, 6, 6, stride=2)
         self.conv2 = nn.Conv2d(6, 16, 6, stride=2)
@@ -25,6 +25,10 @@ class LeNet_custom(nn.Module):
         
         self.model_info = model_info
         self.device = device
+        self.edge_set = edge_set if edge_set != None else set()
+        self.cur_total_nodes = 0
+        self.remove_mask = dict()
+        self.__build_remove_mask__(self.edge_set)
         
     
     def get_layer_info(self, l):
@@ -40,8 +44,112 @@ class LeNet_custom(nn.Module):
             cur_nodes = cur_size if (cur_name == "fc") else cur_dim["channel"]*(cur_size**2)
             
         return cur_nodes, cur_size, cur_channel, cur_dim, cur_name
+
+
+
+
+    def __build_remove_mask__(self, new_edge_set = set(), num = 100000):
+        cur_layer = 1
+        self.cur_total_nodes = 0
+        remove_num = 0
         
-    
+        while(cur_layer < len(self.model_info)):
+            if remove_num >= num:
+                break
+            # get l1, l2 info
+            l1_nodes, l1_size, l1_channel, l1_dim, l1_name = self.get_layer_info(cur_layer)
+            l2_nodes, l2_size, l2_channel, l2_dim, l2_name = self.get_layer_info(cur_layer+1)
+            
+            remove_e = [e for e in new_edge_set if (e[1] < (l2_nodes + l1_nodes + self.cur_total_nodes) and (e[1] >= l1_nodes + self.cur_total_nodes)) \
+                and (e[0] >= self.cur_total_nodes and e[0] < (l1_nodes + self.cur_total_nodes))]
+            
+
+            if l2_name == "cnn":
+                k = l2_dim["kernel"]
+                s = l2_dim["stride"]
+                
+                tensor_2d = torch.arange(l1_nodes).reshape(1,l1_channel,l1_size,l1_size).float()
+        
+                tensor_2d = torch.arange(l1_nodes).reshape(1,l1_channel,l1_size,l1_size).float()
+                input_indices = F.unfold(tensor_2d, (k,k), stride = s).transpose(1,2).int()
+                
+                map_size = l2_size**2
+                
+                if cur_layer not in self.remove_mask.keys():
+                    self.remove_mask[cur_layer] = torch.ones((l2_channel, input_indices.shape[1], input_indices.shape[2]))
+                
+                if (len(remove_e) > 0):
+                    for e in remove_e:
+                        n1 = e[0] - self.cur_total_nodes
+                        n2 = e[1] - self.cur_total_nodes - l1_nodes
+                        
+                        channel_num = n2 // map_size
+                        node = n2 - map_size*channel_num
+                        
+                        index = (input_indices[0,node] == n1).nonzero().item()
+                        
+                        self.remove_mask[cur_layer][channel_num, node, index] = 0
+                        remove_num += 1
+
+                        if remove_num >= num:
+                            break
+                if remove_num >= num:
+                    break
+                
+            elif l2_name == "pooling":
+                k = l2_dim["kernel"]
+                s = l2_dim["stride"]
+                
+                tensor_2d = torch.arange(l1_nodes).reshape(1,l1_channel,l1_size,l1_size).float()
+        
+                indices = F.unfold(tensor_2d, (k,k), stride = s)
+                indices = indices.view(1, l1_channel, k*k, -1)
+                input_indices = indices.view(1*l1_channel, k*k, -1).int()
+                
+                map_size = l2_size**2
+                
+                if cur_layer not in self.remove_mask.keys():
+                    self.remove_mask[cur_layer] = torch.ones((l2_channel, input_indices.shape[1], input_indices.shape[2]))
+                
+                if len(remove_e) > 0:
+                    for e in remove_e:
+                        n1 = e[0] - self.cur_total_nodes
+                        n2 = e[1] - self.cur_total_nodes - l1_nodes
+                        
+                        channel_num = n2 // map_size
+                        node = n2 - map_size*channel_num
+                        index = (input_indices[channel_num,:,node] == n1).nonzero().item()
+                        
+                        self.remove_mask[cur_layer][channel_num, index, node] = 0
+                        remove_num += 1
+
+                        if remove_num >= num:
+                            break
+                if remove_num >= num:
+                    break
+                        
+            else:
+                if cur_layer not in self.remove_mask.keys():
+                    self.remove_mask[cur_layer] = torch.ones((l1_nodes, l2_nodes))
+                
+                if len(remove_e) > 0:
+                    for e in remove_e:
+                        n1 = e[0] - self.cur_total_nodes
+                        n2 = e[1] - self.cur_total_nodes - l1_nodes
+
+                        self.remove_mask[cur_layer][n1,n2] = 0
+                        remove_num += 1
+
+                        if remove_num >= num:
+                            break
+                if remove_num >= num:
+                    break
+
+            self.cur_total_nodes += l1_nodes
+            cur_layer += 1
+
+
+
 
     def num_flat_features(self, x):
         '''
@@ -57,6 +165,9 @@ class LeNet_custom(nn.Module):
         l1_nodes, l1_size, l1_channel, l1_dim, _ = self.get_layer_info(l1)
         l2_nodes, l2_size, l2_channel, l2_dim, _ = self.get_layer_info(l2)
         
+        mask = self.remove_mask[l1]
+        mask = mask.to(self.device) 
+        
         k = l2_dim["kernel"]
         s = l2_dim["stride"]
         
@@ -67,7 +178,7 @@ class LeNet_custom(nn.Module):
         
         res = None
         for i in range(l2_channel):
-            y = i_unf[:,i,:,:].unsqueeze(1)
+            y = mask[i] * i_unf[:,i,:,:].unsqueeze(1)
             res = y if res == None else torch.cat((res, y), axis=1)
             
         res = res.view(batch*l1_channel, k*k, -1)
@@ -79,10 +190,14 @@ class LeNet_custom(nn.Module):
         return out
 
 
+
     def CNN(self, ori, kernel, b, l1, l2):
         # get l1, l2 info
         l1_nodes, l1_size, l1_channel, l1_dim, _ = self.get_layer_info(l1)
         l2_nodes, l2_size, l2_channel, l2_dim, _ = self.get_layer_info(l2)
+        
+        mask = self.remove_mask[l1]
+        mask = mask.to(self.device) 
         
         s = l2_dim["stride"]
         
@@ -92,7 +207,7 @@ class LeNet_custom(nn.Module):
         
         res = None
         for i in range(l2_channel):
-            y = (ori_unf.unsqueeze(1)) @ w[:,i]
+            y = (mask[i]*ori_unf.unsqueeze(1)) @ w[:,i]
             res = y if res == None else torch.cat((res, y), axis=1)
             
         y = F.fold(res, (l2_size,l2_size), (1,1))
@@ -103,13 +218,22 @@ class LeNet_custom(nn.Module):
     
     
     def linear(self, x, fc_layer, l1, l2):
+        # print(self.cur_total_nodes)
+        # get l1, l2 info
+        l1_nodes, l1_size, l1_channel, l1_dim, _ = self.get_layer_info(l1)
+        
+        mask = self.remove_mask[l1]
+        mask = mask.to(self.device) 
+        
         with torch.no_grad():
             w = fc_layer.weight
+            w *= mask.T  # Apply the transposed mask directly to w
             fc_layer.weight.copy_(w)
                 
         y = fc_layer(x)
         
         return y
+    
     
     
     def forward(self, x):

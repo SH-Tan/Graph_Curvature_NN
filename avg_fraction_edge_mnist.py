@@ -17,7 +17,7 @@ def get_fraction(curvature, b, dims):
     neg = np.zeros((layer_num), dtype=np.float32)
     top_neg = np.zeros((layer_num), dtype=np.float32)
     total_e = np.zeros((layer_num), dtype=np.float32)
-    c_per_l = [[0],[0],[0],[0],[0]]
+    c_per_l = [[0],[0],[0],[0],[0],[0],[0]]
     # neg = 0.
     # total_e = 0.
     
@@ -33,6 +33,7 @@ def get_fraction(curvature, b, dims):
             if curr < -10:
                 top_neg[l] += 1
             total_e[l] += 1
+
             c.append(curr)
             c_per_l[l].append(curr)
     return neg, total_e, top_neg, c, c_per_l
@@ -68,7 +69,7 @@ def avg_f_cal(args):
     robust_suffix = "frac_robust.pkl"
     norobust_suffix = "frac_norobust.pkl"
 
-    with open(res_path + "net_anysis.txt", "w+") as ff:
+    with open(res_path + "net_anysis2.txt", "w+") as ff:
         # Plot the data
         for layer_num in layer:
             ff.write(f'W = {metric}: For model {model_type} - {model_pre_name}, layer {layer_num}: \n')
@@ -92,12 +93,10 @@ def avg_f_cal(args):
                 norobust_suffix_res = "_res_norobust_cnn.pkl"
                 
             elif model_type.lower() == "cnn" and dataset.lower() == "cifar":
-                robust_suffix = "frac_robust_cifar.pkl"
-                norobust_suffix = "frac_norobust_cifar.pkl"
-                robust_suffix_curv = "curv_robust_cifar.pkl"
-                norobust_suffix_curv = "curv_norobust_cifar.pkl"
-                robust_suffix_edge = "edge_robust_cifar.pkl"
-                norobust_suffix_edge = "edge_norobust_cifar.pkl"
+                robust_suffix_gs = "_graphsize_robust_cifar.pkl"
+                norobust_suffix_gs = "_graphsize_norobust_cifar.pkl"
+                robust_suffix_res = "_res_robust_cifar.pkl"
+                norobust_suffix_res = "_res_norobust_cifar.pkl"
                 
                 if cifar.lower() == 'big':
                     robust_suffix = "frac_robust_cifar_big.pkl"
@@ -182,8 +181,8 @@ def avg_f_cal(args):
                             neg, total, top, curv, curv_per_l = get_fraction(ricci, batch, dim)
                             c_num = len(curv)
                             curv = np.array(curv)
-                            if (np.min(curv) < -10000):
-                                continue
+                            # if (np.min(curv) < -10000):
+                            #     continue
                             
                             neg_c += neg
                             topneg_c += top
@@ -308,8 +307,8 @@ def avg_f_cal(args):
                             neg, total, top, curv, curv_per_l = get_fraction(ricci, batch, dim)
                             c_num = len(curv)
                             curv = np.array(curv)
-                            if (np.min(curv) < -10000):
-                                continue
+                            # if (np.min(curv) < -10000):
+                            #     continue
                             
                             neg_c += neg
                             topneg_c += top
