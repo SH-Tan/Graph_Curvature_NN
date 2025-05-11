@@ -9,12 +9,6 @@ import torch.nn as nn
 from collections import defaultdict
 import time
 
-import networkx as nx
-import torch.nn.functional as F
-import matplotlib.pyplot as plt
-import community as community_louvain
-import statsmodels.api as sm
-from scipy.integrate import simps
 import pickle
 
 import sys
@@ -22,7 +16,7 @@ sys.path.append("..")
 
 import tools.utils as utils
 from RicciCurvature.OllivierRicci import OllivierRicci
-from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
+from tools.LeNet5_custom_small import LeNet_custom_v2
 from tools.graph_curvature_multihops import graph_curvature_main_torch
 
 
@@ -30,8 +24,6 @@ import warnings
 
 # Ignore all warnings
 warnings.filterwarnings("ignore")
-
-
 
 data_train = MNIST('./data/mnist',
                   train=True,
@@ -220,8 +212,7 @@ def cnn_main(args):
     os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
-    
-    selected_classes = [0,1,2,3,4,5,6,7,8,9]
+
     train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, valid_num = 2000, test_bs=1)
 
     sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=2000)

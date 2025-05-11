@@ -41,20 +41,23 @@ class LeNet_custom_v2(nn.Module):
         return cur_nodes, cur_size, cur_channel, cur_dim, cur_name
     
     
-    def __build_remove_mask__(self, new_edge_set = set()):
+    def __build_remove_mask__(self, new_edge_set = set(), num = 100000):
         cur_layer = 1
         self.cur_total_nodes = 0
+        remove_num = 0
         
         while(cur_layer < len(self.model_info)):
+            if remove_num >= num:
+                break
             # get l1, l2 info
             l1_nodes, l1_size, l1_channel, l1_dim, l1_name = self.get_layer_info(cur_layer)
             l2_nodes, l2_size, l2_channel, l2_dim, l2_name = self.get_layer_info(cur_layer+1)
             
             remove_e = [e for e in new_edge_set if (e[1] < (l2_nodes + l1_nodes + self.cur_total_nodes) and (e[1] >= l1_nodes + self.cur_total_nodes)) \
                 and (e[0] >= self.cur_total_nodes and e[0] < (l1_nodes + self.cur_total_nodes))]
+            
 
             if l2_name == "cnn":
-                print("CNN remove = ", len(remove_e))
                 k = l2_dim["kernel"]
                 s = l2_dim["stride"]
                 
@@ -79,9 +82,14 @@ class LeNet_custom_v2(nn.Module):
                         index = (input_indices[0,node] == n1).nonzero().item()
                         
                         self.remove_mask[cur_layer][channel_num, node, index] = 0
+                        remove_num += 1
+
+                        if remove_num >= num:
+                            break
+                if remove_num >= num:
+                    break
                 
             elif l2_name == "pooling":
-                print("pooling remove = ", len(remove_e))
                 k = l2_dim["kernel"]
                 s = l2_dim["stride"]
                 
@@ -106,9 +114,14 @@ class LeNet_custom_v2(nn.Module):
                         index = (input_indices[channel_num,:,node] == n1).nonzero().item()
                         
                         self.remove_mask[cur_layer][channel_num, index, node] = 0
+                        remove_num += 1
+
+                        if remove_num >= num:
+                            break
+                if remove_num >= num:
+                    break
                         
             else:
-                print("FC remove = ", len(remove_e))
                 if cur_layer not in self.remove_mask.keys():
                     self.remove_mask[cur_layer] = torch.ones((l1_nodes, l2_nodes))
                 
@@ -118,7 +131,13 @@ class LeNet_custom_v2(nn.Module):
                         n2 = e[1] - self.cur_total_nodes - l1_nodes
 
                         self.remove_mask[cur_layer][n1,n2] = 0
-                        
+                        remove_num += 1
+
+                        if remove_num >= num:
+                            break
+                if remove_num >= num:
+                    break
+
             self.cur_total_nodes += l1_nodes
             cur_layer += 1
                 

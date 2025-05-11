@@ -90,4 +90,16 @@
 
 - python main.py --image 0 --lidar 1 --metric q_inv --lidar_res_path res/lidar/q_inv/
 
-- python test.py --image 0 --lidar 1 --metric q_inv --lidar_data_path res/lidar/ --lidar_res_path statistics/lidar/
+- python test.py --image 0 --lidar 1 --metric q_inv --lidar_data_path res/lidar/ --lidar_res_path statistics/lidar/ 
+
+
+
+## Removal
+
+- python removal.py --lidar 0 --metric q_inv --model_type fc --model_name big_ori --model_path pgd/models/ --mnist_res_path res/q_inv/ --edge 1 --node 0
+
+- python removal.py --lidar 0 --metric q_inv --model_type fc --model_name adv --model_path pgd/models/ --mnist_res_path res/q_inv/ --edge 0 --node 1
+
+- python removal.py --lidar 0 --metric q_inv --model_type cnn --model_name ori --model_path CNN/models/ --mnist_res_path res/cnn_ori_edges/ --edge 1 --node 0
+
+- python removal.py --lidar 0 --image 1 --cifar small --metric q_inv --model_type cnn --model_name ori --model_path CNN/models/ --mnist_res_path res/edge_cifarori/ --dataset cifar --edge 1 --node 0
