@@ -215,7 +215,7 @@ def remove_edge_cifar(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -260,7 +260,7 @@ def remove_edge_cifar(args):
 
     print(model_name)
     # remove_frac = [0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.8, 1]
-    remove_num = [5,20,50,100,150,300,500,700,1000,1500,2000,2500,3000,3500,5000,8000,10000]
+    remove_num = [5,20,50,100,150,300,500,700,1000,1500,2000,2500,3000,3500,5000]
       
     test_cleanacc = test_clean(net_full, test_loader)
          
@@ -319,22 +319,21 @@ def remove_edge_cifar(args):
             torch.cuda.empty_cache()
             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, model_dims=model_dims, alpha=alpha)
 
-            all_edges, neg_paths_last, neg_paths_other, edge_curvatures = get_c(ricci_curvature, 1, prefix_dims)
+            all_edges, single_hop_paths, label_paths, edge_curvatures = get_c(ricci_curvature, 1, prefix_dims, l)
                 
-            ff.write(f'Found {len(neg_paths_last)} negative paths to last layer and {len(neg_paths_other)} negative paths to other layers\n')
-            ff.write(f'Total number of edges: {len(all_edges)}\n')
+            ff.write(f'Total number of edges in the graph after normalization: {len(all_edges)}\n')
+            ff.write(f'Found {len(single_hop_paths)} single-hop paths and {len(label_paths)} negative paths reaching label neurons:\n')
             
-            # reversed_pos_e = list(pos_e)[::-1]
-            ff.write("Negative paths ending in last layer:\n")
-            for path in neg_paths_last:
-                path_str = " -> ".join([f"({i},{j}): {curr:.3f}" for i,j,curr in path])
-                ff.write(f"{path_str}\n")
-            
-            ff.write("\nNegative paths in other layers:\n") 
-            for path in neg_paths_other:
-                path_str = " -> ".join([f"({i},{j}): {curr:.3f}" for i,j,curr in path])
-                ff.write(f"{path_str}\n")
-            ff.write("\n")
+            ff.write("Single-hop paths:\n")
+            for path in single_hop_paths:
+                # Each path has only one edge
+                i, j, curr = path[0]
+                ff.write(f"({i},{j}): {curr:.3f}\n")
+
+            ff.write("\nNegative paths reaching label neurons:\n")
+            for path, total_curv in label_paths:
+                path_str = " -> ".join([f"({i},{j}): {curr:.3f}" for i, j, curr in path])
+                ff.write(f"{path_str} | Total curvature: {total_curv:.3f}\n")
 
             ff.write("\n\n\n")
 

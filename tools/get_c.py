@@ -1,9 +1,9 @@
 import numpy as np
-from collections import defaultdict
+from collections import defaultdict, Counter
 
-def get_c(curvature, b, prefix_dims):
+def get_c(curvature, b, prefix_dims, label_neurons):
     edge_curvatures = {}
-    layer_edges = defaultdict(list)  # key: layer index, value: list of (i, j, curv)
+    layer_edges = defaultdict(list)
     all_edges = []
 
     num_layers = len(prefix_dims) - 1  # number of weight layers
@@ -40,29 +40,36 @@ def get_c(curvature, b, prefix_dims):
                 for next_edge in next_edges_map[last_node]:
                     next_paths.append(path + [next_edge])
             else:
-                # No continuation from this path
                 completed_paths.append(path)
 
         current_paths = next_paths
 
-    # Add any remaining paths that survived to the end
     completed_paths.extend(current_paths)
 
-    # Step 3: Separate paths by whether they reach the last layer
-    neg_paths_last = []
-    neg_paths_other = []
+    # Step 3: Find single-hop paths and paths reaching label neurons
+    single_hop_paths = []
+    label_paths = []
+    path_length_counts = Counter()
 
     for path in completed_paths:
-        last_node = path[-1][1]
-        j_layer = np.searchsorted(prefix_dims, last_node, side='right') - 1
-        if j_layer == num_layers - 1:
-            neg_paths_last.append(path)
-        else:
-            neg_paths_other.append(path)
+        path_length = len(path)
+        path_length_counts[path_length] += 1  # Count path length
 
+        total_curv = sum(edge[2] for edge in path)
 
-    neg_paths_last.sort(key=lambda path: sum(e[2] for e in path))
-    neg_paths_other.sort(key=lambda path: sum(e[2] for e in path))
+        if path_length == 1:
+            single_hop_paths.append(path)
 
+        last_edge = path[-1]
+        j = last_edge[1]
+        j_layer = np.searchsorted(prefix_dims, j, side='right') - 1
+        j_idx = j - prefix_dims[j_layer]
 
-    return all_edges, neg_paths_last, neg_paths_other, edge_curvatures
+        if j_layer == num_layers-1 and j_idx == label_neurons:
+            label_paths.append((path, total_curv))
+
+    # Step 4: Sort results
+    single_hop_paths.sort(key=lambda path: path[0][2])
+    label_paths.sort(key=lambda p: p[1])
+
+    return all_edges, single_hop_paths, label_paths, edge_curvatures, dict(path_length_counts)

@@ -70,24 +70,24 @@ class LeNet_custom_v2(nn.Module):
                 
                 if cur_layer not in self.remove_mask.keys():
                     self.remove_mask[cur_layer] = torch.ones((l2_channel, input_indices.shape[1], input_indices.shape[2]))
-                
-                if (len(remove_e) > 0):
-                    for e in remove_e:
-                        n1 = e[0] - self.cur_total_nodes
-                        n2 = e[1] - self.cur_total_nodes - l1_nodes
-                        
-                        channel_num = n2 // map_size
-                        node = n2 - map_size*channel_num
-                        
-                        index = (input_indices[0,node] == n1).nonzero().item()
-                        
-                        self.remove_mask[cur_layer][channel_num, node, index] = 0
-                        remove_num += 1
 
-                        if remove_num >= num:
-                            break
-                if remove_num >= num:
-                    break
+                # if (len(remove_e) > 0):
+                #     for e in remove_e:
+                #         n1 = e[0] - self.cur_total_nodes
+                #         n2 = e[1] - self.cur_total_nodes - l1_nodes
+                        
+                #         channel_num = n2 // map_size
+                #         node = n2 - map_size*channel_num
+                        
+                #         index = (input_indices[0,node] == n1).nonzero().item()
+                        
+                #         self.remove_mask[cur_layer][channel_num, node, index] = 0
+                #         remove_num += 1
+
+                #         if remove_num >= num:
+                #             break
+                # if remove_num >= num:
+                #     break
                 
             elif l2_name == "pooling":
                 k = l2_dim["kernel"]
@@ -104,22 +104,22 @@ class LeNet_custom_v2(nn.Module):
                 if cur_layer not in self.remove_mask.keys():
                     self.remove_mask[cur_layer] = torch.ones((l2_channel, input_indices.shape[1], input_indices.shape[2]))
                 
-                if len(remove_e) > 0:
-                    for e in remove_e:
-                        n1 = e[0] - self.cur_total_nodes
-                        n2 = e[1] - self.cur_total_nodes - l1_nodes
+            #     if len(remove_e) > 0:
+            #         for e in remove_e:
+            #             n1 = e[0] - self.cur_total_nodes
+            #             n2 = e[1] - self.cur_total_nodes - l1_nodes
                         
-                        channel_num = n2 // map_size
-                        node = n2 - map_size*channel_num
-                        index = (input_indices[channel_num,:,node] == n1).nonzero().item()
+            #             channel_num = n2 // map_size
+            #             node = n2 - map_size*channel_num
+            #             index = (input_indices[channel_num,:,node] == n1).nonzero().item()
                         
-                        self.remove_mask[cur_layer][channel_num, index, node] = 0
-                        remove_num += 1
+            #             self.remove_mask[cur_layer][channel_num, index, node] = 0
+            #             remove_num += 1
 
-                        if remove_num >= num:
-                            break
-                if remove_num >= num:
-                    break
+            #             if remove_num >= num:
+            #                 break
+            #     if remove_num >= num:
+            #         break
                         
             else:
                 if cur_layer not in self.remove_mask.keys():
