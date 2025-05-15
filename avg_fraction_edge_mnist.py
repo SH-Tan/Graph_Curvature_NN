@@ -33,8 +33,9 @@ def get_fraction(curvature, b, dims):
             if curr < -10:
                 top_neg[l] += 1
             total_e[l] += 1
-
-            c.append(curr)
+            
+            if l >= layer_num-3:
+                c.append(curr)
             c_per_l[l].append(curr)
     return neg, total_e, top_neg, c, c_per_l
 
@@ -153,7 +154,6 @@ def avg_f_cal(args):
                         ff.write(f'The average graph is before / after normalization is {gs1} and {gs2}, remove edges {gs1-gs2}\n\n')
                     
                     
-                    
                     count = 0
                     neg_c = 0.
                     topneg_c = 0.
@@ -162,7 +162,7 @@ def avg_f_cal(args):
                     frac_top = 0.
                     avg_c = 0.
                     med_c = 0.
-                    low_c = 0.
+                    low_c = []
                     high_c = 0.
                     var_c = 0.
                     c_neg = 0.
@@ -204,7 +204,7 @@ def avg_f_cal(args):
                             last_5per_c += curv[-(int)(0.04*c_num)]
                             avg_c += np.mean(curv)
                             med_c += np.median(curv)
-                            low_c += np.min(curv)
+                            low_c.append(np.min(curv))
                             high_c += np.max(curv)
                             var_c += np.var(curv)
                             count += 1
@@ -241,7 +241,7 @@ def avg_f_cal(args):
                     # ff.write(f'For last layer, the average negavtive curvature edge fraction {frac_neg_last}, the average top-k (<-10) negavtive curvature edge fraction {frac_top_last}...\n\n')
                     avg_c = avg_c/count if count > 0 else 0.
                     med_c = med_c/count if count > 0 else 0.
-                    low_c = low_c/count if count > 0 else 0.
+                    low_c = np.median(low_c)
                     high_c = high_c/count if count > 0 else 0.
                     # last_10_percent_values = last_10_percent_values/count if count > 0 else 0.
                     var_c = var_c/count if count > 0 else 0.
@@ -288,7 +288,7 @@ def avg_f_cal(args):
                     frac_top = 0.
                     avg_c = 0.
                     med_c = 0.
-                    low_c = 0.
+                    low_c = []
                     high_c = 0.
                     var_c = 0.
                     c_neg = 0.
@@ -330,7 +330,7 @@ def avg_f_cal(args):
                             last_5per_c += curv[-(int)(0.04*c_num)]
                             avg_c += np.mean(curv)
                             med_c += np.median(curv)
-                            low_c += np.min(curv)
+                            low_c.append(np.min(curv))
                             high_c += np.max(curv)
                             var_c += np.var(curv)
                             count += 1
@@ -363,7 +363,7 @@ def avg_f_cal(args):
 
                     avg_c = avg_c/count if count > 0 else 0.
                     med_c = med_c/count if count > 0 else 0.
-                    low_c = low_c/count if count > 0 else 0.
+                    low_c = np.median(low_c)
                     high_c = high_c/count if count > 0 else 0.
                     # last_10_percent_values = last_10_percent_values/count if count > 0 else 0.
                     var_c = var_c/count if count > 0 else 0.
