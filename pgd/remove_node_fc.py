@@ -7,7 +7,6 @@ import os
 import pandas as pd
 import torch.nn as nn
 from collections import defaultdict
-import seaborn as sns
 import copy
 
 # from GraphRicciCurvature.OllivierRicci import OllivierRicci
@@ -29,6 +28,7 @@ from tools.FC_linear import FC_Linear
 from tools.graph_curvature import graph_curvature_main_torch
 from tools.draw_net import DrawNN
 from tools.node_remove import Node_Remove
+from tools.get_node import get_key_nodes
 
 
 np.set_printoptions(threshold=np.inf)
@@ -195,7 +195,7 @@ def remove_node_fc(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -221,12 +221,12 @@ def remove_node_fc(args):
     if not os.path.exists(res_path):
         os.makedirs(res_path)
         
-    layers = [4]
+    layers = [2,4]
     if 'big' in model_pre_name.lower():
         layers = [2]
 
     # remove_frac = [0.08, 0.2, 0.5, 0.8, 1]
-    remove_num = [1,2,3,4,5,6,7,8,9,10,15,20,30,50]
+    remove_num = [1,2,3,4,5,6,7,8,9,10,15]
     
     # build model
     for layer_num in layers:
@@ -273,7 +273,7 @@ def remove_node_fc(args):
             i += 1
 
 
-        with open(res_path + "node_remove_acc_neg_pos_" + str(layer_num) + ".txt", "w+") as ff:
+        with open(res_path + "node_remove_acc_" + str(layer_num) + ".txt", "w+") as ff:
             ff.write(f'For model {model_name}: \n')
                 
             test_cleanacc = test_clean(net_full, test_loader)
@@ -329,19 +329,19 @@ def remove_node_fc(args):
                 torch.cuda.empty_cache()
                 ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, alpha=alpha)
 
-                sorted_nodes, reversed_nodes = get_top_c(ricci_curvature, 1)
-                print(f'label {l} has {len(sorted_nodes)} nodes have outgoing negative curvature edges, {len(reversed_nodes)} nodes reversed .. \n')
+                terminal_single_hop_nodes, sorted_internal_nodes = get_key_nodes(ricci_curvature, 1, prefix_dims)
+                print(f'label {l} has {len(terminal_single_hop_nodes)} terminal single-hop nodes, {len(sorted_internal_nodes)} internal nodes .. \n')
                 
-                ff.write(f'It has {len(sorted_nodes)} nodes have outgoing negative curvature edges, {len(reversed_nodes)} nodes have ingoing negative curvature egdes .. \n')
+                ff.write(f'It has {len(terminal_single_hop_nodes)} terminal single-hop nodes, {len(sorted_internal_nodes)} internal nodes .. \n')
                 
-                ff.write(f'First 50 nodes with most outgoing negative edges:\n')
-                for i, (node, count1) in enumerate(sorted_nodes[:50]):
-                    ff.write(f'Node {node}: {count1} edges\n')
+                ff.write(f'First 50 terminal single-hop nodes:\n')
+                for i, node in enumerate(terminal_single_hop_nodes[:50]):
+                    ff.write(f'Node {node}\n')
                 ff.write('\n')
                 
-                ff.write(f'First 50 nodes with most incoming negative edges:\n') 
-                for i, (node, count1) in enumerate(reversed_nodes[:50]):
-                    ff.write(f'Node {node}: {count1} edges\n')
+                ff.write(f'First 50 internal nodes:\n') 
+                for i, node in enumerate(sorted_internal_nodes[:50]):
+                    ff.write(f'Node {node}\n')
                 ff.write('\n')
                 
                 # start remove
@@ -351,8 +351,8 @@ def remove_node_fc(args):
                     
                     # remove outgoing negative curvature nodes
                     net_H.load_state_dict(torch.load(model_path + model_name))
-                    node_r = Node_Remove(net_H, dims, min(len(sorted_nodes), rem_f), res_path)
-                    node_r.n_remove(sorted_nodes, cur_n + "out.pth")
+                    node_r = Node_Remove(net_H, dims, min(len(terminal_single_hop_nodes), rem_f), res_path)
+                    node_r.n_remove(terminal_single_hop_nodes, cur_n + "out.pth")
                     
                     # test acc
                     net_out = FC_MD(dims, layer_num)
@@ -363,8 +363,8 @@ def remove_node_fc(args):
 
                     # remove ingoing negative curvature nodes
                     net_H.load_state_dict(torch.load(model_path + model_name))
-                    node_r = Node_Remove(net_H, dims, min(len(reversed_nodes), rem_f), res_path)
-                    node_r.n_remove(reversed_nodes, cur_n + "in.pth")
+                    node_r = Node_Remove(net_H, dims, min(len(sorted_internal_nodes), rem_f), res_path)
+                    node_r.n_remove(sorted_internal_nodes, cur_n + "in.pth")
                     
                     # test acc
                     net_in = FC_MD(dims, layer_num)
@@ -386,7 +386,7 @@ def remove_node_fc(args):
                         neg_acc_adv.append(acc_adv_out)
                         neg_acc_clean.append(acc_clean_out)
                     
-                        ff.write(f'Test Accuracy after remove {(int)(min(len(sorted_nodes), rem_f))} out neg_e nodes: clean acc {acc_clean_out}, eps = {e}: adv acc {acc_adv_out:.3f}...\n')
+                        ff.write(f'Test Accuracy after remove {(int)(min(len(terminal_single_hop_nodes), rem_f))} terminal single-hop nodes: clean acc {acc_clean_out}, eps = {e}: adv acc {acc_adv_out:.3f}...\n')
                         
                         acc_clean_in = test_clean(net_in, test_loader)
                         acc_adv_in = test_adversarial(net_in, test_loader, eps=e, alpha=2/255, iters=40)
@@ -394,7 +394,7 @@ def remove_node_fc(args):
                         pos_acc_adv.append(acc_adv_in)
                         pos_acc_clean.append(acc_clean_in)
 
-                        ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_nodes), rem_f))} in neg_e nodes: clean acc {acc_clean_in}, eps = {e}: adv acc {acc_adv_in:.3f}...\n')
+                        ff.write(f'Test Accuracy after remove {(int)(min(len(sorted_internal_nodes), rem_f))} internal nodes: clean acc {acc_clean_in}, eps = {e}: adv acc {acc_adv_in:.3f}...\n')
                         
                         ff.write("\n\n")
 
@@ -402,10 +402,10 @@ def remove_node_fc(args):
                         df = pd.DataFrame({
                             'Remove Number': [rem_f],
                             'Label': [l],
-                            'Out Neg Edge Clean Acc': [neg_acc_clean[-1]], 
-                            'Out Neg Edge Adv Acc': [neg_acc_adv[-1]],
-                            'No Out Neg Edge Clean Acc': [pos_acc_clean[-1]],
-                            'No Out Neg Edge Adv Acc': [pos_acc_adv[-1]]
+                            'Terminal Single-Hop Clean Acc': [neg_acc_clean[-1]], 
+                            'Terminal Single-Hop Adv Acc': [neg_acc_adv[-1]],
+                            'Internal Clean Acc': [pos_acc_clean[-1]],
+                            'Internal Adv Acc': [pos_acc_adv[-1]]
                         })
                         
                         excel_path = res_path + f'node_remove_accuracies_layer{layer_num}_eps{e}.xlsx'

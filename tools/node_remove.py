@@ -18,7 +18,7 @@ class Node_Remove():
             if removed >= (int)(self.num):
                 break
 
-            n = node[0]
+            n = node
 
             layer = np.searchsorted(self.predim, n, side='right') - 1
             local_idx = n - self.predim[layer]
