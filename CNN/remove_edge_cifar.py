@@ -215,7 +215,7 @@ def remove_edge_cifar(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -319,23 +319,21 @@ def remove_edge_cifar(args):
             torch.cuda.empty_cache()
             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, model_dims=model_dims, alpha=alpha)
 
-            all_edges, single_hop_paths, label_paths, edge_curvatures = get_c(ricci_curvature, 1, prefix_dims, l)
-                
+            all_edges, single_hop_paths, label_paths, edge_curvatures, path_length_counts = get_c(ricci_curvature, 1, prefix_dims, l)
+            
             ff.write(f'Total number of edges in the graph after normalization: {len(all_edges)}\n')
             ff.write(f'Found {len(single_hop_paths)} single-hop paths and {len(label_paths)} negative paths reaching label neurons:\n')
+
+            ff.write('Path length counts:\n')
+            for length, count in sorted(path_length_counts.items()):
+                ff.write(f'  Length {length}: {count} paths\n')
+            ff.write('\n\n')
             
             ff.write("Single-hop paths:\n")
             for path in single_hop_paths:
                 # Each path has only one edge
                 i, j, curr = path[0]
                 ff.write(f"({i},{j}): {curr:.3f}\n")
-
-            ff.write("\nNegative paths reaching label neurons:\n")
-            for path, total_curv in label_paths:
-                path_str = " -> ".join([f"({i},{j}): {curr:.3f}" for i, j, curr in path])
-                ff.write(f"{path_str} | Total curvature: {total_curv:.3f}\n")
-
-            ff.write("\n\n\n")
 
             # c, neg_e_second, neg_e_other, pos_e = get_top_c(ricci_curvature, 1, prefix_dims, threshold = -50)
             # reversed_pos_e = list(pos_e)[::-1]

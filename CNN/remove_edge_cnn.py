@@ -314,84 +314,82 @@ def remove_edge_cnn(args):
             torch.cuda.empty_cache()
             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, model_dims=model_dims, alpha=alpha)
 
-            # all_edges, single_hop_paths, label_paths, edge_curvatures = get_c(ricci_curvature, 1, prefix_dims, l)
-                
-            # ff.write(f'Total number of edges in the graph after normalization: {len(all_edges)}\n')
-            # ff.write(f'Found {len(single_hop_paths)} single-hop paths and {len(label_paths)} negative paths reaching label neurons:\n')
+            all_edges, single_hop_paths, label_paths, edge_curvatures, path_length_counts = get_c(ricci_curvature, 1, prefix_dims, l)
             
-            # ff.write("Single-hop paths:\n")
-            # for path in single_hop_paths:
-            #     # Each path has only one edge
-            #     i, j, curr = path[0]
-            #     ff.write(f"({i},{j}): {curr:.3f}\n")
+            ff.write(f'Total number of edges in the graph after normalization: {len(all_edges)}\n')
+            ff.write(f'Found {len(single_hop_paths)} single-hop paths and {len(label_paths)} negative paths reaching label neurons:\n')
 
-            # ff.write("\nNegative paths reaching label neurons:\n")
-            # for path, total_curv in label_paths:
-            #     path_str = " -> ".join([f"({i},{j}): {curr:.3f}" for i, j, curr in path])
-            #     ff.write(f"{path_str} | Total curvature: {total_curv:.3f}\n")
-
-            # ff.write("\n\n\n")
-            c, neg_e, pos_e = get_top_c(ricci_curvature, 1, prefix_dims, threshold = -50)
-            reversed_pos_e = list(pos_e)[::-1]
+            ff.write('Path length counts:\n')
+            for length, count in sorted(path_length_counts.items()):
+                ff.write(f'  Length {length}: {count} paths\n')
+            ff.write('\n\n')
             
-            ff.write(f'It has {len(neg_e)} negative curvature edges, {len(pos_e)} positive curvature egdes .. \n')
+            ff.write("Single-hop paths:\n")
+            for path in single_hop_paths:
+                # Each path has only one edge
+                i, j, curr = path[0]
+                ff.write(f"({i},{j}): {curr:.3f}\n")
+            # c, neg_e, pos_e = get_top_c(ricci_curvature, 1, prefix_dims, threshold = -50)
+            # reversed_pos_e = list(pos_e)[::-1]
+            
+            # ff.write(f'It has {len(neg_e)} negative curvature edges, {len(pos_e)} positive curvature egdes .. \n')
                 
-            # start remove
-            for index, rem_f in enumerate(remove_num):
-                ff.write(f'Remove edge number {rem_f}: \n')
+            # # start remove
+            # for index, rem_f in enumerate(remove_num):
+            #     ff.write(f'Remove edge number {rem_f}: \n')
 
-                # remove second layer negative curvature edges
-                net_neg = copy.deepcopy(net_H)
-                net_neg.__build_remove_mask__(neg_e, rem_f)
-                # test acc
-                acc_clean_neg = test_clean(net_neg, test_loader)
+            #     # remove second layer negative curvature edges
+            #     net_neg = copy.deepcopy(net_H)
+            #     net_neg.__build_remove_mask__(neg_e, rem_f)
+            #     # test acc
+            #     acc_clean_neg = test_clean(net_neg, test_loader)
 
-                # remove positive curvature edges
-                net_pos = copy.deepcopy(net_H)
-                net_pos.__build_remove_mask__(reversed_pos_e, rem_f)
-                # test acc
-                acc_clean_pos = test_clean(net_pos, test_loader)
+            #     # remove positive curvature edges
+            #     net_pos = copy.deepcopy(net_H)
+            #     net_pos.__build_remove_mask__(reversed_pos_e, rem_f)
+            #     # test acc
+            #     acc_clean_pos = test_clean(net_pos, test_loader)
 
-                for e in eps:
-                    print(f'Current eps {e}: ')
-                    ff.write(f'Current eps {e}: \n')
+            #     for e in eps:
+            #         print(f'Current eps {e}: ')
+            #         ff.write(f'Current eps {e}: \n')
 
-                    test_advacc = test_adversarial(net_full, test_loader, eps=e, alpha=2/255, iters=40)
-                    ff.write(f'The adversary accuracy eps = {e} for original model is {test_advacc}\n\n')
+            #         test_advacc = test_adversarial(net_full, test_loader, eps=e, alpha=2/255, iters=40)
+            #         ff.write(f'The adversary accuracy eps = {e} for original model is {test_advacc}\n\n')
 
-                    acc_adv_neg = test_adversarial(net_neg, test_loader, eps=e, alpha=2/255, iters=40)
+            #         acc_adv_neg = test_adversarial(net_neg, test_loader, eps=e, alpha=2/255, iters=40)
 
-                    neg_acc_adv.append(acc_adv_neg)
+            #         neg_acc_adv.append(acc_adv_neg)
 
-                    neg_acc_clean.append(acc_clean_neg)
+            #         neg_acc_clean.append(acc_clean_neg)
                 
-                    ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e), rem_f))} neg_e edges: clean acc {acc_clean_neg}, eps = {e}: adv acc {acc_adv_neg:.3f}...\n')
+            #         ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e), rem_f))} neg_e edges: clean acc {acc_clean_neg}, eps = {e}: adv acc {acc_adv_neg:.3f}...\n')
                     
                     
-                    acc_adv_pos = test_adversarial(net_pos, test_loader, eps=e, alpha=2/255, iters=40)
+            #         acc_adv_pos = test_adversarial(net_pos, test_loader, eps=e, alpha=2/255, iters=40)
                 
-                    pos_acc_adv.append(acc_adv_pos)
-                    pos_acc_clean.append(acc_clean_pos)
+            #         pos_acc_adv.append(acc_adv_pos)
+            #         pos_acc_clean.append(acc_clean_pos)
 
-                    ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_pos_e), rem_f))} reversed_pos_e1 edges: clean acc {acc_clean_pos}, eps = {e}: adv acc {acc_adv_pos:.3f}...\n')
+            #         ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_pos_e), rem_f))} reversed_pos_e1 edges: clean acc {acc_clean_pos}, eps = {e}: adv acc {acc_adv_pos:.3f}...\n')
                     
-                    ff.write("\n\n")
+            #         ff.write("\n\n")
 
-                    excel_path = res_path + f'accuracies_eps{e}.xlsx'
+            #         excel_path = res_path + f'accuracies_eps{e}.xlsx'
                     
-                    # Create DataFrame for this fraction
-                    df = pd.DataFrame({
-                        'Label': [l],
-                        'Remove Number': [rem_f],
-                        'Negative Edge Clean Acc': [neg_acc_clean[-1]], 
-                        'Negative Edge Adv Acc': [neg_acc_adv[-1]],
-                        'Positive Edge Clean Acc': [pos_acc_clean[-1]],
-                        'Positive Edge Adv Acc': [pos_acc_adv[-1]]
-                    })
+            #         # Create DataFrame for this fraction
+            #         df = pd.DataFrame({
+            #             'Label': [l],
+            #             'Remove Number': [rem_f],
+            #             'Negative Edge Clean Acc': [neg_acc_clean[-1]], 
+            #             'Negative Edge Adv Acc': [neg_acc_adv[-1]],
+            #             'Positive Edge Clean Acc': [pos_acc_clean[-1]],
+            #             'Positive Edge Adv Acc': [pos_acc_adv[-1]]
+            #         })
                     
-                    # If file exists, append to it, otherwise create new
-                    if os.path.exists(excel_path):
-                        existing_df = pd.read_excel(excel_path)
-                        df = pd.concat([existing_df, df], ignore_index=True)
+            #         # If file exists, append to it, otherwise create new
+            #         if os.path.exists(excel_path):
+            #             existing_df = pd.read_excel(excel_path)
+            #             df = pd.concat([existing_df, df], ignore_index=True)
                         
-                    df.to_excel(excel_path, index=False)                    
+            #         df.to_excel(excel_path, index=False)                    
