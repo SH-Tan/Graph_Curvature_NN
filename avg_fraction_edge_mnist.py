@@ -34,8 +34,8 @@ def get_fraction(curvature, b, dims):
                 top_neg[l] += 1
             total_e[l] += 1
             
-            if l >= layer_num-3:
-                c.append(curr)
+            # if l >= layer_num-3:
+            c.append(curr)
             c_per_l[l].append(curr)
     return neg, total_e, top_neg, c, c_per_l
 
