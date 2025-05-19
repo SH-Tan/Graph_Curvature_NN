@@ -271,12 +271,6 @@ def community_check_cnn(args):
             print(f'Current label {l}: \n')
             ff.write(f'Current label {l}: \n')
 
-            neg_acc_adv = []
-            pos_acc_adv = []
-
-            neg_acc_clean = []
-            pos_acc_clean = []
-
             count = 0
             running_sum = None
             for (images, labels) in sep_dataloader[l]:
@@ -291,10 +285,44 @@ def community_check_cnn(args):
                     weights_inv = net_full.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
                     weights_inv = weights_inv.detach()
 
-                    if running_sum is None:
-                        running_sum = weights_inv
-                    else:
-                        running_sum = torch.cat((running_sum, weights_inv), dim=0)
+                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha)
+
+                    # community_sizes, node_communities, graph_info = multi_community_from_output(ricci_curvature, 1, prefix_dims)
+                    summary, node_communities, graph_info = find_all_backward_communities(ricci_curvature, 1)
+
+                    total_nodes = graph_info["total_nodes"]
+                    total_edges = graph_info["total_edges"]
+
+                    ff.write(f"\nGraph Info (Only Negative Curvature Edges):\n")
+                    for k, v in graph_info.items():
+                        ff.write(f"  {k}: {v}\n")
+                    ff.write(f"  Total communities: {len(summary)}\n")  # <-- Add this line
+
+                    ff.write("\nCommunities:\n")
+                    for cid, data in sorted(summary.items(), key=lambda x: -x[1]['node_count']):
+                        nodes = data["nodes"]
+                        edges = data["edges"]
+
+                        node_fraction = len(nodes) / total_nodes if total_nodes else 0
+                        edge_fraction = len(edges) / total_edges if total_edges else 0
+
+                        ff.write(f"\n  Community {cid}:\n")
+                        ff.write(f"    Size: {len(nodes)} nodes, {len(edges)} edges\n")
+                        ff.write(f"    Fraction of graph: {node_fraction:.3f} nodes, {edge_fraction:.3f} edges\n\n")
+
+                        # if 'prefix_dims' in globals() or 'prefix_dims' in locals():
+                        #     layer_map = defaultdict(list)
+                        #     for node in nodes:
+                        #         for i in range(1, len(prefix_dims) - 1):  # skip layer 0
+                        #             if prefix_dims[i] <= node < prefix_dims[i + 1]:
+                        #                 layer_map[i].append(node)
+                        #                 break
+
+                        #     for layer_idx in sorted(layer_map):
+                        #         node_list = sorted(layer_map[layer_idx])
+                        #         ff.write(f"    Layer {layer_idx} ({len(node_list)} nodes): {node_list}\n")
+                        # else:
+                        #     ff.write(f"    Nodes: {sorted(nodes)}\n")
 
                     count += 1
                     if (count % 10 == 0):
@@ -303,54 +331,7 @@ def community_check_cnn(args):
                     if (count >= sample_size):
                         break
 
-                    # Free memory
-                    del weights, weights_inv
-                    torch.cuda.empty_cache()
             
-            if running_sum is None:
-                continue
-
-            w_avg = torch.mean(running_sum, dim=0).unsqueeze(0)
-            del running_sum
-            torch.cuda.empty_cache()
-            ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, model_dims=model_dims, alpha=alpha)
-
-            # community_sizes, node_communities, graph_info = multi_community_from_output(ricci_curvature, 1, prefix_dims)
-            summary, node_communities, graph_info = find_all_backward_communities(ricci_curvature, 1)
-
-            total_nodes = graph_info["total_nodes"]
-            total_edges = graph_info["total_edges"]
-
-            ff.write(f"\nGraph Info (Only Negative Curvature Edges):\n")
-            for k, v in graph_info.items():
-                ff.write(f"  {k}: {v}\n")
-            ff.write(f"  Total communities: {len(summary)}\n")  # <-- Add this line
-
-            ff.write("\nCommunities:\n")
-            for cid, data in sorted(summary.items(), key=lambda x: -x[1]['node_count']):
-                nodes = data["nodes"]
-                edges = data["edges"]
-
-                node_fraction = len(nodes) / total_nodes if total_nodes else 0
-                edge_fraction = len(edges) / total_edges if total_edges else 0
-
-                ff.write(f"\n  Community {cid}:\n")
-                ff.write(f"    Size: {len(nodes)} nodes, {len(edges)} edges\n")
-                ff.write(f"    Fraction of graph: {node_fraction:.3f} nodes, {edge_fraction:.3f} edges\n")
-
-                if 'prefix_dims' in globals() or 'prefix_dims' in locals():
-                    layer_map = defaultdict(list)
-                    for node in nodes:
-                        for i in range(1, len(prefix_dims) - 1):  # skip layer 0
-                            if prefix_dims[i] <= node < prefix_dims[i + 1]:
-                                layer_map[i].append(node)
-                                break
-
-                    for layer_idx in sorted(layer_map):
-                        node_list = sorted(layer_map[layer_idx])
-                        ff.write(f"    Layer {layer_idx} ({len(node_list)} nodes): {node_list}\n")
-                else:
-                    ff.write(f"    Nodes: {sorted(nodes)}\n")
             # ff.write('\nGraph summary:\n')
             # ff.write(f"  Total nodes in graph: {graph_info['total_nodes']}\n")
             # ff.write(f"  Total edges in graph: {graph_info['total_edges']}\n")

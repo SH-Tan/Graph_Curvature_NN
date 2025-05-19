@@ -155,12 +155,12 @@ def find_all_backward_communities(curvature, b):
         ricci_curv = curvature[batch]
         for i, j, c in ricci_curv:
             i, j = int(i), int(j)
+            all_edges.add((i, j))
+            all_nodes.update([i, j])
             if c < 0:
                 neg_outgoing[i].add(j)
                 neg_incoming[j].add(i)
-                all_edges.add((i, j))
-                all_nodes.update([i, j])
-
+                
     # Find root nodes = those with no outgoing negative edges
     candidate_roots = set(all_nodes) - set(neg_outgoing.keys())
 
