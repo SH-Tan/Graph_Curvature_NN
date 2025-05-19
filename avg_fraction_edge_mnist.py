@@ -34,8 +34,8 @@ def get_fraction(curvature, b, dims):
                 top_neg[l] += 1
             total_e[l] += 1
             
-            # if l >= layer_num-3:
-            c.append(curr)
+            if l >= layer_num - 3:
+                c.append(curr)
             c_per_l[l].append(curr)
     return neg, total_e, top_neg, c, c_per_l
 
@@ -70,7 +70,7 @@ def avg_f_cal(args):
     robust_suffix = "frac_robust.pkl"
     norobust_suffix = "frac_norobust.pkl"
 
-    with open(res_path + "net_anysis2.txt", "w+") as ff:
+    with open(res_path + "net_anysis3.txt", "a+") as ff:
         # Plot the data
         for layer_num in layer:
             ff.write(f'W = {metric}: For model {model_type} - {model_pre_name}, layer {layer_num}: \n')
