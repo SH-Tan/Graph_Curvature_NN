@@ -12,6 +12,7 @@ import copy
 import pickle
 import time
 import pandas as pd
+import networkx as nx
 
 import sys
 sys.path.append("..")
@@ -21,7 +22,7 @@ from tools.small_model import FC_MD
 from tools.FC_linear import FC_Linear
 from tools.LeNet5_custom_small import LeNet_custom_v2
 from tools.graph_curvature import graph_curvature_main_torch
-from tools.get_c import get_c
+from tools.get_community import multi_community_from_output, negative_edge_communities, community_split_by_community_louvain, find_all_backward_communities
 
 
 np.set_printoptions(threshold=np.inf)
@@ -201,7 +202,7 @@ def cal_dims(model_dims):
 
 
 
-def remove_edge_cnn(args):
+def community_check_cnn(args):
     seed = 29
     
     # set random seed
@@ -314,82 +315,71 @@ def remove_edge_cnn(args):
             torch.cuda.empty_cache()
             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, model_dims=model_dims, alpha=alpha)
 
-            # all_edges, single_hop_paths, label_paths, edge_curvatures, path_length_counts = get_c(ricci_curvature, 1, prefix_dims, l)
-            
-            # ff.write(f'Total number of edges in the graph after normalization: {len(all_edges)}\n')
-            # ff.write(f'Found {len(single_hop_paths)} single-hop paths and {len(label_paths)} negative paths reaching label neurons:\n')
+            # community_sizes, node_communities, graph_info = multi_community_from_output(ricci_curvature, 1, prefix_dims)
+            summary, node_communities, graph_info = find_all_backward_communities(ricci_curvature, 1)
 
-            # ff.write('Path length counts:\n')
-            # for length, count in sorted(path_length_counts.items()):
-            #     ff.write(f'  Length {length}: {count} paths\n')
-            # ff.write('\n\n')
-            
-            # ff.write("Single-hop paths:\n")
-            # for path in single_hop_paths:
-            #     # Each path has only one edge
-            #     i, j, curr = path[0]
-            #     ff.write(f"({i},{j}): {curr:.3f}\n")
-            c, neg_e, pos_e = get_top_c(ricci_curvature, 1, prefix_dims, threshold = -50)
-            reversed_pos_e = list(pos_e)[::-1]
-            
-            ff.write(f'It has {len(neg_e)} negative curvature edges, {len(pos_e)} positive curvature egdes .. \n')
-                
-            # start remove
-            for index, rem_f in enumerate(remove_num):
-                ff.write(f'Remove edge number {rem_f}: \n')
+            total_nodes = graph_info["total_nodes"]
+            total_edges = graph_info["total_edges"]
 
-                # remove second layer negative curvature edges
-                net_neg = copy.deepcopy(net_H)
-                net_neg.__build_remove_mask__(neg_e, rem_f)
-                # test acc
-                acc_clean_neg = test_clean(net_neg, test_loader)
+            ff.write(f"\nGraph Info (Only Negative Curvature Edges):\n")
+            for k, v in graph_info.items():
+                ff.write(f"  {k}: {v}\n")
+            ff.write(f"  Total communities: {len(summary)}\n")  # <-- Add this line
 
-                # remove positive curvature edges
-                net_pos = copy.deepcopy(net_H)
-                net_pos.__build_remove_mask__(reversed_pos_e, rem_f)
-                # test acc
-                acc_clean_pos = test_clean(net_pos, test_loader)
+            ff.write("\nCommunities:\n")
+            for cid, data in sorted(summary.items(), key=lambda x: -x[1]['node_count']):
+                nodes = data["nodes"]
+                edges = data["edges"]
 
-                for e in eps:
-                    print(f'Current eps {e}: ')
-                    ff.write(f'Current eps {e}: \n')
+                node_fraction = len(nodes) / total_nodes if total_nodes else 0
+                edge_fraction = len(edges) / total_edges if total_edges else 0
 
-                    test_advacc = test_adversarial(net_full, test_loader, eps=e, alpha=2/255, iters=40)
-                    ff.write(f'The adversary accuracy eps = {e} for original model is {test_advacc}\n\n')
+                ff.write(f"\n  Community {cid}:\n")
+                ff.write(f"    Size: {len(nodes)} nodes, {len(edges)} edges\n")
+                ff.write(f"    Fraction of graph: {node_fraction:.3f} nodes, {edge_fraction:.3f} edges\n")
 
-                    acc_adv_neg = test_adversarial(net_neg, test_loader, eps=e, alpha=2/255, iters=40)
+                if 'prefix_dims' in globals() or 'prefix_dims' in locals():
+                    layer_map = defaultdict(list)
+                    for node in nodes:
+                        for i in range(1, len(prefix_dims) - 1):  # skip layer 0
+                            if prefix_dims[i] <= node < prefix_dims[i + 1]:
+                                layer_map[i].append(node)
+                                break
 
-                    neg_acc_adv.append(acc_adv_neg)
+                    for layer_idx in sorted(layer_map):
+                        node_list = sorted(layer_map[layer_idx])
+                        ff.write(f"    Layer {layer_idx} ({len(node_list)} nodes): {node_list}\n")
+                else:
+                    ff.write(f"    Nodes: {sorted(nodes)}\n")
+            # ff.write('\nGraph summary:\n')
+            # ff.write(f"  Total nodes in graph: {graph_info['total_nodes']}\n")
+            # ff.write(f"  Total edges in graph: {graph_info['total_edges']}\n")
+            # ff.write(f"  Edges with negative curvature: {graph_info['negative_edges']}\n")
 
-                    neg_acc_clean.append(acc_clean_neg)
-                
-                    ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e), rem_f))} neg_e edges: clean acc {acc_clean_neg}, eps = {e}: adv acc {acc_adv_neg:.3f}...\n')
-                    
-                    
-                    acc_adv_pos = test_adversarial(net_pos, test_loader, eps=e, alpha=2/255, iters=40)
-                
-                    pos_acc_adv.append(acc_adv_pos)
-                    pos_acc_clean.append(acc_clean_pos)
+            # ff.write('\nCommunity node lists by layer (including input layer):\n')
 
-                    ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_pos_e), rem_f))} reversed_pos_e1 edges: clean acc {acc_clean_pos}, eps = {e}: adv acc {acc_adv_pos:.3f}...\n')
-                    
-                    ff.write("\n\n")
+            # # Build output-to-node mapping
+            # output_to_nodes = defaultdict(set)
+            # for node, outs in node_communities.items():
+            #     for out in outs:
+            #         output_to_nodes[out].add(node)
 
-                    excel_path = res_path + f'accuracies_eps{e}.xlsx'
-                    
-                    # Create DataFrame for this fraction
-                    df = pd.DataFrame({
-                        'Label': [l],
-                        'Remove Number': [rem_f],
-                        'Negative Edge Clean Acc': [neg_acc_clean[-1]], 
-                        'Negative Edge Adv Acc': [neg_acc_adv[-1]],
-                        'Positive Edge Clean Acc': [pos_acc_clean[-1]],
-                        'Positive Edge Adv Acc': [pos_acc_adv[-1]]
-                    })
-                    
-                    # If file exists, append to it, otherwise create new
-                    if os.path.exists(excel_path):
-                        existing_df = pd.read_excel(excel_path)
-                        df = pd.concat([existing_df, df], ignore_index=True)
-                        
-                    df.to_excel(excel_path, index=False)                    
+            # # Sort by size of each community
+            # for out, nodes in sorted(output_to_nodes.items(), key=lambda x: -len(x[1])):
+            #     layer_node_map = defaultdict(list)
+            #     total_size = 0
+
+            #     for node in nodes:
+            #         for i in range(len(prefix_dims) - 1):  # include input layer
+            #             if prefix_dims[i] <= node < prefix_dims[i + 1]:
+            #                 layer_node_map[i].append(node)
+            #                 total_size += 1
+            #                 break
+
+            #     fraction = total_size / graph_info['total_nodes']
+            #     ff.write(f'\nOutput neuron {out}: total size {total_size} ({fraction:.2%} of graph)\n')
+
+            #     for layer_idx in sorted(layer_node_map):
+            #         node_list = sorted(layer_node_map[layer_idx])
+            #         ff.write(f'  Layer {layer_idx} ({len(node_list)} nodes):\n')
+            #         ff.write(f'    Nodes: {node_list}\n')
