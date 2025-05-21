@@ -17,7 +17,7 @@ from CNN.remove_edge_cnn import remove_edge_cnn
 from CNN.remove_edge_cifar import remove_edge_cifar
 from pgd.community_check_fc import community_check_fc
 from CNN.community_check_cnn import community_check_cnn
-
+from CNN.community_check_cifar import community_check_cifar
 import warnings
 
 # Ignore all warnings
@@ -77,6 +77,8 @@ if __name__=='__main__':
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
                 remove_edge_cifar(args)
+            if args.community and args.dataset.lower() == "cifar":
+                community_check_cifar(args)
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
     

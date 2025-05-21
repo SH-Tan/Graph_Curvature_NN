@@ -27,7 +27,7 @@ sys.path.append("..")
 import tools.utils as utils
 from tools.small_model import FC_MD
 from tools.graph_curvature import graph_curvature_main_torch
-from tools.get_community import multi_community_from_output, negative_edge_communities, community_split_by_community_louvain, find_all_backward_communities
+from tools.get_community import multi_community_from_output, negative_edge_communities, community_split_by_community_louvain, find_all_backward_communities, write_graph_info_to_excel
 from tools.get_node import get_key_nodes
 
 np.set_printoptions(threshold=np.inf)
@@ -203,7 +203,7 @@ def community_check_fc(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -330,71 +330,93 @@ def community_check_fc(args):
                 ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, alpha=alpha)
 
                 # community_sizes, node_communities, graph_info = multi_community_from_output(ricci_curvature, 1, prefix_dims)
-                summary, node_communities, graph_info = find_all_backward_communities(ricci_curvature, 1)
+                summary, node_communities, graph_info = find_all_backward_communities(
+                    ricci_curvature, 1, prefix_dims, threshold=-1.0
+                )
+                
+                write_graph_info_to_excel(graph_info, summary, prefix_dims, output_path=res_path + "community_fc_" + str(l) + str(layer_num) + ".xlsx")
 
-                total_nodes = graph_info["total_nodes"]
-                total_edges = graph_info["total_edges"]
+                # # Extract graph-wide node/edge counts
+                # full_nodes = graph_info["full_graph"]["total_nodes"]
+                # full_edges = graph_info["full_graph"]["total_edges"]
+                # neg_nodes = graph_info["negative_graph"]["total_nodes"]
+                # neg_edges = graph_info["negative_graph"]["total_edges"]
+                # filtered_nodes = graph_info["filtered_graph"]["total_nodes"]
+                # filtered_edges = graph_info["filtered_graph"]["total_edges"]
 
-                ff.write(f"\nGraph Info (Only Negative Curvature Edges):\n")
-                for k, v in graph_info.items():
-                    ff.write(f"  {k}: {v}\n")
-                ff.write(f"  Total communities: {len(summary)}\n")  # <-- Add this line
+                # # Layer-wise total edge counts
+                # layer_edge_counts = graph_info.get("layer_edge_counts", {
+                #     "full": defaultdict(int),
+                #     "negative": defaultdict(int),
+                #     "filtered": defaultdict(int)
+                # })
 
-                ff.write("\nCommunities:\n")
-                for cid, data in sorted(summary.items(), key=lambda x: -x[1]['node_count']):
-                    nodes = data["nodes"]
-                    edges = data["edges"]
+                # # === Global Fractions ===
+                # ff.write("\nGraph Node and Edge Fractions (relative to full graph):\n")
+                # ff.write(f"  Nodes:\n")
+                # ff.write(f"    Negative curvature: {neg_nodes} ({neg_nodes / full_nodes:.3f})\n")
+                # ff.write(f"    Below threshold:   {filtered_nodes} ({filtered_nodes / full_nodes:.3f})\n")
+                # ff.write(f"  Edges:\n")
+                # ff.write(f"    Negative curvature: {neg_edges} ({neg_edges / full_edges:.3f})\n")
+                # ff.write(f"    Below threshold:   {filtered_edges} ({filtered_edges / full_edges:.3f})\n")
 
-                    node_fraction = len(nodes) / total_nodes if total_nodes else 0
-                    edge_fraction = len(edges) / total_edges if total_edges else 0
+                # # === Community Info ===
+                # ff.write("\nCommunities:\n")
+                # for cid, data in sorted(summary.items(), key=lambda x: -x[1]['node_count']):
+                #     nodes = set(data["nodes"])
+                #     edges = set(map(tuple, data["edges"]))
+                #     layer_internal = data.get("internal_edges_by_layer", {})
 
-                    ff.write(f"\n  Community {cid}:\n")
-                    ff.write(f"    Size: {len(nodes)} nodes, {len(edges)} edges\n")
-                    ff.write(f"    Fraction of graph: {node_fraction:.3f} nodes, {edge_fraction:.3f} edges\n")
+                #     # Compute node and edge fractions (per graph type)
+                #     node_fracs = {
+                #         "full": len(nodes) / full_nodes if full_nodes else 0,
+                #         "negative": len(nodes) / neg_nodes if neg_nodes else 0,
+                #         "thresholded": len(nodes) / filtered_nodes if filtered_nodes else 0,
+                #     }
+                #     edge_fracs = {
+                #         "full": len(edges) / full_edges if full_edges else 0,
+                #         "negative": len(edges) / neg_edges if neg_edges else 0,
+                #         "thresholded": len(edges) / filtered_edges if filtered_edges else 0,
+                #     }
 
-                    if 'prefix_dims' in globals() or 'prefix_dims' in locals():
-                        layer_map = defaultdict(list)
-                        for node in nodes:
-                            for i in range(1, len(prefix_dims) - 1):  # skip layer 0
-                                if prefix_dims[i] <= node < prefix_dims[i + 1]:
-                                    layer_map[i].append(node)
-                                    break
+                #     ff.write(f"\n  Community {cid}:\n")
+                #     ff.write(f"    Node count: {len(nodes)}\n")
+                #     ff.write(f"    Edge count: {len(edges)}\n")
+                #     ff.write(f"    Node fraction:\n")
+                #     for k in node_fracs:
+                #         ff.write(f"      {k:12}: {node_fracs[k]:.3f}\n")
+                #     ff.write(f"    Edge fraction:\n")
+                #     for k in edge_fracs:
+                #         ff.write(f"      {k:12}: {edge_fracs[k]:.3f}\n")
 
-                        for layer_idx in sorted(layer_map):
-                            node_list = sorted(layer_map[layer_idx])
-                            ff.write(f"    Layer {layer_idx} ({len(node_list)} nodes): {node_list}\n")
-                    else:
-                        ff.write(f"    Nodes: {sorted(nodes)}\n")
-                # ff.write('\nGraph summary:\n')
-                # ff.write(f"  Total nodes in graph: {graph_info['total_nodes']}\n")
-                # ff.write(f"  Total edges in graph: {graph_info['total_edges']}\n")
-                # ff.write(f"  Edges with negative curvature: {graph_info['negative_edges']}\n")
+                #     if layer_internal:
+                #         ff.write(f"    Internal edges by layer:\n")
+                #         for layer_idx in sorted(layer_internal):
+                #             count = layer_internal[layer_idx]
 
-                # ff.write('\nCommunity node lists by layer (including input layer):\n')
+                #             full_layer_total = layer_edge_counts["full"].get(layer_idx, 0)
+                #             neg_layer_total = layer_edge_counts["negative"].get(layer_idx, 0)
+                #             filt_layer_total = layer_edge_counts["filtered"].get(layer_idx, 0)
 
-                # # Build output-to-node mapping
-                # output_to_nodes = defaultdict(set)
-                # for node, outs in node_communities.items():
-                #     for out in outs:
-                #         output_to_nodes[out].add(node)
+                #             full_frac = count / full_layer_total if full_layer_total else 0
+                #             neg_frac = count / neg_layer_total if neg_layer_total else 0
+                #             filt_frac = count / filt_layer_total if filt_layer_total else 0
 
-                # # Sort by size of each community
-                # for out, nodes in sorted(output_to_nodes.items(), key=lambda x: -len(x[1])):
-                #     layer_node_map = defaultdict(list)
-                #     total_size = 0
+                #             ff.write(f"      Layer {layer_idx}: {count} edges\n")
+                #             ff.write(f"        → Fraction of layer edges:\n")
+                #             ff.write(f"           Full:      {full_frac:.3f} ({full_layer_total} total)\n")
+                #             ff.write(f"           Negative:  {neg_frac:.3f} ({neg_layer_total} total)\n")
+                #             ff.write(f"           Threshold: {filt_frac:.3f} ({filt_layer_total} total)\n")
 
+                #     # Node distribution by layer
+                #     layer_map = defaultdict(list)
                 #     for node in nodes:
-                #         for i in range(len(prefix_dims) - 1):  # include input layer
-                #             if prefix_dims[i] <= node < prefix_dims[i + 1]:
-                #                 layer_node_map[i].append(node)
-                #                 total_size += 1
-                #                 break
+                #         layer_idx = np.searchsorted(prefix_dims, node, side='right') - 1
+                #         layer_map[layer_idx].append(node)
 
-                #     fraction = total_size / graph_info['total_nodes']
-                #     ff.write(f'\nOutput neuron {out}: total size {total_size} ({fraction:.2%} of graph)\n')
-
-                #     for layer_idx in sorted(layer_node_map):
-                #         node_list = sorted(layer_node_map[layer_idx])
-                #         ff.write(f'  Layer {layer_idx} ({len(node_list)} nodes):\n')
-                #         ff.write(f'    Nodes: {node_list}\n')
-
+                #     for layer_idx in sorted(layer_map):
+                #         node_list = sorted(layer_map[layer_idx])
+                #         if layer_idx == 0:
+                #             ff.write(f"    Layer 0: {len(node_list)} nodes (input layer)\n")
+                #         else:
+                #             ff.write(f"    Layer {layer_idx} ({len(node_list)} nodes): {node_list}\n")
