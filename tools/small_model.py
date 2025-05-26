@@ -263,7 +263,7 @@ class FC_MD(nn.Module):
     
     
     
-    def normalization_weight_w2(self, nodes, weights, dims):
+    def normalization_weight_w2_old(self, nodes, weights, dims):
         # batch = nodes.shape[0]
         nodes_num = nodes.shape[1]
         prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
@@ -315,6 +315,69 @@ class FC_MD(nn.Module):
 
         return weights_inv2
     
+    
+    
+    def normalization_weight_w2(self, nodes, weights, dims):
+        # batch = nodes.shape[0]
+        nodes_num = nodes.shape[1]
+        prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
+        prefix_dims = torch.cat([torch.tensor([0]), prefix_dims])
+
+        cur_layer = 1
+        start_col = 0
+        end_col = dims[cur_layer-1] * dims[cur_layer]
+        step = dims[cur_layer]
+        neighbors = torch.arange(prefix_dims[cur_layer-1], prefix_dims[cur_layer])
+        
+        # weights_inv_neg = torch.zeros_like(weights)
+        weights_inv = torch.zeros_like(weights)
+        
+        # go through each node except input layer
+        for n in range(dims[0], nodes_num):
+            if (n >= prefix_dims[cur_layer+1]):
+                cur_layer += 1
+                
+                start_col = end_col
+                end_col += (dims[cur_layer-1] * dims[cur_layer])
+                step = dims[cur_layer]
+            
+                neighbors = torch.arange(prefix_dims[cur_layer-1], prefix_dims[cur_layer])
+            
+            # print(f'start: {start_col + (n - prefix_dims[cur_layer])}, end: {end_col}, step: {step}')
+            in_edges = torch.arange(start_col + (n - prefix_dims[cur_layer]), end_col, step)
+            
+            w = nodes[:, neighbors] * weights[:, in_edges] # batch * neighbors.size()
+            
+            positive_w = torch.where(w > 0, w, torch.zeros_like(w))
+            pos_sum = positive_w.sum(dim=1, keepdim=True) # batch * 1
+            
+            negative_w = torch.where(w <= 0, w, torch.zeros_like(w))
+            neg_sum = negative_w.sum(dim=1, keepdim=True) # batch * 1
+            
+            sum = torch.sum(w, axis = 1, keepdim=True) # batch * 1
+            
+            positive_s_i = torch.where(sum > 0)[0] # indices
+            negative_s_i = torch.where(sum <= 0)[0] # indices
+            
+            # sub_pos_a1 = weights[positive_s_i][:, in_edges]   
+            sub_pos_a = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
+            sub_neg_a = weights[negative_s_i][:, in_edges] * nodes[negative_s_i][:, neighbors]
+                    
+            mask_pos = sub_pos_a > 0
+            mask_neg = sub_neg_a <= 0
+
+            values_pos = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
+            values_neg = -(sub_neg_a * (sum[negative_s_i] / neg_sum[negative_s_i]))
+            
+            sub_pos_a_inv = torch.where(mask_pos, 1./values_pos, torch.tensor(0.))
+            sub_neg_a_inv = torch.where(mask_neg, 1./values_neg, torch.tensor(0.))
+            
+            weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
+            weights_inv[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv
+
+        return weights_inv
+
+
     
     def normalization_weight_w6(self, nodes, weights, dims, q):
         # batch = nodes.shape[0]

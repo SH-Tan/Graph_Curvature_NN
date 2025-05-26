@@ -27,7 +27,7 @@ sys.path.append("..")
 import tools.utils as utils
 from tools.small_model import FC_MD
 from tools.graph_curvature import graph_curvature_main_torch
-from tools.get_community import multi_community_from_output, negative_edge_communities, community_split_by_community_louvain, find_all_backward_communities
+from tools.get_community import multi_community_from_output, negative_edge_communities, community_split_by_community_louvain, find_all_backward_communities, write_graph_info_to_excel
 from tools.get_node import get_key_nodes
 
 np.set_printoptions(threshold=np.inf)
@@ -129,7 +129,7 @@ def test_adversarial(net, loader, eps=.1, alpha=.1, iters=100, device = 'cuda'):
 
 
 
-def test(n, loader, eps, alpha, iters, device):    
+def test(n, loader, device):    
     n.eval()
     robust_pair = defaultdict(list)
     succ_pair = defaultdict(list)
@@ -141,15 +141,11 @@ def test(n, loader, eps, alpha, iters, device):
             output = n(images)
             pred = output.detach().max(1)[1]
             
-            adv_img = standard_PGD(n, images, labels, device, eps, alpha, iters)
-            adv_out = n(adv_img)
-            adv_pred = adv_out.detach().max(1)[1]
- 
-            robust_l = pred.eq(labels.view_as(pred)) & adv_pred.eq(labels.view_as(adv_pred))
-            succ_l = pred.eq(labels.view_as(pred)) & ~adv_pred.eq(labels.view_as(adv_pred))
+            robust_l = pred.eq(labels.view_as(pred))
+            succ_l = ~pred.eq(labels.view_as(pred))
 
-            succ_pair[l].append(images[succ_l].cpu())
-            robust_pair[l].append(images[robust_l].cpu())
+            succ_pair[l].append((images[succ_l].cpu(), pred[succ_l].cpu()))
+            robust_pair[l].append((images[robust_l].cpu(), pred[robust_l].cpu()))
 
     return succ_pair, robust_pair
 
@@ -203,7 +199,7 @@ def community_check_fc(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -251,7 +247,16 @@ def community_check_fc(args):
             model_name = "best_21_adv.pth"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_ori':
-            model_name = "fc_big_ori.pth"
+            model_name = "fc_big_ori_new.pth"
+            dims = model_zoo[21]
+        elif model_pre_name.lower() == 'big_wd':
+            model_name = "fc_big_wd.pth"
+            dims = model_zoo[21]
+        elif model_pre_name.lower() == 'big_wd_05':
+            model_name = "fc_big_wd_05.pth"
+            dims = model_zoo[21]
+        elif model_pre_name.lower() == 'big_wd_0001':
+            model_name = "fc_big_wd_0001.pth"
             dims = model_zoo[21]
         else:
             raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
@@ -282,21 +287,25 @@ def community_check_fc(args):
    
         test_cleanacc = test_clean(net_full, test_loader)
             
-        # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
+        succ_pair, robust_pair = test(net_H, sep_dataloader, device=device)
 
-        for l in selected_classes:
+        for l in selected_classes:      
             with open(res_path + "community_fc_" + str(l) + str(layer_num) + ".txt", "w+") as ff:
                 ff.write(f'For model {model_name}: \n')
                 ff.write(f'The clean accuracy for original model is {test_cleanacc}\n\n')
                 print(f'Current label {l}: \n')
                 ff.write(f'Current label {l}: \n')
-
-                count = 0
-                running_sum = None
-                for (images, labels) in sep_dataloader[l]:
-                    if (count >= sample_size):
-                        break
+                
+                edge_list_mis = []
+                node_list_mis= [] 
+                edge_list_ground = []
+                node_list_ground = [] 
+                for (images, labels) in succ_pair[l]:
                     for idx in range(images.shape[0]):
+                        if (idx >= sample_size):
+                            print(f'Finish {idx} examples....')
+                            break
+                        ff.write(f'\nFor misclassified example {idx}: True label {l}, Acctual output {labels[idx]} \n')
                         img = images[idx].to(device)
                         edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
     
@@ -308,81 +317,169 @@ def community_check_fc(args):
                         ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, alpha=alpha)
 
                         # community_sizes, node_communities, graph_info = multi_community_from_output(ricci_curvature, 1, prefix_dims)
-                        summary, node_communities, graph_info = find_all_backward_communities(ricci_curvature, 1)
+                        summary, node_communities, graph_info = find_all_backward_communities(
+                            ricci_curvature, 1, prefix_dims, threshold=0.0
+                        )
+                        
+                        ff.write("=== Graph Info ===\n")
+                        for key, info in graph_info.items():
+                            ff.write(f"{key}:\n")
+                            if isinstance(info, dict):
+                                for k, v in info.items():
+                                    ff.write(f"  {k}: {v}\n")
+                            else:
+                                ff.write(f"  {info}\n")
+                        
+                        # Get node indices for true and predicted labels
+                        true_output_node = prefix_dims[-2] + l
+                        pred_output_node = prefix_dims[-2] + labels[idx].item()
 
-                        total_nodes = graph_info["total_nodes"]
-                        total_edges = graph_info["total_edges"]
+                        # Get community IDs that contain each output node
+                        true_comms = node_communities.get(true_output_node, set())
+                        pred_comms = node_communities.get(pred_output_node, set())
+                        
+                        # Extract stats for the true label community (only one community expected)
+                        if true_comms:
+                            true_cid = next(iter(true_comms))  # Take the first (should usually be only one)
+                            true_nodes = set(summary[true_cid]["nodes"])
+                            true_edges = set(map(tuple, summary[true_cid]["edges"]))
 
-                        ff.write(f"\nGraph Info (Only Negative Curvature Edges):\n")
-                        for k, v in graph_info.items():
-                            ff.write(f"  {k}: {v}\n")
-                        ff.write(f"  Total communities: {len(summary)}\n")  # <-- Add this line
+                            ff.write(f"\n--- Ground Truth Community ---\n")
+                            ff.write(f"  Community ID: {true_cid}\n")
+                            ff.write(f"  Node count: {len(true_nodes)}\n")
+                            ff.write(f"  Edge count: {len(true_edges)}\n")
 
-                        ff.write("\nCommunities:\n")
-                        for cid, data in sorted(summary.items(), key=lambda x: -x[1]['node_count']):
-                            nodes = data["nodes"]
-                            edges = data["edges"]
+                            node_list_ground.append(len(true_nodes))
+                            edge_list_ground.append(len(true_edges))
+                        else:
+                            ff.write(f"\n--- Ground Truth Community ---\n")
+                            ff.write(f"  Not found for node {true_output_node}\n")
+                            node_list_ground.append(0)
+                            edge_list_ground.append(0)
 
-                            node_fraction = len(nodes) / total_nodes if total_nodes else 0
-                            edge_fraction = len(edges) / total_edges if total_edges else 0
+                        # Extract stats for the predicted label community (only if different)
+                        if pred_comms:
+                            pred_cid = next(iter(pred_comms))
+                            pred_nodes = set(summary[pred_cid]["nodes"])
+                            pred_edges = set(map(tuple, summary[pred_cid]["edges"]))
 
-                            ff.write(f"\n  Community {cid}:\n")
-                            ff.write(f"    Size: {len(nodes)} nodes, {len(edges)} edges\n")
-                            ff.write(f"    Fraction of graph: {node_fraction:.3f} nodes, {edge_fraction:.3f} edges\n\n")
+                            ff.write(f"\n--- Predicted Output Community ---\n")
+                            ff.write(f"  Community ID: {pred_cid}\n")
+                            ff.write(f"  Node count: {len(pred_nodes)}\n")
+                            ff.write(f"  Edge count: {len(pred_edges)}\n")
 
-                            # if 'prefix_dims' in globals() or 'prefix_dims' in locals():
-                            #     layer_map = defaultdict(list)
-                            #     for node in nodes:
-                            #         for i in range(1, len(prefix_dims) - 1):  # skip layer 0
-                            #             if prefix_dims[i] <= node < prefix_dims[i + 1]:
-                            #                 layer_map[i].append(node)
-                            #                 break
-
-                            #     for layer_idx in sorted(layer_map):
-                            #         node_list = sorted(layer_map[layer_idx])
-                            #         ff.write(f"    Layer {layer_idx} ({len(node_list)} nodes): {node_list}\n")
-                            # else:
-                            #     ff.write(f"    Nodes: {sorted(nodes)}\n")
-
-
-                        count += 1
-                        if (count % 10 == 0):
-                            print(f'Finish {count} examples....')
-                            
-                        if (count >= sample_size):
+                            node_list_mis.append(len(pred_nodes))
+                            edge_list_mis.append(len(pred_edges))
+                        else:
+                            ff.write(f"\n--- Predicted Output Community ---\n")
+                            ff.write(f"  Not found for node {pred_output_node} (or same as ground truth)\n")
+                            node_list_mis.append(0)
+                            edge_list_mis.append(0)
+                    
+                edge_list_correct = []
+                node_list_correct = []
+                edge_list_other = []
+                node_list_other= []                  
+                for (images, labels) in robust_pair[l]:
+                    for idx in range(images.shape[0]):
+                        if (idx >= sample_size):
+                            print(f'Finish {idx} examples....')
                             break
+                    
+                        ff.write(f'\nFor correct classified example {idx}: True label {l}, Acctual output {labels[idx]} \n')
+                        img = images[idx].to(device)
+                        edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
+    
+                        weights = output.detach().clone().to(device)                   
+                        weights[edge_array == 0] = 0.
+                        weights_inv = net_full.normalization_weight_w2(nodes_ori, weights, dims)
+                        weights_inv = weights_inv.detach()
 
-                
-                # ff.write('\nGraph summary:\n')
-                # ff.write(f"  Total nodes in graph: {graph_info['total_nodes']}\n")
-                # ff.write(f"  Total edges in graph: {graph_info['total_edges']}\n")
-                # ff.write(f"  Edges with negative curvature: {graph_info['negative_edges']}\n")
+                        ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, alpha=alpha)
 
-                # ff.write('\nCommunity node lists by layer (including input layer):\n')
+                        # community_sizes, node_communities, graph_info = multi_community_from_output(ricci_curvature, 1, prefix_dims)
+                        summary, node_communities, graph_info = find_all_backward_communities(
+                            ricci_curvature, 1, prefix_dims, threshold=0.0
+                        )
+                        
+                        ff.write("=== Graph Info ===\n")
+                        for key, info in graph_info.items():
+                            ff.write(f"{key}:\n")
+                            if isinstance(info, dict):
+                                for k, v in info.items():
+                                    ff.write(f"  {k}: {v}\n")
+                            else:
+                                ff.write(f"  {info}\n")
 
-                # # Build output-to-node mapping
-                # output_to_nodes = defaultdict(set)
-                # for node, outs in node_communities.items():
-                #     for out in outs:
-                #         output_to_nodes[out].add(node)
+                        # Get node indices for true and predicted labels
+                        true_output_node = prefix_dims[-2] + l
 
-                # # Sort by size of each community
-                # for out, nodes in sorted(output_to_nodes.items(), key=lambda x: -len(x[1])):
-                #     layer_node_map = defaultdict(list)
-                #     total_size = 0
+                        # Get community IDs that contain each output node
+                        true_comms = node_communities.get(true_output_node, set())
 
-                #     for node in nodes:
-                #         for i in range(len(prefix_dims) - 1):  # include input layer
-                #             if prefix_dims[i] <= node < prefix_dims[i + 1]:
-                #                 layer_node_map[i].append(node)
-                #                 total_size += 1
-                #                 break
+                        # Extract stats for the true label community (only one community expected)
+                        if true_comms:
+                            true_cid = next(iter(true_comms))  # Take the first (should usually be only one)
+                            true_nodes = set(summary[true_cid]["nodes"])
+                            true_edges = set(map(tuple, summary[true_cid]["edges"]))
 
-                #     fraction = total_size / graph_info['total_nodes']
-                #     ff.write(f'\nOutput neuron {out}: total size {total_size} ({fraction:.2%} of graph)\n')
+                            ff.write(f"\n--- Ground Truth Community ---\n")
+                            ff.write(f"  Community ID: {true_cid}\n")
+                            ff.write(f"  Node count: {len(true_nodes)}\n")
+                            ff.write(f"  Edge count: {len(true_edges)}\n")
 
-                #     for layer_idx in sorted(layer_node_map):
-                #         node_list = sorted(layer_node_map[layer_idx])
-                #         ff.write(f'  Layer {layer_idx} ({len(node_list)} nodes):\n')
-                #         ff.write(f'    Nodes: {node_list}\n')
+                            node_list_correct.append(len(true_nodes))
+                            edge_list_correct.append(len(true_edges))
+                            
+                            # Find the largest community not equal to the ground-truth one
+                            largest_cid = None
+                            largest_size = -1
 
+                            for cid, comm in summary.items():
+                                if cid == true_cid:
+                                    continue
+                                size = len(comm["nodes"])  # Or use len(comm["edges"]) to switch to edge-based size
+                                if size > largest_size:
+                                    largest_cid = cid
+                                    largest_size = size
+
+                            if largest_cid is not None:
+                                largest_nodes = set(summary[largest_cid]["nodes"])
+                                largest_edges = set(map(tuple, summary[largest_cid]["edges"]))
+
+                                node_list_other.append(len(largest_nodes))
+                                edge_list_other.append(len(largest_edges))
+
+                                ff.write(f"\n--- Largest Non-GT Community ---\n")
+                                ff.write(f"  Community ID: {largest_cid}\n")
+                                ff.write(f"  Node count: {len(largest_nodes)}\n")
+                                ff.write(f"  Edge count: {len(largest_edges)}\n")
+                            else:
+                                node_list_other.append(0)
+                                edge_list_other.append(0)
+                                ff.write(f"\n--- Largest Non-GT Community ---\n")
+                                ff.write(f"  Not found (only GT community exists)\n")
+                        else:
+                            ff.write(f"\n--- Ground Truth Community ---\n")
+                            ff.write(f"  Not found for node {true_output_node}\n")
+                            node_list_correct.append(0)
+                            edge_list_correct.append(0)
+
+                        
+                node_list_mis = np.array(node_list_mis)
+                node_list_ground = np.array(node_list_ground)
+                node_list_correct = np.array(node_list_correct)
+                edge_list_mis = np.array(edge_list_mis)
+                edge_list_ground = np.array(edge_list_ground)
+                edge_list_correct = np.array(edge_list_correct)
+                node_list_other = np.array(node_list_other)
+                edge_list_other = np.array(edge_list_other)
+                            
+                ff.write(f'\n For the misclassified examples: \n') 
+                ff.write(f'There are total {len(node_list_mis)} comminties, {len(node_list_mis[node_list_mis == 0])} are zero (not exist); {len(node_list_ground)} ground truth communities, {len(node_list_ground[node_list_ground == 0])} are zero (not exist). \n')
+                ff.write(f'The average node number (non-zero) for misclassified community is {np.mean(node_list_mis[node_list_mis != 0])}, edge number is {np.mean(edge_list_mis[edge_list_mis != 0])}\n')     
+                ff.write(f'The average node number (non-zero) for ground truth community is {np.mean(node_list_ground[node_list_ground!=0])}, edge number is {np.mean(edge_list_ground[edge_list_ground!=0])}\n')
+                ff.write(f'\n For the correct classified examples: \n')     
+                ff.write(f'There are total {len(node_list_correct)} comminties, {len(node_list_correct[node_list_correct == 0])} are zero (not exist). \n') 
+                ff.write(f'The average node number (non-zero) for correct classified examples is {np.mean(node_list_correct[node_list_correct != 0])}, edge number is {np.mean(edge_list_correct[edge_list_correct!=0])}\n')      
+                ff.write(f'The average node number (non-zero) for largest non-GT communities is {np.mean(node_list_other[node_list_other != 0])}, edge number is {np.mean(edge_list_other[edge_list_other != 0])}\n')  
