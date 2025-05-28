@@ -148,6 +148,7 @@ def find_all_backward_communities(curvature, b, prefix_dims, threshold=0.0):
     communities = dict()
     community_edges = dict()
     community_layer_internal = dict()
+    edge_curvatures = dict()
 
     # Graph-wide tracking
     full_nodes = set()
@@ -191,9 +192,10 @@ def find_all_backward_communities(curvature, b, prefix_dims, threshold=0.0):
                 neg_outgoing[i].add(j)
                 neg_incoming[j].add(i)
                 layer_edge_counts["filtered"][i_layer] += 1
+                edge_curvatures[(i, j)] = c
 
     # 1. Find community root nodes — no outgoing filtered edges
-    candidate_roots = full_nodes - set(neg_outgoing.keys())
+    candidate_roots = threshold_nodes - set(neg_outgoing.keys())
     community_id = 0
 
     for root in candidate_roots:
@@ -225,19 +227,24 @@ def find_all_backward_communities(curvature, b, prefix_dims, threshold=0.0):
                 layer_counts[u_layer] += 1
 
             community_layer_internal[community_id] = dict(layer_counts)
+
+            # 4. Compute total curvature of edges in the community
+            total_curvature = sum(edge_curvatures.get((u, v), 0.0) for (u, v) in community_edge_set)
+
+            # Store summary for this community
+            communities[community_id] = {
+                "node_count": len(community_nodes),
+                "edge_count": len(community_edge_set),
+                "nodes": list(community_nodes),
+                "edges": list(community_edge_set),
+                "internal_edges_by_layer": dict(layer_counts),
+                "total_curvature": total_curvature
+            }
+
             community_id += 1
 
     # Summary by community
-    summary = {
-        cid: {
-            "node_count": len(nodes),
-            "edge_count": len(community_edges[cid]),
-            "nodes": list(nodes),
-            "edges": list(community_edges[cid]),
-            "internal_edges_by_layer": community_layer_internal[cid]
-        }
-        for cid, nodes in communities.items()
-    }
+    summary = communities
 
     # 2. Overall graph info
     graph_info = {
