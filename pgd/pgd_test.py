@@ -20,7 +20,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.small_model import FC_MD
+from tools.small_model_relu import FC_MD
 from tools.FC_linear import FC_Linear
 from RicciCurvature.OllivierRicci import OllivierRicci
 

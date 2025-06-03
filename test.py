@@ -15,6 +15,8 @@ from slope import cal_slope
 from avg_fraction_edge_mnist import avg_f_cal
 from Lidar.draw_traj import lidar_draw
 from Lidar.avg_fraction_edge import avg_statics_lidar
+from analyze_community import cal_community
+from avg_fraction_edge_tanh import avg_f_cal_tanh
 
 
 import warnings
@@ -47,6 +49,8 @@ def parse_args():
     parse.add_argument('--mnist_data_path', type=str, required=False, help='Data path')
     parse.add_argument('--lidar_data_path', type=str, required=False, help='Data path')
     parse.add_argument('--sample_num', type=int, default=50, required=False, help='Number of test examples')
+    parse.add_argument('--community', type=int, default=0, required=False, help='If test community')
+    parse.add_argument('--threshold', type=float, default=0., required=False, help='Threshold for community count')
     args = parse.parse_args() 
     return args
 
@@ -66,4 +70,8 @@ if __name__=='__main__':
     if args.lidar:
         # lidar_draw(args)
         avg_statics_lidar(args)
+        
+    if args.community:
+        # cal_community(args)
+        avg_f_cal_tanh(args)
         

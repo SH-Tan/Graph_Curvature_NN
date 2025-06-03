@@ -15,7 +15,7 @@ import pickle
 from sklearn.linear_model import LinearRegression as lg
 
 import tools.utils as utils
-from tools.small_model import FC_MD
+from tools.small_model_relu import FC_MD
 from tools.FC_linear import FC_Linear
 from tools.LeNet5_custom_small import LeNet_custom_v2 as LeNet_custom_v2
 from tools.LeNet5_custom import LeNet_custom

@@ -21,7 +21,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.small_model import FC_MD
+from tools.small_model_relu import FC_MD
 from RicciCurvature.OllivierRicci import OllivierRicci
 from tools.FC_linear import FC_Linear
 from tools.graph_curvature_multihops import graph_curvature_main_torch

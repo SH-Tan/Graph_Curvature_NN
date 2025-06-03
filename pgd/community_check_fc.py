@@ -7,15 +7,8 @@ import os
 import pandas as pd
 import torch.nn as nn
 from collections import defaultdict
-import seaborn as sns
 import copy
 
-# from GraphRicciCurvature.OllivierRicci import OllivierRicci
-import networkx as nx
-import community as community_louvain
-import matplotlib.pyplot as plt
-import statsmodels.api as sm
-from scipy.integrate import simps
 import pickle
 import time
 import pandas as pd
@@ -293,272 +286,78 @@ def community_check_fc(args):
         res_l_non = defaultdict(list)
 
         for l in selected_classes:      
-            with open(res_path + "community_fc_" + str(l) + str(layer_num) + ".txt", "w+") as ff:
-                ff.write(f'For model {model_name}: \n')
-                ff.write(f'The clean accuracy for original model is {test_cleanacc}\n\n')
-                print(f'Current label {l}: \n')
-                ff.write(f'Current label {l}: \n')
-                
-                # edge_list_mis = []
-                # node_list_mis= [] 
-                # curv_mis = []
-                # edge_list_ground = []
-                # node_list_ground = []
-                # curv_ground = [] 
-                for (images, labels) in succ_pair[l]:
-                    for idx in range(images.shape[0]):
-                        if (idx >= sample_size):
-                            print(f'Finish {idx} examples....')
-                            break
-                        ff.write(f'\nFor misclassified example {idx}: True label {l}, Acctual output {labels[idx]} \n')
-                        img = images[idx].to(device)
-                        edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
-                        
-                        if metric.lower() == "w1":
-                            weights = output.detach().clone().to(device)                   
-                            # weights[edge_array == 0] = 0.
-                        
-                        elif metric.lower() == "w3":
-                            weights = output.detach().clone().to(device)                   
-                            # weights[edge_array == 0] = 0.
-                            
-                        if metric.lower() == "w1":
-                            weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)
-                            weights_inv = weights_inv1.detach()
-                            weights_inv2 = weights_inv2.detach()
-                            ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
-                                
-                        if metric.lower() == "q_ngr":
-                            weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
-                            weights_inv = weights_inv1.detach()
-                            weights_inv2 = weights_inv2.detach()
-                            ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
-                        else:
-                            raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-                        
-                        res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims))
-
-                        # # community_sizes, node_communities, graph_info = multi_community_from_output(ricci_curvature, 1, prefix_dims)
-                        # summary, node_communities, graph_info = find_all_backward_communities(
-                        #     ricci_curvature, 1, prefix_dims, threshold=0.0
-                        # )
-                        
-                        # ff.write("=== Graph Info ===\n")
-                        # for key, info in graph_info.items():
-                        #     ff.write(f"{key}:\n")
-                        #     if isinstance(info, dict):
-                        #         for k, v in info.items():
-                        #             ff.write(f"  {k}: {v}\n")
-                        #     else:
-                        #         ff.write(f"  {info}\n")
-                        
-                        # # Get node indices for true and predicted labels
-                        # true_output_node = prefix_dims[-2] + l
-                        # pred_output_node = prefix_dims[-2] + labels[idx].item()
-
-                        # # Get community IDs that contain each output node
-                        # true_comms = node_communities.get(true_output_node, set())
-                        # pred_comms = node_communities.get(pred_output_node, set())
-                        
-                        # # Extract stats for the true label community (only one community expected)
-                        # if true_comms:
-                        #     true_cid = next(iter(true_comms))  # Take the first (should usually be only one)
-                        #     true_nodes = set(summary[true_cid]["nodes"])
-                        #     true_edges = set(map(tuple, summary[true_cid]["edges"]))
-
-                        #     ff.write(f"\n--- Ground Truth Community ---\n")
-                        #     ff.write(f"  Community ID: {true_cid}\n")
-                        #     ff.write(f"  Node count: {len(true_nodes)}\n")
-                        #     ff.write(f"  Edge count: {len(true_edges)}\n")
-                            
-                        #     curv = summary[true_cid].get("total_curvature", 0.0)
-                        #     ff.write(f"  Total curvature: {curv:.4f}\n")
-                        #     curv_ground.append(curv)
-
-                        #     node_list_ground.append(len(true_nodes))
-                        #     edge_list_ground.append(len(true_edges))
-                        # else:
-                        #     ff.write(f"\n--- Ground Truth Community ---\n")
-                        #     ff.write(f"  Not found for node {true_output_node}\n")
-                        #     node_list_ground.append(0)
-                        #     edge_list_ground.append(0)
-                        #     curv_ground.append(0)
-
-                        # # Extract stats for the predicted label community (only if different)
-                        # if pred_comms:
-                        #     pred_cid = next(iter(pred_comms))
-                        #     pred_nodes = set(summary[pred_cid]["nodes"])
-                        #     pred_edges = set(map(tuple, summary[pred_cid]["edges"]))
-
-                        #     ff.write(f"\n--- Predicted Output Community ---\n")
-                        #     ff.write(f"  Community ID: {pred_cid}\n")
-                        #     ff.write(f"  Node count: {len(pred_nodes)}\n")
-                        #     ff.write(f"  Edge count: {len(pred_edges)}\n")
-                            
-                        #     curv = summary[pred_cid].get("total_curvature", 0.0)
-                        #     ff.write(f"  Total curvature: {curv:.4f}\n")
-                        #     curv_mis.append(curv)
-
-                        #     node_list_mis.append(len(pred_nodes))
-                        #     edge_list_mis.append(len(pred_edges))
-                        # else:
-                        #     ff.write(f"\n--- Predicted Output Community ---\n")
-                        #     ff.write(f"  Not found for node {pred_output_node} (or same as ground truth)\n")
-                        #     node_list_mis.append(0)
-                        #     edge_list_mis.append(0)
-                        #     curv_mis.append(0)
+            for (images, labels) in succ_pair[l]:
+                for idx in range(images.shape[0]):
+                    if (idx >= sample_size):
+                        print(f'Finish {idx} examples....')
+                        break
+                    img = images[idx].to(device)
+                    edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
                     
-                # edge_list_correct = []
-                # node_list_correct = []
-                # curv_correct = []
-                # edge_list_other = []
-                # node_list_other= []     
-                # curv_other = []             
-                for (images, labels) in robust_pair[l]:
-                    for idx in range(images.shape[0]):
-                        if (idx >= sample_size):
-                            print(f'Finish {idx} examples....')
-                            break
+                    if metric.lower() == "w1":
+                        weights = output.detach().clone().to(device)                   
+                        # weights[edge_array == 0] = 0.
                     
-                        ff.write(f'\nFor correct classified example {idx}: True label {l}, Acctual output {labels[idx]} \n')
-                        img = images[idx].to(device)
-                        edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
-    
-                        if metric.lower() == "w1":
-                            weights = output.detach().clone().to(device)                   
-                            # weights[edge_array == 0] = 0.
+                    elif metric.lower() == "w3":
+                        weights = output.detach().clone().to(device)                   
+                        # weights[edge_array == 0] = 0.
                         
-                        elif metric.lower() == "w3":
-                            weights = output.detach().clone().to(device)                   
-                            # weights[edge_array == 0] = 0.
+                    if metric.lower() == "w1":
+                        weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)
+                        weights_inv = weights_inv1.detach()
+                        weights_inv2 = weights_inv2.detach()
+                        ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
                             
-                        if metric.lower() == "w1":
-                            weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)
-                            weights_inv = weights_inv1.detach()
-                            weights_inv2 = weights_inv2.detach()
-                            ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
-                                
-                        if metric.lower() == "q_ngr":
-                            weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
-                            weights_inv = weights_inv1.detach()
-                            weights_inv2 = weights_inv2.detach()
-                            ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
-                        else:
-                            raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+                    elif metric.lower() == "w3":
+                        weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
+                        weights_inv = weights_inv1.detach()
+                        weights_inv2 = weights_inv2.detach()
+                        ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
+                    else:
+                        raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+                    
+                    res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims))
+
+                               
+            for (images, labels) in robust_pair[l]:
+                for idx in range(images.shape[0]):
+                    if (idx >= sample_size):
+                        print(f'Finish {idx} examples....')
+                        break
+
+                    img = images[idx].to(device)
+                    edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
+
+                    if metric.lower() == "w1":
+                        weights = output.detach().clone().to(device)                   
+                        # weights[edge_array == 0] = 0.
+                    
+                    elif metric.lower() == "w3":
+                        weights = output.detach().clone().to(device)                   
+                        # weights[edge_array == 0] = 0.
                         
-                        res_l[l].append((ricci_curvature, weights_inv.shape[0], dims))
-
-                        # community_sizes, node_communities, graph_info = multi_community_from_output(ricci_curvature, 1, prefix_dims)
-                #         summary, node_communities, graph_info = find_all_backward_communities(
-                #             ricci_curvature, 1, prefix_dims, threshold=0.0
-                #         )
-                        
-                #         ff.write("=== Graph Info ===\n")
-                #         for key, info in graph_info.items():
-                #             ff.write(f"{key}:\n")
-                #             if isinstance(info, dict):
-                #                 for k, v in info.items():
-                #                     ff.write(f"  {k}: {v}\n")
-                #             else:
-                #                 ff.write(f"  {info}\n")
-
-                #         # Get node indices for true and predicted labels
-                #         true_output_node = prefix_dims[-2] + l
-
-                #         # Get community IDs that contain each output node
-                #         true_comms = node_communities.get(true_output_node, set())
-
-                #         # Extract stats for the true label community (only one community expected)
-                #         if true_comms:
-                #             true_cid = next(iter(true_comms))  # Take the first (should usually be only one)
-                #             true_nodes = set(summary[true_cid]["nodes"])
-                #             true_edges = set(map(tuple, summary[true_cid]["edges"]))
-
-                #             ff.write(f"\n--- Ground Truth Community ---\n")
-                #             ff.write(f"  Community ID: {true_cid}\n")
-                #             ff.write(f"  Node count: {len(true_nodes)}\n")
-                #             ff.write(f"  Edge count: {len(true_edges)}\n")
+                    if metric.lower() == "w1":
+                        weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)
+                        weights_inv = weights_inv1.detach()
+                        weights_inv2 = weights_inv2.detach()
+                        ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
                             
-                #             curv = summary[true_cid].get("total_curvature", 0.0)
-                #             ff.write(f"  Total curvature: {curv:.4f}\n")
-                #             curv_correct.append(curv)
+                    elif metric.lower() == "w3":
+                        weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
+                        weights_inv = weights_inv1.detach()
+                        weights_inv2 = weights_inv2.detach()
+                        ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
+                    else:
+                        raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+                    
+                    res_l[l].append((ricci_curvature, weights_inv.shape[0], dims))
+                    
+            print(f'Finished label {l}.')
+                    
+        with open(res_path + model_full_n + metric + '_' + str(layer_num) + dataset + "_res_correct.pkl", 'wb') as file:
+            pickle.dump(res_l, file)
+        with open(res_path + model_full_n + metric + '_' + str(layer_num) + dataset + "_res_misclassified.pkl", 'wb') as file:
+            pickle.dump(res_l_non, file)
 
-                #             node_list_correct.append(len(true_nodes))
-                #             edge_list_correct.append(len(true_edges))
-                            
-                #             # Find the largest community not equal to the ground-truth one
-                #             largest_cid = None
-                #             largest_size = -1
 
-                #             for cid, comm in summary.items():
-                #                 if cid == true_cid:
-                #                     continue
-                #                 size = len(comm["nodes"])  # Or use len(comm["edges"]) to switch to edge-based size
-                #                 if size > largest_size:
-                #                     largest_cid = cid
-                #                     largest_size = size
-
-                #             if largest_cid is not None:
-                #                 largest_nodes = set(summary[largest_cid]["nodes"])
-                #                 largest_edges = set(map(tuple, summary[largest_cid]["edges"]))
-
-                #                 node_list_other.append(len(largest_nodes))
-                #                 edge_list_other.append(len(largest_edges))
-                                
-                #                 ff.write(f"\n--- Largest Non-GT Community ---\n")
-                #                 ff.write(f"  Community ID: {largest_cid}\n")
-                #                 ff.write(f"  Node count: {len(largest_nodes)}\n")
-                #                 ff.write(f"  Edge count: {len(largest_edges)}\n")
-                #                 curv = summary[largest_cid].get("total_curvature", 0.0)
-                #                 ff.write(f"  Total curvature: {curv:.4f}\n")
-                #                 curv_other.append(curv)
-
-                #             else:
-                #                 node_list_other.append(0)
-                #                 edge_list_other.append(0)
-                #                 curv_other.append(0)
-                #                 ff.write(f"\n--- Largest Non-GT Community ---\n")
-                #                 ff.write(f"  Not found (only GT community exists)\n")
-                #         else:
-                #             ff.write(f"\n--- Ground Truth Community ---\n")
-                #             ff.write(f"  Not found for node {true_output_node}\n")
-                #             node_list_correct.append(0)
-                #             edge_list_correct.append(0)
-                #             curv_correct.append(0)
-
-                        
-                # node_list_mis = np.array(node_list_mis)
-                # node_list_ground = np.array(node_list_ground)
-                # node_list_correct = np.array(node_list_correct)
-                # edge_list_mis = np.array(edge_list_mis)
-                # edge_list_ground = np.array(edge_list_ground)
-                # edge_list_correct = np.array(edge_list_correct)
-                # node_list_other = np.array(node_list_other)
-                # edge_list_other = np.array(edge_list_other)
-                # curv_mis = np.array(curv_mis)
-                # curv_ground = np.array(curv_ground)
-                # curv_correct = np.array(curv_correct)
-                # curv_other = np.array(curv_other)
-                            
-                # ff.write(f'\nFor the misclassified examples:\n') 
-                # ff.write(f'There are total {len(node_list_mis)} communities, {np.sum(node_list_mis == 0)} are zero (not exist);\n')
-                # ff.write(f'{len(node_list_ground)} ground truth communities, {np.sum(node_list_ground == 0)} are zero (not exist).\n')
-
-                # ff.write(f'The average node number (non-zero) for misclassified community is {np.mean(node_list_mis[node_list_mis != 0]):.3f}, ')
-                # ff.write(f'edge number is {np.mean(edge_list_mis[edge_list_mis != 0]):.2f}, ')
-                # ff.write(f'curvature is {np.mean(curv_mis[curv_mis != 0]):.4f}\n')
-
-                # ff.write(f'The average node number (non-zero) for ground truth community is {np.mean(node_list_ground[node_list_ground != 0]):.3f}, ')
-                # ff.write(f'edge number is {np.mean(edge_list_ground[edge_list_ground != 0]):.2f}, ')
-                # ff.write(f'curvature is {np.mean(curv_ground[curv_ground != 0]):.4f}\n')
-
-                # ff.write(f'\nFor the correctly classified examples:\n')
-                # ff.write(f'There are total {len(node_list_correct)} communities, {np.sum(node_list_correct == 0)} are zero (not exist).\n')
-
-                # ff.write(f'The average node number (non-zero) is {np.mean(node_list_correct[node_list_correct != 0]):.3f}, ')
-                # ff.write(f'edge number is {np.mean(edge_list_correct[edge_list_correct != 0]):.2f}\n')
-                # ff.write(f'curvature is {np.mean(curv_correct[curv_correct != 0]):.4f}\n')
-
-                # ff.write(f'The average node number (non-zero) for largest non-GT communities is {np.mean(node_list_other[node_list_other != 0]):.3f}, ')
-                # ff.write(f'edge number is {np.mean(edge_list_other[edge_list_other != 0]):.2f}\n')
-                # ff.write(f'curvature is {np.mean(curv_other[curv_other != 0]):.4f}\n')
+           

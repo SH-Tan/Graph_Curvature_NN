@@ -377,6 +377,91 @@ class FC_MD(nn.Module):
 
         return weights_inv
 
+    
+    
+    # weights regularization 
+    def normalization_weight_w3(self, nodes, weights, dims):
+        # batch = nodes.shape[0]
+        nodes_num = nodes.shape[1]
+        prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
+        prefix_dims = torch.cat([torch.tensor([0]), prefix_dims])
+
+        cur_layer = 1
+        start_col = 0
+        end_col = dims[cur_layer-1] * dims[cur_layer]
+        step = dims[cur_layer]
+        neighbors = torch.arange(prefix_dims[cur_layer-1], prefix_dims[cur_layer])
+        
+        weights_inv1 = torch.zeros_like(weights)
+        weights_inv2 = torch.zeros_like(weights)
+        
+        # go through each node except input layer
+        for n in range(dims[0], nodes_num):
+            if (n >= prefix_dims[cur_layer+1]):
+                cur_layer += 1
+                
+                start_col = end_col
+                end_col += (dims[cur_layer-1] * dims[cur_layer])
+                step = dims[cur_layer]
+            
+                neighbors = torch.arange(prefix_dims[cur_layer-1], prefix_dims[cur_layer])
+            
+            # print(f'start: {start_col + (n - prefix_dims[cur_layer])}, end: {end_col}, step: {step}')
+            in_edges = torch.arange(start_col + (n - prefix_dims[cur_layer]), end_col, step)
+            
+            w = nodes[:, neighbors] * weights[:, in_edges] # batch * neighbors.size()
+            
+            positive_w = torch.where(w > 0, w, torch.zeros_like(w))
+            pos_sum = positive_w.sum(dim=1, keepdim=True) # batch * 1
+            
+            negative_w = torch.where(w <= 0, w, torch.zeros_like(w))
+            neg_sum = negative_w.sum(dim=1, keepdim=True) # batch * 1
+            
+            sum = torch.sum(w, axis = 1, keepdim=True) # batch * 1
+            
+            positive_s_i = torch.where(sum > 0)[0] # indices
+            negative_s_i = torch.where(sum < 0)[0] # indices
+            
+            # w2
+            sub_pos_a2 = torch.ones_like(weights[positive_s_i][:, in_edges]) * nodes[positive_s_i][:, neighbors]
+            sub_neg_a2 = torch.ones_like(weights[negative_s_i][:, in_edges]) * nodes[negative_s_i][:, neighbors]
+            # w1
+            sub_pos_a1 = weights[positive_s_i][:, in_edges] 
+            sub_neg_a1 = weights[negative_s_i][:, in_edges] 
+            
+            # w1
+            mask_pos = sub_pos_a1 > 0
+            mask_neg = sub_neg_a1 <= 0
+
+            values_pos = (sub_pos_a1 * (sum[positive_s_i] / pos_sum[positive_s_i]))
+            values_neg = -(sub_neg_a1 * (sum[negative_s_i] / neg_sum[negative_s_i]))
+            
+            sub_pos_a_inv = torch.where(mask_pos, 1./values_pos, torch.tensor(0.))
+            sub_neg_a_inv = torch.where(mask_neg, 1./values_neg, torch.tensor(0.))
+            
+            weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
+            weights_inv1[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv
+            
+            # w2
+            values_pos2 = torch.abs(sub_pos_a2 * (sum[positive_s_i] / pos_sum[positive_s_i]))
+            values_neg2 = torch.abs(-(sub_neg_a2 * (sum[negative_s_i] / neg_sum[negative_s_i])))
+            
+            sub_pos_a_inv2 = torch.where(mask_pos, 1./values_pos2, torch.tensor(0.))
+            sub_neg_a_inv2 = torch.where(mask_neg, 1./values_neg2, torch.tensor(0.))
+            
+            # # w2
+            # values_pos2 = torch.abs(sub_pos_a2)
+            # values_neg2 = torch.abs(sub_neg_a2)
+            
+            # sub_pos_a_inv2 = 1./values_pos2
+            # sub_neg_a_inv2 = 1./values_neg2
+            
+            
+            weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
+            weights_inv2[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv2
+
+        return weights_inv1, weights_inv2
+    
 
     
     def normalization_weight_w6(self, nodes, weights, dims, q):
