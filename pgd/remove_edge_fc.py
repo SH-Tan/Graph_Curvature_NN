@@ -308,11 +308,8 @@ def remove_edge_fc(args):
                 print(f'Current label {l}: \n')
                 ff.write(f'Current label {l}: \n')
 
-                neg_acc_adv_2 = []
                 neg_acc_adv_other = []
                 pos_acc_adv = []
-
-                neg_acc_clean_2 = []
                 neg_acc_clean_other = []
                 pos_acc_clean = []
 
