@@ -72,6 +72,6 @@ if __name__=='__main__':
         avg_statics_lidar(args)
         
     if args.community:
-        # cal_community(args)
-        avg_f_cal_tanh(args)
+        cal_community(args)
+        # avg_f_cal_tanh(args)
         

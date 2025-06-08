@@ -71,30 +71,36 @@ def cal_community(args):
             res_dict = pickle.load(file)
             
         for l in selected_classes:
-            edge_list_correct = []
-            node_list_correct = []
-            curv_correct = []
-            edge_list_other = []
-            node_list_other= []     
-            curv_other = [] 
-            
+            edge_list_gt = []
+            node_list_gt = []
+            curv_gt = []
+            edge_list_gt_wo_input = []
+            node_list_gt_wo_input = []
+            curv_gt_wo_input = []
+            edge_list_gt_wo_output = []
+            node_list_gt_wo_output = []
+            curv_gt_wo_output = []
+
             # Accumulate across examples
             output_layer_neg_indegrees_all = []  # List of lists
-            second_layer_high_indegree_counts = []  # List of ints      
+            high_indegree_counts = []  # List of ints      
             output_layer_in_degrees_all = []
+            single_node_communities_list = []
+            zero_node_negative_outgoing_list = []
+            zero_node_count_list = []
              
             with open(res_path + "community_" + str(l) + ".txt", "w+") as ff:
                 ff.write(f'W = {metric}: For model {model_type} - {model_pre_name}, layer {layer_num}: \n')
                 ff.write(f'For the correct examples - label {l}: \n')
-                for (ricci, batch, dim) in res_dict[l]:
+                for (ricci, batch, dim, node_ori) in res_dict[l]:
                     prefix_dims = np.cumsum([0] + dim).tolist()
                     
                     result = analyze_graph_structure_with_community_indegree(
-                        ricci, batch, prefix_dims, threshold=thre
+                        ricci, batch, prefix_dims, node_ori, threshold=thre
                     )
                     
                     in_degree_info = result["in_degree"]
-                    summary = result["communities_wo_input_layer"] 
+                    summary = result["communities_w_input_layer"] 
                     node_communities = result["node_communities"] 
                     inter_layer_info = result["inter_layer_edges"]
                     inter_layer_neg_info = result["inter_layer_edges_neg"]
@@ -127,17 +133,27 @@ def cal_community(args):
                         ff.write(f"  Output neuron {i}: {val:.4f}\n")
                     ff.write("\n")
 
-                    # 2. Count neurons in second layer with in-degree > 200 (assuming second layer is index 1)
-                    second_layer_start = prefix_dims[1]
-                    second_layer_end = prefix_dims[2]
-
+                    # 2. Count all neurons with neg in-degree > 50
                     high_indegree_count = sum(
-                        1 for node in range(second_layer_start, second_layer_end)
-                        if neg_deg_dict.get(node, 0) > 200
+                        1 for node, deg in neg_deg_dict.items() if deg > 100
                     )
-                    second_layer_high_indegree_counts.append(high_indegree_count)
+                    high_indegree_counts.append(high_indegree_count)  # You may want to rename this variable
+                    
+                    # 3. Single-node communities
+                    single_node_communities = sum(1 for comm in summary.values() if len(comm['nodes']) == 1)
+                    ff.write(f"Number of single-node communities: {single_node_communities}\n")
+                    single_node_communities_list.append(single_node_communities)
+                    
+                    # 4. zero input node and total outgoing negtaive curvature edges 
+                    total_zero_nodes = result["total_zero_nodes"] 
+                    total_out_neg_edge = result["zero_node_negative_outgoing_edges"] 
+                    ff.write(f"Number of zero input node: {total_zero_nodes}, total negative outgoing edge number of theses nodes is {total_out_neg_edge}\n")
 
-                    ff.write("=== Inter-Layer Edge Counts (All Edges) ===\n")
+                    # Accumulate for averaging
+                    zero_node_count_list.append(total_zero_nodes)
+                    zero_node_negative_outgoing_list.append(total_out_neg_edge)
+
+                    ff.write("\n=== Inter-Layer Edge Counts (All Edges) ===\n")
                     for (layer_from, layer_to), count in sorted(inter_layer_info.items()):
                         ff.write(f"  From layer {layer_from} to layer {layer_to}: {count} edges\n")
                     ff.write("\n")
@@ -151,7 +167,7 @@ def cal_community(args):
                     for (layer_from, layer_to), count in sorted(inter_layer_filteres_info.items()):
                         ff.write(f"  From layer {layer_from} to layer {layer_to}: {count} edges\n")
                     ff.write("\n")
-                    
+   
                     # Containers for accumulating averages
                     per_layer_avg_indegree = defaultdict(list)
                     per_layer_avg_cwdegree = defaultdict(list)
@@ -175,7 +191,7 @@ def cal_community(args):
                             ff.write(f"Layer {layer_idx}: Avg. Neg In-Degree = {avg_indeg:.2f}, Avg. CW-Degree = {avg_cwdeg:.2f}\n")
 
                     ff.write("\n=== Node Counts by Layer for In-degree Thresholds ===\n")
-                    thresholds = [50, 100, 150, 200]
+                    thresholds = [20, 30, 50, 100, 150]
                     num_layers = len(prefix_dims) - 1
 
                     for deg_type in ["full", "negative", "filtered"]:
@@ -208,24 +224,44 @@ def cal_community(args):
                         true_community_id = next(iter(true_communities))
                         true_comm_data = summary[true_community_id]
 
-                        true_nodes = set(true_comm_data["nodes"])
-                        true_edges = set(map(tuple, true_comm_data["edges"]))
+                        true_nodes = true_comm_data["node_count"]
+                        true_edges = true_comm_data["edge_count"]
                         total_curvature_true = true_comm_data.get("total_internal_curvature", 0.0)
+                        
+                        true_nodes_wo_input = true_comm_data["stats_wo_input_layer"]
+                        total_curvature_true_wo_input = true_nodes_wo_input.get("total_internal_curvature", 0.0)
+                        
+                        true_nodes_wo_output = true_comm_data["stats_wo_output_layer"]
+                        total_curvature_true_wo_output = true_nodes_wo_output.get("total_internal_curvature", 0.0)
 
                         ff.write("\n--- Ground Truth Community ---\n")
                         ff.write(f"  Community ID: {true_community_id}\n")
-                        ff.write(f"  Node count: {len(true_nodes)}\n")
-                        ff.write(f"  Edge count: {len(true_edges)}\n")
+                        ff.write(f"  Node count: {true_nodes}\n")
+                        ff.write(f"  Edge count: {true_edges}\n")
                         ff.write(f"  Total curvature: {total_curvature_true:.4f}\n")
+                        ff.write(f"  Node count wo input: {true_nodes_wo_input['node_count']}\n")
+                        ff.write(f"  Edge count wo input: {true_nodes_wo_input['edge_count']}\n")
+                        ff.write(f"  Total curvature wo input: {total_curvature_true_wo_input:.4f}\n")
+                        ff.write(f"  Node count wo output: {true_nodes_wo_output['node_count']}\n")
+                        ff.write(f"  Edge count wo output: {true_nodes_wo_output['edge_count']}\n")
+                        ff.write(f"  Total curvature wo output: {total_curvature_true_wo_output:.4f}\n")
 
-                        curv_correct.append(total_curvature_true)
-                        node_list_correct.append(len(true_nodes))
-                        edge_list_correct.append(len(true_edges))
+                        curv_gt.append(total_curvature_true)
+                        node_list_gt.append(true_nodes)
+                        edge_list_gt.append(true_edges)
+                        
+                        curv_gt_wo_input.append(total_curvature_true_wo_input)
+                        node_list_gt_wo_input.append(true_nodes_wo_input["node_count"])
+                        edge_list_gt_wo_input.append(true_nodes_wo_input["edge_count"])
+                        
+                        curv_gt_wo_output.append(total_curvature_true_wo_output)
+                        node_list_gt_wo_output.append(true_nodes_wo_output["node_count"])
+                        edge_list_gt_wo_output.append(true_nodes_wo_output["edge_count"])
                         
                         for layer_idx in range(len(prefix_dims) - 1):
                             start, end = prefix_dims[layer_idx], prefix_dims[layer_idx + 1]
                             layer_nodes = set(range(start, end))
-                            comm_nodes = true_nodes & layer_nodes
+                            comm_nodes = set(true_comm_data["nodes"]) & layer_nodes
 
                             if comm_nodes:
                                 indegs = [neg_deg_dict.get(n, 0) for n in comm_nodes]
@@ -237,57 +273,31 @@ def cal_community(args):
                                 gt_comm_layer_avg_indegree[layer_idx].append(avg_indeg)
                                 gt_comm_layer_avg_cwdegree[layer_idx].append(avg_cwdeg)
 
-                                ff.write(f"GT Community Layer {layer_idx}: Avg. In-Deg = {avg_indeg:.2f}, Avg. CW-Deg = {avg_cwdeg:.2f}\n")
-
-                        # Find largest community other than true community
-                        largest_community_id = None
-                        largest_size = -1
-
-                        for cid, comm in summary.items():
-                            if cid == true_community_id:
-                                continue
-                            comm_size = len(comm["nodes"])
-                            if comm_size > largest_size:
-                                largest_community_id = cid
-                                largest_size = comm_size
-
-                        if largest_community_id is not None:
-                            largest_comm_data = summary[largest_community_id]
-                            largest_nodes = set(largest_comm_data["nodes"])
-                            largest_edges = set(map(tuple, largest_comm_data["edges"]))
-                            total_curvature_largest = largest_comm_data.get("total_internal_curvature", 0.0)
-
-                            node_list_other.append(len(largest_nodes))
-                            edge_list_other.append(len(largest_edges))
-                            curv_other.append(total_curvature_largest)
-
-                            ff.write("\n--- Largest Non-GT Community ---\n")
-                            ff.write(f"  Community ID: {largest_community_id}\n")
-                            ff.write(f"  Node count: {len(largest_nodes)}\n")
-                            ff.write(f"  Edge count: {len(largest_edges)}\n")
-                            ff.write(f"  Total curvature: {total_curvature_largest:.4f}\n")
-                        else:
-                            node_list_other.append(0)
-                            edge_list_other.append(0)
-                            curv_other.append(0)
-                            ff.write("\n--- Largest Non-GT Community ---\n")
-                            ff.write("  Not found (only GT community exists)\n")
-
+                                ff.write(f"GT Community Layer {layer_idx}: Avg. In-Deg = {avg_indeg:.2f}, Avg. CW-Deg = {avg_cwdeg:.2f}\n") 
                     else:
                         ff.write("\n--- Ground Truth Community ---\n")
                         ff.write(f"  Not found for node {true_output_node}\n")
 
-                        node_list_correct.append(0)
-                        edge_list_correct.append(0)
-                        curv_correct.append(0)
+                        edge_list_gt.append(0)
+                        node_list_gt.append(0)
+                        curv_gt.append(0)
+                        edge_list_gt_wo_input.append(0)
+                        node_list_gt_wo_input.append(0)
+                        curv_gt_wo_input.append(0)
+                        edge_list_gt_wo_output.append(0)
+                        node_list_gt_wo_output.append(0)
+                        curv_gt_wo_output.append(0)
 
 
-                node_list_correct = np.array(node_list_correct)
-                edge_list_correct = np.array(edge_list_correct)
-                node_list_other = np.array(node_list_other)
-                edge_list_other = np.array(edge_list_other)
-                curv_correct = np.array(curv_correct)
-                curv_other = np.array(curv_other)
+                edge_list_gt = np.array(edge_list_gt)
+                node_list_gt = np.array(node_list_gt)
+                curv_gt = np.array(curv_gt)
+                edge_list_gt_wo_input = np.array(edge_list_gt_wo_input)
+                node_list_gt_wo_input = np.array(node_list_gt_wo_input)
+                curv_gt_wo_input = np.array(curv_gt_wo_input)
+                edge_list_gt_wo_output = np.array(edge_list_gt_wo_output)
+                node_list_gt_wo_output = np.array(node_list_gt_wo_output)
+                curv_gt_wo_output = np.array(curv_gt_wo_output)
                 
                 num_examples = len(output_layer_neg_indegrees_all)
                 output_size = len(output_layer_neg_indegrees_all[0]) if output_layer_neg_indegrees_all else 0
@@ -303,18 +313,23 @@ def cal_community(args):
                 ]
 
                 # Average count of high in-degree neurons in 2nd layer
-                avg_second_layer_high = sum(second_layer_high_indegree_counts) / num_examples if num_examples > 0 else 0
+                avg_second_layer_high = sum(high_indegree_counts) / num_examples if num_examples > 0 else 0
+                avg_single_hop_communities = np.mean(single_node_communities_list)
 
                 ff.write(f'\nFor the correctly classified examples:\n')
-                ff.write(f'There are total {len(node_list_correct)} communities, {np.sum(node_list_correct == 0)} are zero (not exist).\n')
+                ff.write(f'There are total {len(node_list_gt)} GT communities, {np.sum(node_list_gt == 0)} are zero (not exist).\n')
 
-                ff.write(f'The average node number (non-zero) is {np.mean(node_list_correct[node_list_correct != 0]):.3f}, ')
-                ff.write(f'edge number is {np.mean(edge_list_correct[edge_list_correct != 0]):.2f}\n')
-                ff.write(f'curvature is {np.mean(curv_correct[curv_correct != 0]):.4f}\n')
-
-                ff.write(f'The average node number (non-zero) for largest non-GT communities is {np.mean(node_list_other[node_list_other != 0]):.3f}, ')
-                ff.write(f'edge number is {np.mean(edge_list_other[edge_list_other != 0]):.2f}\n')
-                ff.write(f'curvature is {np.mean(curv_other[curv_other != 0]):.4f}\n')
+                ff.write(f' (overall) The average node number (non-zero) is {np.mean(node_list_gt[node_list_gt != 0]):.3f}, ')
+                ff.write(f'edge number is {np.mean(edge_list_gt[edge_list_gt != 0]):.2f}\n')
+                ff.write(f'curvature is {np.mean(curv_gt[curv_gt != 0]):.4f}\n')
+                
+                ff.write(f'\n (without input layer) The average node number (non-zero) is {np.mean(node_list_gt_wo_input[node_list_gt_wo_input != 0]):.3f}, ')
+                ff.write(f'edge number is {np.mean(edge_list_gt_wo_input[edge_list_gt_wo_input != 0]):.2f}\n')
+                ff.write(f'curvature is {np.mean(curv_gt_wo_input[curv_gt_wo_input != 0]):.4f}\n')
+                
+                ff.write(f'\n (without output layer) The average node number (non-zero) is {np.mean(node_list_gt_wo_output[node_list_gt_wo_output != 0]):.3f}, ')
+                ff.write(f'edge number is {np.mean(edge_list_gt_wo_output[edge_list_gt_wo_output != 0]):.2f}\n')
+                ff.write(f'curvature is {np.mean(curv_gt_wo_output[curv_gt_wo_output != 0]):.4f}\n')
                 
                 ff.write("\n=== Overall Avg. In-Degree and CW-Degree per Layer (Negative Graph) ===\n")
                 for layer_idx in sorted(per_layer_avg_indegree.keys()):
@@ -331,7 +346,15 @@ def cal_community(args):
                 ff.write("\n=== Average Negative In-Degree of Output Neurons ===\n")
                 for i, (val1, val2) in enumerate(zip(avg_output_neg_indegree,avg_output_cw_degree)):
                     ff.write(f"  Output neuron {i}: in-degee edge: {val1:.2f} - curvature: {val2:.2f}\n")
+                    
+                ff.write("\n=== Aggregated Zero Input Node Statistics ===\n")
+                ff.write(f"Average number of zero input nodes: {np.mean(zero_node_count_list):.2f}\n")
+                ff.write(f"Average number of negative outgoing edges from zero input nodes: {np.mean(zero_node_negative_outgoing_list):.2f}\n")
 
-                ff.write(f"\n=== Average # of 2nd-layer neurons with neg. in-degree > 200: {avg_second_layer_high:.2f} ===\n")
+                input_layer_size = prefix_dims[1] - prefix_dims[0]
+                ff.write(f"Average percentage of zero input nodes: {np.mean(zero_node_count_list) / input_layer_size * 100:.2f}%\n")
+
+                ff.write(f"\n=== Average # of neurons with neg. in-degree > 100 for overall graph: {avg_second_layer_high:.2f} ===\n")
+                ff.write(f"\n=== Average # of single node communities: {avg_single_hop_communities:.2f} ===\n")
                 
                 print(f'Finish label {l}.')

@@ -110,4 +110,4 @@
 
 - python removal.py --lidar 0 --image 1 --cifar small --metric w3 --model_type cnn --model_name ori --model_path CNN/models/ --mnist_res_path res/community/cifar_ori/ --dataset cifar --community 1
 
-- python test.py --lidar 0 --image 0 --metric w1 --model_type fc --model_name ori --community 1 --mnist_data_path res/community0/ --mnist_res_path statistics/q_inv/
+- python test.py --lidar 0 --image 0 --metric w3 --model_type fc --model_name ori --community 1 --mnist_data_path res/community0/ --mnist_res_path statistics/q_inv/

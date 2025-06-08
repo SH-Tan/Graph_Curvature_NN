@@ -276,8 +276,7 @@ def find_all_backward_communities(curvature, b, prefix_dims, threshold=0.0):
 
 
 
-
-def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, threshold=0.0):
+def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, node, threshold=0.0):
     full_edges = set()
     neg_edges = set()
     threshold_edges = set()
@@ -291,7 +290,12 @@ def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, t
     inter_layer_edges_filtered = defaultdict(int)
     edge_curvatures = dict()
 
-    curvature_weighted_degree = defaultdict(float)  # Sum of negative curvatures per node
+    curvature_weighted_degree = defaultdict(float)
+
+    negative_outgoing_from_zero_nodes = 0
+
+    input_start, input_end = prefix_dims[0], prefix_dims[1]
+    zero_nodes = set(i for i in range(input_start, input_end) if node[0][i].item() == 0)
 
     for batch in range(b):
         ricci_curv = curvature[batch]
@@ -312,9 +316,12 @@ def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, t
             if c < threshold:
                 threshold_edges.add((i, j))
                 in_degree_filtered[j] += 1
-                edge_curvatures[(i, j)] = c
                 curvature_weighted_degree[j] += c
                 inter_layer_edges_filtered[(i_layer, j_layer)] += 1
+                edge_curvatures[(i, j)] = c
+                
+                if i in zero_nodes:
+                    negative_outgoing_from_zero_nodes += 1
 
     # Build filtered graph for community detection
     neg_incoming = defaultdict(set)
@@ -322,6 +329,7 @@ def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, t
         neg_incoming[v].add(u)
 
     input_layer_nodes = set(range(prefix_dims[0], prefix_dims[1]))
+    output_layer_nodes = set(range(prefix_dims[-2], prefix_dims[-1]))
     threshold_nodes = set()
     neg_outgoing = defaultdict(set)
     for u, v in threshold_edges:
@@ -341,44 +349,66 @@ def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, t
         community_edge_set = set()
 
         while queue:
-            node = queue.popleft()
-            if node in visited or node in input_layer_nodes:
+            node_ = queue.popleft()
+            if node_ in visited:
                 continue
-            visited.add(node)
-            community_nodes.add(node)
-            node_communities[node].add(community_id)
-            for prev in neg_incoming.get(node, []):
-                if prev in input_layer_nodes:
-                    continue
-                community_edge_set.add((prev, node))
-                queue.append(prev)
+            visited.add(node_)
+            community_nodes.add(node_)
+            node_communities[node_].add(community_id)
+            for prev in neg_incoming.get(node_, []):
+                community_edge_set.add((prev, node_))
+                if prev not in visited:
+                    queue.append(prev)
 
         if community_nodes:
-            # Total curvature of internal edges
             total_internal_curvature = sum(edge_curvatures.get((u, v), 0.0) for (u, v) in community_edge_set)
+            # --- Whole community stats ---
+            total_nodes_all = len(community_nodes)
+            total_edges_all = len(community_edge_set)
+            curvature_all = total_internal_curvature
 
-            # In-degree of the community from outside
+            # --- Without input layer ---
+            nodes_wo_input = {n for n in community_nodes if n not in input_layer_nodes}
+            edges_wo_input = {(u, v) for (u, v) in community_edge_set if u not in input_layer_nodes and v not in input_layer_nodes}
+            curvature_wo_input = sum(edge_curvatures.get((u, v), 0.0) for (u, v) in edges_wo_input)
+
+            # --- Without output layer ---
+            nodes_wo_output = {n for n in community_nodes if n not in output_layer_nodes}
+            edges_wo_output = {(u, v) for (u, v) in community_edge_set if u not in output_layer_nodes and v not in output_layer_nodes}
+            curvature_wo_output = sum(edge_curvatures.get((u, v), 0.0) for (u, v) in edges_wo_output)
+    
             external_in_degree = sum(
-                1 for (u, v) in threshold_edges
-                if v in community_nodes and u not in community_nodes
+                1 for (u, v) in threshold_edges if v in community_nodes and u not in community_nodes
             )
 
             communities[community_id] = {
-                "node_count": len(community_nodes),
-                "edge_count": len(community_edge_set),
+                "node_count": total_nodes_all,
+                "edge_count": total_edges_all,
                 "nodes": list(community_nodes),
                 "edges": list(community_edge_set),
-                "total_internal_curvature": total_internal_curvature,
-                "external_in_degree": external_in_degree
+                "total_internal_curvature": curvature_all,
+                "external_in_degree": external_in_degree,
+
+                # New fields
+                "stats_wo_input_layer": {
+                    "node_count": len(nodes_wo_input),
+                    "edge_count": len(edges_wo_input),
+                    "total_internal_curvature": curvature_wo_input
+                },
+                "stats_wo_output_layer": {
+                    "node_count": len(nodes_wo_output),
+                    "edge_count": len(edges_wo_output),
+                    "total_internal_curvature": curvature_wo_output
+                }
             }
 
             community_id += 1
 
-    # === 1. Average in-degree per layer in the negative graph ===
+    # === Layer-wise in-degree ===
     in_degrees_per_layer = defaultdict(list)
-    for node in in_degree_negative:
-        layer = np.searchsorted(prefix_dims, node, side='right') - 1
-        in_degrees_per_layer[layer].append(in_degree_negative[node])
+    for node_id in in_degree_negative:
+        layer = np.searchsorted(prefix_dims, node_id, side='right') - 1
+        in_degrees_per_layer[layer].append(in_degree_negative[node_id])
 
     avg_indegree_per_layer = {
         layer: {
@@ -389,21 +419,18 @@ def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, t
         for layer, degs in in_degrees_per_layer.items()
     }
 
-    # === 2. In-degree per node in each community ===
     in_degree_per_community = {}
     for cid, data in communities.items():
         nodes = set(data["nodes"])
-        node_indegree_map = {}
-        for node in nodes:
-            if node in in_degree_filtered:
-                node_indegree_map[node] = in_degree_filtered[node]
+        node_indegree_map = {
+            node: in_degree_filtered[node]
+            for node in nodes if node in in_degree_filtered
+        }
         if node_indegree_map:
             in_degree_per_community[cid] = node_indegree_map
 
-    # === 3. Node participation in multiple communities ===
     node_participation = {node: len(cids) for node, cids in node_communities.items()}
 
-    # === Final return ===
     return {
         "in_degree": {
             "full": dict(in_degree_full),
@@ -413,14 +440,17 @@ def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, t
         "inter_layer_edges": dict(inter_layer_edges),
         "inter_layer_edges_neg": dict(inter_layer_edges_neg),
         "inter_layer_edges_filtered": dict(inter_layer_edges_filtered),
-        "communities_wo_input_layer": communities,
+        "communities_w_input_layer": communities,
         "node_communities": node_communities,
         "avg_indegree_negative_graph_by_layer": avg_indegree_per_layer,
         "in_degree_negative_graph": dict(in_degree_negative),
         "in_degree_per_community": in_degree_per_community,
         "curvature_weighted_in_degree": dict(curvature_weighted_degree),
-        "node_participation": node_participation
+        "node_participation": node_participation,
+        "zero_node_negative_outgoing_edges": negative_outgoing_from_zero_nodes,
+        "total_zero_nodes": len(zero_nodes)
     }
+
 
 
 

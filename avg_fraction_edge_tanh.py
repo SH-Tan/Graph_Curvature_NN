@@ -36,9 +36,9 @@ def get_fraction(curvature, b, dims):
                 zero_e[l] += 1
             total_e[l] += 1
             
-            if l == 0:
+            if curr < 0 and l == 0:
                 c_first_layer.append(curr)
-            else:
+            elif curr < 0 and l > 0:
                 c.append(curr)
             c_per_l[l].append(curr)
     return neg, total_e, c, c_per_l, c_first_layer, zero_e
@@ -119,6 +119,7 @@ def avg_f_cal_tanh(args):
             low_c_first_layer = []
             high_c = 0.
             var_c = 0.
+            var_c_first = 0.
             c_neg = 0.
             c_zero = 0.
             c_pos = 0.
@@ -162,6 +163,7 @@ def avg_f_cal_tanh(args):
                     low_c_first_layer.append(np.min(c_first_layer))
                     high_c += np.max(curv)
                     var_c += np.var(curv)
+                    var_c_first += np.var(c_first_layer)
                     count += 1
                     
                     
@@ -199,9 +201,10 @@ def avg_f_cal_tanh(args):
             med_c = med_c/count if count > 0 else 0.
             high_c = high_c/count if count > 0 else 0.
             var_c = var_c/count if count > 0 else 0.
+            var_c_first = var_c_first/count if count > 0 else 0.
             
             ff.write(f'\nFor all the curvatures: \n')
-            ff.write(f'The first layer: average lowest is {np.mean(low_c_first_layer)} median lowest is {np.median(low_c_first_layer) :.3f}\n')
+            ff.write(f'The first layer: average lowest is {np.mean(low_c_first_layer)} median lowest is {np.median(low_c_first_layer) :.3f}, variance is {var_c_first:.3f}\n')
             ff.write(f'The later layer: total average curvature is {avg_c :.3f}, average lowest is {np.mean(low_c)} median lowest is {np.median(low_c) :.3f}, the median is {med_c :.3f}, variance is {var_c :.3f}\n\n')
 
                     

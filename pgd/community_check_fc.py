@@ -316,7 +316,7 @@ def community_check_fc(args):
                     else:
                         raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                     
-                    res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims))
+                    res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
 
                                
             for (images, labels) in robust_pair[l]:
@@ -350,7 +350,7 @@ def community_check_fc(args):
                     else:
                         raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                     
-                    res_l[l].append((ricci_curvature, weights_inv.shape[0], dims))
+                    res_l[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
                     
             print(f'Finished label {l}.')
                     
