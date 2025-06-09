@@ -12,6 +12,7 @@ import sys
 sys.path.append("..")
 
 from pgd.remove_edge_fc import remove_edge_fc
+from pgd.remove_edge_fc_perE import remove_edge_fc_perE
 from pgd.remove_node_fc import remove_node_fc
 from CNN.remove_edge_cnn import remove_edge_cnn
 from CNN.remove_edge_cifar import remove_edge_cifar
@@ -65,7 +66,7 @@ if __name__=='__main__':
     if args.image:
         if model_type.lower() == "fc":
             if args.edge:
-                remove_edge_fc(args)
+                remove_edge_fc_perE(args)
             if args.node:
                 remove_node_fc(args)
             if args.community:

@@ -139,9 +139,9 @@ def cal_community(args):
                     )
                     high_indegree_counts.append(high_indegree_count)  # You may want to rename this variable
                     
-                    # 3. Single-node communities
-                    single_node_communities = sum(1 for comm in summary.values() if len(comm['nodes']) == 1)
-                    ff.write(f"Number of single-node communities: {single_node_communities}\n")
+                    # 3. Single-hop communities
+                    single_node_communities = sum(1 for comm in summary.values() if len(comm['nodes']) == 2)
+                    ff.write(f"Number of single-hop communities: {single_node_communities}\n")
                     single_node_communities_list.append(single_node_communities)
                     
                     # 4. zero input node and total outgoing negtaive curvature edges 
@@ -355,6 +355,6 @@ def cal_community(args):
                 ff.write(f"Average percentage of zero input nodes: {np.mean(zero_node_count_list) / input_layer_size * 100:.2f}%\n")
 
                 ff.write(f"\n=== Average # of neurons with neg. in-degree > 100 for overall graph: {avg_second_layer_high:.2f} ===\n")
-                ff.write(f"\n=== Average # of single node communities: {avg_single_hop_communities:.2f} ===\n")
+                ff.write(f"\n=== Average # of single hop communities: {avg_single_hop_communities:.2f} ===\n")
                 
                 print(f'Finish label {l}.')

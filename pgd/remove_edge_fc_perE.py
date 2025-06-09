@@ -7,6 +7,7 @@ import os
 import pandas as pd
 import torch.nn as nn
 from collections import defaultdict
+import seaborn as sns
 import copy
 
 # from GraphRicciCurvature.OllivierRicci import OllivierRicci
@@ -23,13 +24,12 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.small_model_relu import FC_MD
+from tools.small_model_tanh import FC_MD
 from tools.FC_linear import FC_Linear
 from tools.graph_curvature import graph_curvature_main_torch
 from tools.draw_net import DrawNN
-from tools.node_remove import Node_Remove
-from tools.get_node import get_key_nodes
-
+from tools.edge_remove import Edge_Remove
+from tools.get_c import get_c
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=torch.inf)
@@ -94,6 +94,23 @@ def standard_PGD(model, images, labels, device, eps=11/255, alpha=2/255, iters=4
 
 
 
+def test_clean(n, loader, device = 'cuda'):
+    n.eval()
+    total_correct = 0.
+    
+    for i, (images, labels) in enumerate(loader):
+        images = images.to(device)
+        labels = labels.to(device)
+        output = n(images)
+        pred = output.detach().max(1)[1]
+        total_correct += pred.eq(labels.view_as(pred)).sum()
+
+    # print(f'Test Accuracy for label {l}: {(float(total_correct) / len(loader.dataset)):.3f}')
+    
+    acc = float(total_correct) / len(loader.dataset)
+    return acc
+
+
 def test_clean_perlabel(n, loader, device = 'cuda'):
     n.eval()
     correct_per_label = defaultdict(int)
@@ -107,8 +124,8 @@ def test_clean_perlabel(n, loader, device = 'cuda'):
             pred = output.detach().max(1)[1]
     
             correct_per_label[l] += pred.eq(labels).sum().item()
-            total_per_label[l] += labels.size(0)  # Use labels.size(0) instead of mask.sum()
-    
+            total_per_label[l] += labels.size(0)  
+
     # Calculate accuracy per label
     accuracies = {}
     for label in selected_classes:
@@ -119,37 +136,49 @@ def test_clean_perlabel(n, loader, device = 'cuda'):
             
     return accuracies
 
+
+def test_adversarial_perlabel_perE(n, loader, eps, alpha, iters, device = 'cuda'):
+    n.eval()
+    correct_per_label = defaultdict(int)
+    total_per_label = defaultdict(int)
+    
+    for l in selected_classes:
+        for i, (images, labels) in enumerate(loader[l]):
+            images = images.to(device)
+            labels = labels.to(device)
+
+            adv_img = standard_PGD(n, images, labels, device, eps, alpha, iters)
+            adv_out = n(adv_img)
+            adv_pred = adv_out.detach().max(1)[1]
+            
+            correct_per_label[l] += adv_pred.eq(labels).sum().item()
+            total_per_label[l] += labels.size(0)  
+
+    accuracies = {}
+    for label in selected_classes:
+        if total_per_label[label] > 0:
+            accuracies[label] = correct_per_label[label] / total_per_label[label]
+        else:
+            accuracies[label] = 0.0
+            
+    return accuracies
 
 
 def test_adversarial(net, loader, eps=.1, alpha=.1, iters=100, device = 'cuda'):
     # prepare model for testing (only important for dropout, batch norm, etc.)
     net.eval()
-    correct_per_label = defaultdict(int)
-    total_per_label = defaultdict(int)
+    correct = 0.
 
     for data, target in loader:
+
         data = standard_PGD(net, data, target, device, eps=eps, alpha=alpha, iters=iters)
         data, target = data.to(device), target.to(device)
 
         output = net(data)
         pred = output.detach().max(1)[1]
-        
-        # Calculate accuracy per label
-        for label in selected_classes:
-            mask = (target == label)
-            if mask.sum() > 0:  # Only process if we have examples of this label
-                correct_per_label[label] += pred[mask].eq(target[mask]).sum().item()
-                total_per_label[label] += mask.sum().item()
+        correct += pred.eq(target.view_as(pred)).sum()
     
-    # Calculate accuracy per label
-    accuracies = {}
-    for label in selected_classes:
-        if total_per_label[label] > 0:
-            accuracies[label] = correct_per_label[label] / total_per_label[label]
-        else:
-            accuracies[label] = 0.0
-            
-    return accuracies
+    return float(correct) / len(loader.dataset)
 
 
 
@@ -157,8 +186,6 @@ def test(n, loader, eps, alpha, iters, device):
     n.eval()
     robust_pair = defaultdict(list)
     succ_pair = defaultdict(list)
-    accuracies = defaultdict(lambda: {'clean': 0.0, 'adv': 0.0})
-    total_samples = defaultdict(int)
  
     for l in selected_classes:
         for i, (images, labels) in enumerate(loader[l]):
@@ -174,72 +201,71 @@ def test(n, loader, eps, alpha, iters, device):
             robust_l = pred.eq(labels.view_as(pred)) & adv_pred.eq(labels.view_as(adv_pred))
             succ_l = pred.eq(labels.view_as(pred)) & ~adv_pred.eq(labels.view_as(adv_pred))
 
-            # Calculate accuracies for this label
-            clean_correct = pred.eq(labels.view_as(pred)).sum().item()
-            adv_correct = adv_pred.eq(labels.view_as(adv_pred)).sum().item()
-            total = labels.size(0)
-            
-            accuracies[l]['clean'] += clean_correct
-            accuracies[l]['adv'] += adv_correct
-            total_samples[l] += total
-
             succ_pair[l].append(images[succ_l].cpu())
             robust_pair[l].append(images[robust_l].cpu())
 
-    # Calculate final accuracies
-    for l in accuracies:
-        if total_samples[l] > 0:
-            accuracies[l]['clean'] /= total_samples[l]
-            accuracies[l]['adv'] /= total_samples[l]
-
-    return succ_pair, robust_pair, accuracies
+    return succ_pair, robust_pair
 
 
-def get_top_c(curvature, b):
-    # Track outgoing negative edges per node
-    out_edges = defaultdict(int)
+
+def get_top_c(curvature, b, prefix_dims, threshold = -50):
+    c = []
+    neg_e_second = set()  # Negative edges in second layer
+    neg_e_other = set()   # Negative edges in other layers 
+    pos_e = set()
     
     for batch in range(b):
         ricci_curv = np.array(curvature[batch])
         for (i, j, curr) in ricci_curv:
-            if i < 784:
+            if curr > 1:
                 continue
-            i1 = (int)(i)
-            if curr < 0:
-                out_edges[i1] += 1  # i has outgoing edge
+            c.append((i,j,curr))
 
-    # Sort nodes by number of outgoing edges
-    sorted_nodes = []
-    for node in out_edges.keys():
-        sorted_nodes.append((node, out_edges[node]))
-    sorted_nodes.sort(key=lambda x: -x[1]) # Sort by high outgoing edges
+    c.sort(key=lambda x: x[2])
     
+    # print(len(c))
+    
+    for (i,j,curr) in c:
+        i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
+        i1 = (int)(i)
+        j1 = (int)(j)
+        if curr < 0:
+            # if i_layer == 3:  # Second layer (index 1)
+            #     neg_e_second.add((i1,j1))
+            # else:
+            neg_e_other.add((i1,j1))
+        elif curr >= 0:
+            pos_e.add((i1,j1))
             
-    # Get reverse sorted list
-    reversed_nodes = sorted(sorted_nodes, key=lambda x: x[1]) # Sort by low outgoing edges
-    
-    return sorted_nodes, reversed_nodes
+    # print(len(neg_e_other))
+    # print(len(pos_e))
+    # input()
+        
+    return c, neg_e_second, neg_e_other, pos_e
 
 
 
-
-def remove_node_fc(args):
-    seed = 29
-    
-    # set random seed
+def set_seed(seed):
     random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if using multi-GPU
+
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+def remove_edge_fc_perE(args):
+    seed = 59
+    set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
-    
     train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
     sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
@@ -265,8 +291,10 @@ def remove_node_fc(args):
     if 'big' in model_pre_name.lower():
         layers = [2]
 
-    # remove_frac = [0.08, 0.2, 0.5, 0.8, 1]
-    remove_num = [1,2,3,4,5,6,7,8,9,10,15]
+    # remove_frac = [0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.8, 1]
+    # remove_num = [5,20,50,100,150,300,500,700,1000,1500,2000,2500,3000,3500,5000,10000]
+    # remove_num = [1000,1500,2000,2500,3500,5000,6000,7000,8000,9000,10000,12000,16000]
+    remove_num = []
     
     # build model
     for layer_num in layers:
@@ -276,14 +304,23 @@ def remove_node_fc(args):
             model_name = "best_ori_10l_" + str(layer_num) + ".pth"
         elif model_pre_name.lower() == "adv":
             model_name = "pgdtrain_" + str(layer_num) + ".pth"
-        elif model_pre_name.lower() == 'big_adv_01':
+        elif model_pre_name.lower() == 'big_adv':
             model_name = "fc_big_adv.pth"
             dims = model_zoo[21]
-        elif model_pre_name.lower() == 'big_adv':
-            model_name = "best_21_adv.pth"
+        elif model_pre_name.lower() == 'big_adv_01':
+            model_name = "fc_big_adv01.pth"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_ori':
             model_name = "fc_big_ori.pth"
+            dims = model_zoo[21]
+        elif model_pre_name.lower() == 'big_wd':
+            model_name = "fc_big_wd.pth"
+            dims = model_zoo[21]
+        elif model_pre_name.lower() == 'big_wd_05':
+            model_name = "fc_big_wd_05.pth"
+            dims = model_zoo[21]
+        elif model_pre_name.lower() == 'big_wd_001':
+            model_name = "fc_big_wd001.pth"
             dims = model_zoo[21]
         else:
             raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
@@ -311,30 +348,28 @@ def remove_node_fc(args):
                 edges_num += (p.shape[0] * p.shape[1])
                 neural_list.append(p.shape[0])
             i += 1
-
-
-        with open(res_path + "node_remove_acc_" + str(layer_num) + ".txt", "w+") as ff:
-            ff.write(f'For model {model_name}: \n')
-                
-            test_cleanacc = test_clean_perlabel(net_full, test_loader)
+   
+        test_cleanacc = test_clean_perlabel(net_full, sep_dataloader)
             
-            ff.write(f'The clean accuracy for original model:\n')
-            for label, acc in test_cleanacc.items():
-                ff.write(f'Label {label}: {acc:.3f}\n')
-            ff.write('\n')
+        # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
 
-            for l in selected_classes:
-                print(f'Current label {l}: \n')
-                ff.write(f'Current label {l}: \n')
+        for l in selected_classes:
+            with open(res_path + "edge_fc_tanh_" + str(l) + str(layer_num) + ".txt", "w+") as ff:
+                ff.write(f'For model {model_name}: \n')
+
+                ff.write(f'The clean accuracy for original model:\n')
+                for label, acc in test_cleanacc.items():
+                    ff.write(f'Label {label}: {acc:.3f}\n')
+                ff.write('\n')
 
                 neg_acc_adv = []
                 pos_acc_adv = []
-
                 neg_acc_clean = []
                 pos_acc_clean = []
 
                 count = 0
                 running_sum = None
+                running_p = None
                 for (images, labels) in sep_dataloader[l]:
                     if (count >= sample_size):
                         break
@@ -342,15 +377,20 @@ def remove_node_fc(args):
                         img = images[idx].to(device)
                         edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
     
-                        weights = output.detach().clone().to(device)                   
-                        weights[edge_array == 0] = 0.
-                        weights_inv = net_full.normalization_weight_w2(nodes_ori, weights, dims)
-                        weights_inv = weights_inv.detach()
-
+                        weights = output.detach().clone().to(device)     
+                        weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
+                        weights_inv = weights_inv1.detach()
+                        weights_inv2 = weights_inv2.detach()
+               
                         if running_sum is None:
                             running_sum = weights_inv
                         else:
                             running_sum = torch.cat((running_sum, weights_inv), dim=0)
+                            
+                        if running_p is None:
+                            running_p = weights_inv2
+                        else:
+                            running_p = torch.cat((running_p, weights_inv2), dim=0)
 
                         count += 1
                         if (count % 10 == 0):
@@ -360,103 +400,127 @@ def remove_node_fc(args):
                             break
 
                         # Free memory
-                        del weights, weights_inv
+                        del weights, weights_inv, weights_inv2
                         torch.cuda.empty_cache()
                 
                 if running_sum is None:
                     continue
 
                 w_avg = torch.mean(running_sum, dim=0).unsqueeze(0)
-                del running_sum
+                p_avg = torch.mean(running_p, dim=0).unsqueeze(0)
+                
+                del running_sum, running_p
                 torch.cuda.empty_cache()
-                ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, alpha=alpha)
+                
+                ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, probability_w=p_avg, alpha=alpha)
 
-                terminal_single_hop_nodes, sorted_internal_nodes = get_key_nodes(ricci_curvature, 1, prefix_dims)
-                print(f'label {l} has {len(terminal_single_hop_nodes)} terminal single-hop nodes, {len(sorted_internal_nodes)} internal nodes .. \n')
+                # all_edges, single_hop_paths, label_paths, edge_curvatures, path_length_counts = get_c(ricci_curvature, 1, prefix_dims, l)
+                c, neg_e_second, neg_e_other, pos_e = get_top_c(ricci_curvature, 1, prefix_dims)
+                reversed_pos_e = list(pos_e)[::-1]
                 
-                ff.write(f'It has {len(terminal_single_hop_nodes)} terminal single-hop nodes, {len(sorted_internal_nodes)} internal nodes .. \n')
+                # ff.write(f'Total number of edges in the graph after normalization: {len(all_edges)}\n')
+                # ff.write(f'Found {len(single_hop_paths)} single-hop paths and {len(label_paths)} negative paths reaching label neurons:\n')
+
+                # ff.write('Path length counts:\n')
+                # for length, count in sorted(path_length_counts.items()):
+                #     ff.write(f'  Length {length}: {count} paths\n')
+                # ff.write('\n\n')
                 
-                ff.write(f'First 50 terminal single-hop nodes:\n')
-                for i, node in enumerate(terminal_single_hop_nodes[:50]):
-                    ff.write(f'Node {node}\n')
-                ff.write('\n')
-                
-                ff.write(f'First 50 internal nodes:\n') 
-                for i, node in enumerate(sorted_internal_nodes[:50]):
-                    ff.write(f'Node {node}\n')
-                ff.write('\n')
+                # ff.write("Single-hop paths:\n")
+                # for path in single_hop_paths:
+                #     # Each path has only one edge
+                #     i, j, curr = path[0]
+                #     ff.write(f"({i},{j}): {curr:.3f}\n")
+
+                # ff.write("\nNegative paths reaching label neurons:\n")
+                # for path, total_curv in label_paths:
+                #     path_str = " -> ".join([f"({i},{j}): {curr:.3f}" for i, j, curr in path])
+                #     ff.write(f"{path_str} | Total curvature: {total_curv:.3f}\n")
+
+                # ff.write("\n\n\n")
+
+  
+                ff.write(f'It has {len(neg_e_second)} negative curvature edges in second layer, {len(neg_e_other)} negative curvature edges in other layers, {len(pos_e)} positive curvature egdes .. \n')
+                remove_num = [(int)(len(neg_e_other)*0.5), len(neg_e_other), (int)(len(pos_e)*0.1), (int)(len(pos_e)*0.2), (int)(len(pos_e)*0.3), (int)(len(pos_e)*0.4), (int)(len(pos_e)*0.5), (int)(len(pos_e)*0.7), (int)(len(pos_e)*0.9), (int)(len(pos_e))]
                 
                 # start remove
                 for index, rem_f in enumerate(remove_num):
-                    ff.write(f'Remove node number {rem_f}: \n')
+                    ff.write(f'Remove edge number {rem_f}: \n')
                     cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) + '_' + str(l)
-                    
-                    # remove outgoing negative curvature nodes
+
+                    # remove negative curvature edges
                     net_H.load_state_dict(torch.load(model_path + model_name))
-                    node_r = Node_Remove(net_H, dims, min(len(terminal_single_hop_nodes), rem_f), res_path)
-                    node_r.n_remove(terminal_single_hop_nodes, cur_n + "out.pth")
+                    edge_r = Edge_Remove(net_H, dims, min(rem_f, len(neg_e_other)), res_path)
+                    edge_r.e_remove(neg_e_other, cur_n + "other_neg.pth")
                     
                     # test acc
-                    net_out = FC_MD(dims, layer_num)
+                    net_neg = FC_MD(dims, layer_num)
 
-                    net_out.load_state_dict(torch.load(res_path + cur_n + "out.pth"))
-                    net_out = net_out.to(device)
-                    os.remove(res_path + cur_n + "out.pth")
+                    net_neg.load_state_dict(torch.load(res_path + cur_n + "other_neg.pth"))
+                    net_neg = net_neg.to(device)
+                    os.remove(res_path + cur_n + "other_neg.pth")
 
-                    # remove ingoing negative curvature nodes
+                    acc_clean_neg_other = test_clean_perlabel(net_neg, sep_dataloader)
+
+                    # remove positive curvature edges
                     net_H.load_state_dict(torch.load(model_path + model_name))
-                    node_r = Node_Remove(net_H, dims, min(len(sorted_internal_nodes), rem_f), res_path)
-                    node_r.n_remove(sorted_internal_nodes, cur_n + "in.pth")
+                    edge_r = Edge_Remove(net_H, dims, min(rem_f, len(reversed_pos_e)), res_path)
+                    edge_r.e_remove(reversed_pos_e, cur_n + "pos.pth")
                     
                     # test acc
-                    net_in = FC_MD(dims, layer_num)
+                    net_pos = FC_MD(dims, layer_num)
 
-                    net_in.load_state_dict(torch.load(res_path + cur_n + "in.pth"))
-                    net_in = net_in.to(device)
-                    os.remove(res_path + cur_n + "in.pth")
+                    net_pos.load_state_dict(torch.load(res_path + cur_n + "pos.pth"))
+                    net_pos = net_pos.to(device)
+                    os.remove(res_path + cur_n + "pos.pth")
+
+                    acc_clean_pos = test_clean_perlabel(net_pos, sep_dataloader)
 
                     for e in eps:
                         print(f'Current eps {e}: ')
                         ff.write(f'Current eps {e}: \n')
 
-                        test_advacc = test_adversarial(net_full, test_loader, eps=e, alpha=2/255, iters=40)
+                        test_advacc = test_adversarial_perlabel_perE(net_full, sep_dataloader, eps=e, alpha=2/255, iters=40)
                         ff.write(f'The adversary accuracy eps = {e} for original model:\n')
                         for label, acc in test_advacc.items():
                             ff.write(f'Label {label}: {acc:.3f}\n')
                         ff.write('\n')
 
-                        acc_clean_out = test_clean_perlabel(net_out, test_loader)
-                        acc_adv_out = test_adversarial(net_out, test_loader, eps=e, alpha=2/255, iters=40)
+                        acc_adv_neg_other = test_adversarial_perlabel_perE(net_neg, sep_dataloader, eps=e, alpha=2/255, iters=40)
 
-                        neg_acc_adv.append(acc_adv_out)
-                        neg_acc_clean.append(acc_clean_out)
+                        neg_acc_adv.append(acc_adv_neg_other)
+                        neg_acc_clean.append(acc_clean_neg_other)
                     
-                        ff.write(f'Test Accuracy after remove {(int)(min(len(terminal_single_hop_nodes), rem_f))} terminal single-hop nodes:\n')
-                        ff.write(f'Clean acc:\n')
-                        for label, acc in acc_clean_out.items():
-                            ff.write(f'Label {label}: {acc:.3f}\n')
-                        ff.write(f'Adversarial acc (eps = {e}):\n')
-                        for label, acc in acc_adv_out.items():
+                        ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e_other), rem_f))} neg_e_other edges:\n')
+                        ff.write(f'The clean accuracy for remove negative edges:\n')
+                        for label, acc in acc_clean_neg_other.items():
                             ff.write(f'Label {label}: {acc:.3f}\n')
                         ff.write('\n')
-                        
-                        acc_clean_in = test_clean_perlabel(net_in, test_loader)
-                        acc_adv_in = test_adversarial(net_in, test_loader, eps=e, alpha=2/255, iters=40)
-                    
-                        pos_acc_adv.append(acc_adv_in)
-                        pos_acc_clean.append(acc_clean_in)
-
-                        ff.write(f'Test Accuracy after remove {(int)(min(len(sorted_internal_nodes), rem_f))} internal nodes:\n')
-                        ff.write(f'Clean acc:\n')
-                        for label, acc in acc_clean_in.items():
+                        ff.write(f'The adversary accuracy for remove negative edges:\n')
+                        for label, acc in acc_adv_neg_other.items():
                             ff.write(f'Label {label}: {acc:.3f}\n')
-                        ff.write(f'Adversarial acc (eps = {e}):\n')
-                        for label, acc in acc_adv_in.items():
+                        ff.write('\n')
+
+
+                        acc_adv_pos = test_adversarial_perlabel_perE(net_pos, sep_dataloader, eps=e, alpha=2/255, iters=40)
+                    
+                        pos_acc_adv.append(acc_adv_pos)
+                        pos_acc_clean.append(acc_clean_pos)
+
+                        ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_pos_e), rem_f))} reversed_pos_e1 edges:\n')
+                        ff.write(f'The clean accuracy for remove positive edges:\n')
+                        for label, acc in acc_clean_pos.items():
+                            ff.write(f'Label {label}: {acc:.3f}\n')
+                        ff.write('\n')
+                        ff.write(f'The adversary accuracy for remove positive edges:\n')
+                        for label, acc in acc_adv_pos.items():
                             ff.write(f'Label {label}: {acc:.3f}\n')
                         ff.write('\n')
                         
                         ff.write("\n\n")
 
+                        excel_path = res_path + f'accuracies_layer{layer_num}_eps{e}.xlsx'
+                        
                         # Save accuracies to Excel after each fraction
                         row_data = {
                             'Remove Number': [rem_f],
@@ -478,13 +542,10 @@ def remove_node_fc(args):
                             row_data[f'Positive Edge Adv Acc Label {label}'] = [pos_acc_adv[-1][label]]
                         
                         df = pd.DataFrame(row_data)
-                        
-                        excel_path = res_path + f'node_remove_accuracies_layer{layer_num}_eps{e}.xlsx'
-                        
+
                         # If file exists, append to it, otherwise create new
                         if os.path.exists(excel_path):
                             existing_df = pd.read_excel(excel_path)
                             df = pd.concat([existing_df, df], ignore_index=True)
                             
-                        df.to_excel(excel_path, index=False)
-                    
+                        df.to_excel(excel_path, index=False)                    
