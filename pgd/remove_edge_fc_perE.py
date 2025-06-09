@@ -262,7 +262,7 @@ def remove_edge_fc_perE(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -367,13 +367,10 @@ def remove_edge_fc_perE(args):
                 neg_acc_clean = []
                 pos_acc_clean = []
 
-                count = 0
-                running_sum = None
-                running_p = None
                 for (images, labels) in sep_dataloader[l]:
-                    if (count >= sample_size):
-                        break
                     for idx in range(images.shape[0]):
+                        if (idx >= sample_size):
+                            break
                         img = images[idx].to(device)
                         edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
     
@@ -381,171 +378,116 @@ def remove_edge_fc_perE(args):
                         weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
                         weights_inv = weights_inv1.detach()
                         weights_inv2 = weights_inv2.detach()
-               
-                        if running_sum is None:
-                            running_sum = weights_inv
-                        else:
-                            running_sum = torch.cat((running_sum, weights_inv), dim=0)
-                            
-                        if running_p is None:
-                            running_p = weights_inv2
-                        else:
-                            running_p = torch.cat((running_p, weights_inv2), dim=0)
 
-                        count += 1
-                        if (count % 10 == 0):
-                            print(f'Finish {count} examples....')
-                            
-                        if (count >= sample_size):
-                            break
+                        ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
 
-                        # Free memory
-                        del weights, weights_inv, weights_inv2
-                        torch.cuda.empty_cache()
-                
-                if running_sum is None:
-                    continue
+                        c, neg_e_second, neg_e_other, pos_e = get_top_c(ricci_curvature, 1, prefix_dims)
+                        reversed_pos_e = list(pos_e)
+                        reversed_pos_e.reverse()
 
-                w_avg = torch.mean(running_sum, dim=0).unsqueeze(0)
-                p_avg = torch.mean(running_p, dim=0).unsqueeze(0)
-                
-                del running_sum, running_p
-                torch.cuda.empty_cache()
-                
-                ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, probability_w=p_avg, alpha=alpha)
-
-                # all_edges, single_hop_paths, label_paths, edge_curvatures, path_length_counts = get_c(ricci_curvature, 1, prefix_dims, l)
-                c, neg_e_second, neg_e_other, pos_e = get_top_c(ricci_curvature, 1, prefix_dims)
-                reversed_pos_e = list(pos_e)[::-1]
-                
-                # ff.write(f'Total number of edges in the graph after normalization: {len(all_edges)}\n')
-                # ff.write(f'Found {len(single_hop_paths)} single-hop paths and {len(label_paths)} negative paths reaching label neurons:\n')
-
-                # ff.write('Path length counts:\n')
-                # for length, count in sorted(path_length_counts.items()):
-                #     ff.write(f'  Length {length}: {count} paths\n')
-                # ff.write('\n\n')
-                
-                # ff.write("Single-hop paths:\n")
-                # for path in single_hop_paths:
-                #     # Each path has only one edge
-                #     i, j, curr = path[0]
-                #     ff.write(f"({i},{j}): {curr:.3f}\n")
-
-                # ff.write("\nNegative paths reaching label neurons:\n")
-                # for path, total_curv in label_paths:
-                #     path_str = " -> ".join([f"({i},{j}): {curr:.3f}" for i, j, curr in path])
-                #     ff.write(f"{path_str} | Total curvature: {total_curv:.3f}\n")
-
-                # ff.write("\n\n\n")
-
-  
-                ff.write(f'It has {len(neg_e_second)} negative curvature edges in second layer, {len(neg_e_other)} negative curvature edges in other layers, {len(pos_e)} positive curvature egdes .. \n')
-                remove_num = [(int)(len(neg_e_other)*0.5), len(neg_e_other), (int)(len(pos_e)*0.1), (int)(len(pos_e)*0.2), (int)(len(pos_e)*0.3), (int)(len(pos_e)*0.4), (int)(len(pos_e)*0.5), (int)(len(pos_e)*0.7), (int)(len(pos_e)*0.9), (int)(len(pos_e))]
-                
-                # start remove
-                for index, rem_f in enumerate(remove_num):
-                    ff.write(f'Remove edge number {rem_f}: \n')
-                    cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) + '_' + str(l)
-
-                    # remove negative curvature edges
-                    net_H.load_state_dict(torch.load(model_path + model_name))
-                    edge_r = Edge_Remove(net_H, dims, min(rem_f, len(neg_e_other)), res_path)
-                    edge_r.e_remove(neg_e_other, cur_n + "other_neg.pth")
-                    
-                    # test acc
-                    net_neg = FC_MD(dims, layer_num)
-
-                    net_neg.load_state_dict(torch.load(res_path + cur_n + "other_neg.pth"))
-                    net_neg = net_neg.to(device)
-                    os.remove(res_path + cur_n + "other_neg.pth")
-
-                    acc_clean_neg_other = test_clean_perlabel(net_neg, sep_dataloader)
-
-                    # remove positive curvature edges
-                    net_H.load_state_dict(torch.load(model_path + model_name))
-                    edge_r = Edge_Remove(net_H, dims, min(rem_f, len(reversed_pos_e)), res_path)
-                    edge_r.e_remove(reversed_pos_e, cur_n + "pos.pth")
-                    
-                    # test acc
-                    net_pos = FC_MD(dims, layer_num)
-
-                    net_pos.load_state_dict(torch.load(res_path + cur_n + "pos.pth"))
-                    net_pos = net_pos.to(device)
-                    os.remove(res_path + cur_n + "pos.pth")
-
-                    acc_clean_pos = test_clean_perlabel(net_pos, sep_dataloader)
-
-                    for e in eps:
-                        print(f'Current eps {e}: ')
-                        ff.write(f'Current eps {e}: \n')
-
-                        test_advacc = test_adversarial_perlabel_perE(net_full, sep_dataloader, eps=e, alpha=2/255, iters=40)
-                        ff.write(f'The adversary accuracy eps = {e} for original model:\n')
-                        for label, acc in test_advacc.items():
-                            ff.write(f'Label {label}: {acc:.3f}\n')
-                        ff.write('\n')
-
-                        acc_adv_neg_other = test_adversarial_perlabel_perE(net_neg, sep_dataloader, eps=e, alpha=2/255, iters=40)
-
-                        neg_acc_adv.append(acc_adv_neg_other)
-                        neg_acc_clean.append(acc_clean_neg_other)
-                    
-                        ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e_other), rem_f))} neg_e_other edges:\n')
-                        ff.write(f'The clean accuracy for remove negative edges:\n')
-                        for label, acc in acc_clean_neg_other.items():
-                            ff.write(f'Label {label}: {acc:.3f}\n')
-                        ff.write('\n')
-                        ff.write(f'The adversary accuracy for remove negative edges:\n')
-                        for label, acc in acc_adv_neg_other.items():
-                            ff.write(f'Label {label}: {acc:.3f}\n')
-                        ff.write('\n')
-
-
-                        acc_adv_pos = test_adversarial_perlabel_perE(net_pos, sep_dataloader, eps=e, alpha=2/255, iters=40)
-                    
-                        pos_acc_adv.append(acc_adv_pos)
-                        pos_acc_clean.append(acc_clean_pos)
-
-                        ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_pos_e), rem_f))} reversed_pos_e1 edges:\n')
-                        ff.write(f'The clean accuracy for remove positive edges:\n')
-                        for label, acc in acc_clean_pos.items():
-                            ff.write(f'Label {label}: {acc:.3f}\n')
-                        ff.write('\n')
-                        ff.write(f'The adversary accuracy for remove positive edges:\n')
-                        for label, acc in acc_adv_pos.items():
-                            ff.write(f'Label {label}: {acc:.3f}\n')
-                        ff.write('\n')
+                        ff.write(f'It has {len(neg_e_other)} negative curvature edges, {len(pos_e)} positive curvature egdes .. \n')
+                        remove_num = [0, (int)(len(neg_e_other)*0.5), len(neg_e_other), (int)(len(pos_e)*0.1), (int)(len(pos_e)*0.2), (int)(len(pos_e)*0.3), (int)(len(pos_e)*0.4), (int)(len(pos_e)*0.5), (int)(len(pos_e)*0.7), (int)(len(pos_e)*0.9), (int)(len(pos_e))]
                         
-                        ff.write("\n\n")
+                        # start remove
+                        for index, rem_f in enumerate(remove_num):
+                            ff.write(f'Remove edge number {rem_f}: \n')
+                            cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) + '_' + str(l)
 
-                        excel_path = res_path + f'accuracies_layer{layer_num}_eps{e}.xlsx'
-                        
-                        # Save accuracies to Excel after each fraction
-                        row_data = {
-                            'Remove Number': [rem_f],
-                            'Label': [l]
-                        }
-                        
-                        # Group all metrics for each label together
-                        for label in selected_classes:
-                            # Original model accuracies
-                            row_data[f'Original Clean Acc Label {label}'] = [test_cleanacc[label]]
-                            row_data[f'Original Adv Acc Label {label}'] = [test_advacc[label]]
+                            # remove negative curvature edges
+                            net_H.load_state_dict(torch.load(model_path + model_name))
+                            edge_r = Edge_Remove(net_H, dims, min(rem_f, len(neg_e_other)), res_path)
+                            edge_r.e_remove(neg_e_other, cur_n + "other_neg.pth")
                             
-                            # Negative edge removal accuracies
-                            row_data[f'Negative Edge Clean Acc Label {label}'] = [neg_acc_clean[-1][label]]
-                            row_data[f'Negative Edge Adv Acc Label {label}'] = [neg_acc_adv[-1][label]]
-                            
-                            # Positive edge removal accuracies
-                            row_data[f'Positive Edge Clean Acc Label {label}'] = [pos_acc_clean[-1][label]]
-                            row_data[f'Positive Edge Adv Acc Label {label}'] = [pos_acc_adv[-1][label]]
-                        
-                        df = pd.DataFrame(row_data)
+                            # test acc
+                            net_neg = FC_MD(dims, layer_num)
 
-                        # If file exists, append to it, otherwise create new
-                        if os.path.exists(excel_path):
-                            existing_df = pd.read_excel(excel_path)
-                            df = pd.concat([existing_df, df], ignore_index=True)
+                            net_neg.load_state_dict(torch.load(res_path + cur_n + "other_neg.pth"))
+                            net_neg = net_neg.to(device)
+                            os.remove(res_path + cur_n + "other_neg.pth")
+
+                            acc_clean_neg_other = test_clean_perlabel(net_neg, sep_dataloader)
+
+                            # remove positive curvature edges
+                            net_H.load_state_dict(torch.load(model_path + model_name))
+                            edge_r = Edge_Remove(net_H, dims, min(rem_f, len(reversed_pos_e)), res_path)
+                            edge_r.e_remove(reversed_pos_e, cur_n + "pos.pth")
                             
-                        df.to_excel(excel_path, index=False)                    
+                            # test acc
+                            net_pos = FC_MD(dims, layer_num)
+
+                            net_pos.load_state_dict(torch.load(res_path + cur_n + "pos.pth"))
+                            net_pos = net_pos.to(device)
+                            os.remove(res_path + cur_n + "pos.pth")
+
+                            acc_clean_pos = test_clean_perlabel(net_pos, sep_dataloader)
+
+                            for e in eps:
+                                print(f'Current eps {e}: ')
+                                ff.write(f'Current eps {e}: \n')
+
+                                test_advacc = test_adversarial_perlabel_perE(net_full, sep_dataloader, eps=e, alpha=2/255, iters=40)
+                                ff.write(f'The adversary accuracy eps = {e} for original model:\n')
+                                for label, acc in test_advacc.items():
+                                    ff.write(f'Label {label}: {acc:.3f}\n')
+                                ff.write('\n')
+
+                                acc_adv_neg_other = test_adversarial_perlabel_perE(net_neg, sep_dataloader, eps=e, alpha=2/255, iters=40)
+
+                                neg_acc_adv.append(acc_adv_neg_other)
+                                neg_acc_clean.append(acc_clean_neg_other)
+                            
+                                ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e_other), rem_f))} neg_e_other edges:\n')
+                                ff.write(f'The clean accuracy for remove negative edges:\n')
+                                for label, acc in acc_clean_neg_other.items():
+                                    ff.write(f'Label {label}: {acc:.3f}\n')
+                                ff.write('\n')
+                                ff.write(f'The adversary accuracy for remove negative edges:\n')
+                                for label, acc in acc_adv_neg_other.items():
+                                    ff.write(f'Label {label}: {acc:.3f}\n')
+                                ff.write('\n')
+
+
+                                acc_adv_pos = test_adversarial_perlabel_perE(net_pos, sep_dataloader, eps=e, alpha=2/255, iters=40)
+                            
+                                pos_acc_adv.append(acc_adv_pos)
+                                pos_acc_clean.append(acc_clean_pos)
+
+                                ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_pos_e), rem_f))} reversed_pos_e1 edges:\n')
+                                ff.write(f'The clean accuracy for remove positive edges:\n')
+                                for label, acc in acc_clean_pos.items():
+                                    ff.write(f'Label {label}: {acc:.3f}\n')
+                                ff.write('\n')
+                                ff.write(f'The adversary accuracy for remove positive edges:\n')
+                                for label, acc in acc_adv_pos.items():
+                                    ff.write(f'Label {label}: {acc:.3f}\n')
+                                ff.write('\n')
+                                
+                                ff.write("\n\n")
+
+                                excel_path = res_path + f'accuracies_layer{layer_num}_eps{e}_label{l}.xlsx'
+                                
+                                # Save accuracies to Excel after each fraction
+                                row_data = {
+                                    'ID': [idx],
+                                    'Remove Number': [rem_f],
+                                    'Label': [l]
+                                }
+                                
+                                # Group all metrics for each label together
+                                for label in selected_classes:                                    
+                                    # Negative edge removal accuracies
+                                    row_data[f'Negative Edge Clean Acc Label {label}'] = [neg_acc_clean[-1][label]]
+                                    row_data[f'Negative Edge Adv Acc Label {label}'] = [neg_acc_adv[-1][label]]
+                                    
+                                    # Positive edge removal accuracies
+                                    row_data[f'Positive Edge Clean Acc Label {label}'] = [pos_acc_clean[-1][label]]
+                                    row_data[f'Positive Edge Adv Acc Label {label}'] = [pos_acc_adv[-1][label]]
+                                
+                                df = pd.DataFrame(row_data)
+
+                                # If file exists, append to it, otherwise create new
+                                if os.path.exists(excel_path):
+                                    existing_df = pd.read_excel(excel_path)
+                                    df = pd.concat([existing_df, df], ignore_index=True)
+                                    
+                                df.to_excel(excel_path, index=False)                    
