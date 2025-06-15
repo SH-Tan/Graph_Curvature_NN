@@ -13,6 +13,7 @@ sys.path.append("..")
 
 from pgd.remove_edge_fc import remove_edge_fc
 from pgd.remove_edge_fc_perE import remove_edge_fc_perE
+from pgd.remove_edge_fc_perE_vec import remove_edge_fc_perE_vec
 from pgd.remove_node_fc import remove_node_fc
 from CNN.remove_edge_cnn import remove_edge_cnn
 from CNN.remove_edge_cifar import remove_edge_cifar
@@ -52,6 +53,7 @@ def parse_args():
     parse.add_argument('--edge', type=int, default=0, required=False, help='If test edge')
     parse.add_argument('--node', type=int, default=0, required=False, help='If test node')
     parse.add_argument('--community', type=int, default=0, required=False, help='If test community')
+    parse.add_argument('--activation', type=str, default="relu", required=False, help='Activation function')
     args = parse.parse_args() 
     return args
 

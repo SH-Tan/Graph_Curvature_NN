@@ -17,11 +17,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.small_model_relu import FC_MD
-from tools.FC_linear import FC_Linear
-from tools.LeNet5_custom_small import LeNet_custom_v2
 from tools.graph_curvature import graph_curvature_main_torch
-from tools.get_c import get_c
 
 
 np.set_printoptions(threshold=np.inf)
@@ -161,9 +157,7 @@ def get_top_c(curvature, b, prefix_dims, threshold = -50):
             if curr > 1:
                 continue
 
-            i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-            if i_layer >= 3:
-                c.append((i,j,curr))
+            c.append((i,j,curr))
 
     c.sort(key=lambda x: x[2])
     
@@ -234,6 +228,12 @@ def remove_edge_cnn(args):
     alpha = args.alpha
     hops = args.hops
     sample_size = args.sample_num
+    activation = args.activation
+    
+    if activation.lower() == "relu":
+        from tools.LeNet5_custom_small import LeNet_custom_v2
+    elif activation.lower() == "tanh":
+        from tools.LeNet5_custom_small_tanh import LeNet_custom_v2
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -245,10 +245,14 @@ def remove_edge_cnn(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name= "cnn_ori.pth"
+        model_name = "cnn_ori_"
     elif model_pre_name == 'adv':
-        model_name= "cnn_adv.pth"
-
+        model_name = "cnn_adv01_"
+    elif model_pre_name == 'wd':
+        model_name = "cnn_wd_"
+        
+    model_name = model_name + activation + ".pth"
+    
     net_H = LeNet_custom_v2(model_dims, None, device)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
@@ -257,14 +261,14 @@ def remove_edge_cnn(args):
 
     print(model_name)
     # remove_frac = [0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.8, 1]
-    remove_num = [5,20,50,100,150,300,500,700,1000,1500,2000,2500,3000,3500,5000,7000,10000]
+    remove_num = []
     
             
     test_cleanacc = test_clean(net_full, test_loader)
     # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
 
     for l in selected_classes:
-        with open(res_path + "edge_cnn_" + str(l) + ".txt", "w+") as ff:
+        with open(res_path + "edge_cnn_tanh_" + str(l) + ".txt", "w+") as ff:
             ff.write(f'For model {model_name}: \n')
             ff.write(f'The clean accuracy for original model is {test_cleanacc}\n\n')
             print(f'Current label {l}: \n')
@@ -278,6 +282,7 @@ def remove_edge_cnn(args):
 
             count = 0
             running_sum = None
+            running_p = None
             for (images, labels) in sep_dataloader[l]:
                 if (count >= sample_size):
                     break
@@ -285,15 +290,22 @@ def remove_edge_cnn(args):
                     img = images[idx].to(device)
                     edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
 
-                    weights = output.detach().clone().to(device)                   
-                    weights[edge_array == 0] = 0.
-                    weights_inv = net_full.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
-                    weights_inv = weights_inv.detach()
+                    weights = output.detach().clone().to(device)  
+              
+                    # weights[edge_array == 0] = 0.
+                    weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims)
+                    weights_inv = weights_inv1.detach()
+                    weights_inv2 = weights_inv2.detach()
 
                     if running_sum is None:
                         running_sum = weights_inv
                     else:
                         running_sum = torch.cat((running_sum, weights_inv), dim=0)
+                        
+                    if running_p is None:
+                        running_p = weights_inv2
+                    else:
+                        running_p = torch.cat((running_p, weights_inv2), dim=0)
 
                     count += 1
                     if (count % 10 == 0):
@@ -303,37 +315,25 @@ def remove_edge_cnn(args):
                         break
 
                     # Free memory
-                    del weights, weights_inv
+                    del weights, weights_inv, weights_inv2
                     torch.cuda.empty_cache()
             
             if running_sum is None:
                 continue
 
             w_avg = torch.mean(running_sum, dim=0).unsqueeze(0)
-            del running_sum
+            p_avg = torch.mean(running_p, dim=0).unsqueeze(0)
+
+            del running_sum, running_p
             torch.cuda.empty_cache()
-            ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, model_dims=model_dims, alpha=alpha)
+            ricci_curvature, sp_dict = graph_curvature_main_torch(dims, w_avg, device=device, probability_w=p_avg, alpha=alpha, model_dims=model_dims)
 
-            # all_edges, single_hop_paths, label_paths, edge_curvatures, path_length_counts = get_c(ricci_curvature, 1, prefix_dims, l)
-            
-            # ff.write(f'Total number of edges in the graph after normalization: {len(all_edges)}\n')
-            # ff.write(f'Found {len(single_hop_paths)} single-hop paths and {len(label_paths)} negative paths reaching label neurons:\n')
-
-            # ff.write('Path length counts:\n')
-            # for length, count in sorted(path_length_counts.items()):
-            #     ff.write(f'  Length {length}: {count} paths\n')
-            # ff.write('\n\n')
-            
-            # ff.write("Single-hop paths:\n")
-            # for path in single_hop_paths:
-            #     # Each path has only one edge
-            #     i, j, curr = path[0]
-            #     ff.write(f"({i},{j}): {curr:.3f}\n")
             c, neg_e, pos_e = get_top_c(ricci_curvature, 1, prefix_dims, threshold = -50)
             reversed_pos_e = list(pos_e)[::-1]
             
             ff.write(f'It has {len(neg_e)} negative curvature edges, {len(pos_e)} positive curvature egdes .. \n')
-                
+            remove_num = [0, (int)(len(neg_e)*0.3), (int)(len(neg_e)*0.5), (int)(len(neg_e)*0.7), len(neg_e), (int)(len(pos_e)*0.2), (int)(len(pos_e)*0.3), (int)(len(pos_e)*0.4), (int)(len(pos_e)*0.5), (int)(len(pos_e)*0.7), (int)(len(pos_e)*0.9), (int)(len(pos_e))]
+               
             # start remove
             for index, rem_f in enumerate(remove_num):
                 ff.write(f'Remove edge number {rem_f}: \n')

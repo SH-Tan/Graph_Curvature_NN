@@ -16,7 +16,7 @@ class LeNet_custom_v2(nn.Module):
         self.fc1   = nn.Linear(16*4*4, 120)
         self.fc2   = nn.Linear(120, 84)
         self.fc3   = nn.Linear(84, 10)
-        self.activation = nn.ReLU()
+        self.activation = nn.Tanh()
         
         self.model_info = model_info
         self.edge_set = edge_set if edge_set != None else set()
@@ -777,6 +777,7 @@ class LeNet_custom_v2(nn.Module):
                 n += 1
         
         return weights_inv1, weights_inv2
+    
     
     
     

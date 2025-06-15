@@ -18,11 +18,9 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.small_model_relu import FC_MD
-from tools.FC_linear import FC_Linear
-from tools.LeNet5_custom_small import LeNet_custom_v2
+
 from tools.graph_curvature import graph_curvature_main_torch
-from tools.get_community import multi_community_from_output, negative_edge_communities, community_split_by_community_louvain, find_all_backward_communities, write_graph_info_to_excel
+from tools.get_community import multi_community_from_output, negative_edge_communities, find_all_backward_communities, write_graph_info_to_excel
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=torch.inf)
@@ -209,7 +207,7 @@ def community_check_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -230,6 +228,12 @@ def community_check_cnn(args):
     alpha = args.alpha
     hops = args.hops
     sample_size = args.sample_num
+    activation = args.activation
+    
+    if activation.lower() == "relu":
+        from tools.LeNet5_custom_small import LeNet_custom_v2
+    elif activation.lower() == "tanh":
+        from tools.LeNet5_custom_small_tanh import LeNet_custom_v2
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -241,9 +245,13 @@ def community_check_cnn(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name= "cnn_ori.pth"
+        model_name = "cnn_ori_"
     elif model_pre_name == 'adv':
-        model_name= "cnn_adv.pth"
+        model_name = "cnn_adv01_"
+    elif model_pre_name == 'wd':
+        model_name = "cnn_wd_"
+        
+    model_name = model_name + activation + ".pth"
 
     net_H = LeNet_custom_v2(model_dims, None, device)
     net_H.load_state_dict(torch.load(model_path + model_name))
@@ -251,152 +259,85 @@ def community_check_cnn(args):
 
     net_full = copy.deepcopy(net_H)
 
-    print(model_name)
-    # remove_frac = [0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.8, 1]
-    remove_num = [5,20,50,100,150,300,500,700,1000,1500,2000,2500,3000,3500,5000,7000,10000]
-    
+    print(model_name)    
             
-    test_cleanacc = test_clean(net_full, test_loader)
     succ_pair, robust_pair = test(net_H, sep_dataloader, device=device)
+    
+    res_l = defaultdict(list)
+    res_l_non = defaultdict(list)
 
     for l in selected_classes:
-        with open(res_path + "community_cnn_" + str(l) + ".txt", "w+") as ff:
-            ff.write(f'For model {model_name}: \n')
-            ff.write(f'The clean accuracy for original model is {test_cleanacc}\n\n')
-            print(f'Current label {l}: \n')
-            ff.write(f'Current label {l}: \n')
-            
-            edge_list_mis = []
-            node_list_mis= [] 
-            edge_list_ground = []
-            node_list_ground = [] 
-            for (images, labels) in succ_pair[l]:
-                for idx in range(images.shape[0]):
-                    if (idx >= sample_size):
-                        print(f'Finish {idx} examples....')
-                        break
+        for (images, labels) in succ_pair[l]:
+            for idx in range(images.shape[0]):
+                if (idx >= sample_size):
+                    print(f'Finish {idx} examples....')
+                    break
                     
-                    ff.write(f'\nFor misclassified example {idx}: True label {l}, Acctual output {labels[idx]} \n')
-                    img = images[idx].to(device)
-                    edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
+                img = images[idx].to(device)
+                edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
 
+                if metric.lower() == "w1":
                     weights = output.detach().clone().to(device)                   
-                    weights[edge_array == 0] = 0.
-                    weights_inv = net_full.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
-                    weights_inv = weights_inv.detach()
-
-                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha)
-
-                    # community_sizes, node_communities, graph_info = multi_community_from_output(ricci_curvature, 1, prefix_dims)
-                    summary, node_communities, graph_info = find_all_backward_communities(
-                        ricci_curvature, 1, prefix_dims, threshold=0.0
-                    )
-
-                    # Get node indices for true and predicted labels
-                    true_output_node = prefix_dims[-2] + l
-                    pred_output_node = prefix_dims[-2] + labels[idx].item()
+                    # weights[edge_array == 0] = 0.
+                
+                elif metric.lower() == "w3":
+                    weights = output.detach().clone().to(device)                   
+                    # weights[edge_array == 0] = 0.
                     
-                    # Get community IDs that contain each output node
-                    true_comms = node_communities.get(true_output_node, set())
-                    pred_comms = node_communities.get(pred_output_node, set())
-
-                    # Extract stats for the true label community (only one community expected)
-                    if true_comms:
-                        true_cid = next(iter(true_comms))  # Take the first (should usually be only one)
-                        true_nodes = set(summary[true_cid]["nodes"])
-                        true_edges = set(map(tuple, summary[true_cid]["edges"]))
-
-                        ff.write(f"\n--- Ground Truth Community ---\n")
-                        ff.write(f"  Community ID: {true_cid}\n")
-                        ff.write(f"  Node count: {len(true_nodes)}\n")
-                        ff.write(f"  Edge count: {len(true_edges)}\n")
-
-                        node_list_ground.append(len(true_nodes))
-                        edge_list_ground.append(len(true_edges))
-                    else:
-                        ff.write(f"\n--- Ground Truth Community ---\n")
-                        ff.write(f"  Not found for node {true_output_node}\n")
-                        node_list_ground.append(0)
-                        edge_list_ground.append(0)
-
-                    # Extract stats for the predicted label community (only if different)
-                    if pred_output_node != true_output_node and pred_comms:
-                        pred_cid = next(iter(pred_comms))
-                        pred_nodes = set(summary[pred_cid]["nodes"])
-                        pred_edges = set(map(tuple, summary[pred_cid]["edges"]))
-
-                        ff.write(f"\n--- Predicted Output Community ---\n")
-                        ff.write(f"  Community ID: {pred_cid}\n")
-                        ff.write(f"  Node count: {len(pred_nodes)}\n")
-                        ff.write(f"  Edge count: {len(pred_edges)}\n")
-
-                        node_list_mis.append(len(pred_nodes))
-                        edge_list_mis.append(len(pred_edges))
-                    else:
-                        ff.write(f"\n--- Predicted Output Community ---\n")
-                        ff.write(f"  Not found for node {pred_output_node} (or same as ground truth)\n")
-                        node_list_mis.append(0)
-                        edge_list_mis.append(0)
+                if metric.lower() == "w1":
+                    weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
+                    weights_inv = weights_inv1.detach()
+                    weights_inv2 = weights_inv2.detach()
+                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
                         
-            edge_list_correct = []
-            node_list_correct = []  
-            for (images, labels) in robust_pair[l]:
-                for idx in range(images.shape[0]):
-                    if (idx >= sample_size):
-                        print(f'Finish {idx} examples....')
-                        break
-                    ff.write(f'\nFor correct classified example {idx}: True label {l}, Acctual output {labels[idx]} \n')
-                    img = images[idx].to(device)
-                    edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
+                elif metric.lower() == "w3":
+                    weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims)
+                    weights_inv = weights_inv1.detach()
+                    weights_inv2 = weights_inv2.detach()
+                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+                else:
+                    raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+                
+                res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
+                
+    
+        for (images, labels) in robust_pair[l]:
+            for idx in range(images.shape[0]):
+                if (idx >= sample_size):
+                    print(f'Finish {idx} examples....')
+                    break
+                    
+                img = images[idx].to(device)
+                edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
 
+                if metric.lower() == "w1":
                     weights = output.detach().clone().to(device)                   
-                    weights[edge_array == 0] = 0.
-                    weights_inv = net_full.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
-                    weights_inv = weights_inv.detach()
-
-                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha)
-
-                    # community_sizes, node_communities, graph_info = multi_community_from_output(ricci_curvature, 1, prefix_dims)
-                    summary, node_communities, graph_info = find_all_backward_communities(
-                        ricci_curvature, 1, prefix_dims, threshold=0.0
-                    )
-
-                    # Get node indices for true and predicted labels
-                    true_output_node = prefix_dims[-2] + l
-
-                    # Get community IDs that contain each output node
-                    true_comms = node_communities.get(true_output_node, set())
-
-                    # Extract stats for the true label community (only one community expected)
-                    if true_comms:
-                        true_cid = next(iter(true_comms))  # Take the first (should usually be only one)
-                        true_nodes = set(summary[true_cid]["nodes"])
-                        true_edges = set(map(tuple, summary[true_cid]["edges"]))
-
-                        ff.write(f"\n--- Ground Truth Community ---\n")
-                        ff.write(f"  Community ID: {true_cid}\n")
-                        ff.write(f"  Node count: {len(true_nodes)}\n")
-                        ff.write(f"  Edge count: {len(true_edges)}\n")
-
-                        node_list_correct.append(len(true_nodes))
-                        edge_list_correct.append(len(true_edges))
-                    else:
-                        ff.write(f"\n--- Ground Truth Community ---\n")
-                        ff.write(f"  Not found for node {true_output_node}\n")
-                        node_list_correct.append(0)
-                        edge_list_correct.append(0)
-
-            node_list_mis = np.array(node_list_mis)
-            node_list_ground = np.array(node_list_ground)
-            node_list_correct = np.array(node_list_correct)
-            edge_list_mis = np.array(edge_list_mis)
-            edge_list_ground = np.array(edge_list_ground)
-            edge_list_correct = np.array(edge_list_correct)
+                    # weights[edge_array == 0] = 0.
+                
+                elif metric.lower() == "w3":
+                    weights = output.detach().clone().to(device)                   
+                    # weights[edge_array == 0] = 0.
+                    
+                if metric.lower() == "w1":
+                    weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
+                    weights_inv = weights_inv1.detach()
+                    weights_inv2 = weights_inv2.detach()
+                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
                         
-            ff.write(f'\n For the misclassified examples: \n') 
-            ff.write(f'There are total {len(node_list_mis)} comminties, {len(node_list_mis[node_list_mis == 0])} are zero (not exist); {len(node_list_ground)} ground truth communities, {len(node_list_ground[node_list_ground == 0])} are zero (not exist). \n')
-            ff.write(f'The average node number (non-zero) for misclassified community is {np.mean(node_list_mis[node_list_mis != 0])}, edge number is {np.mean(edge_list_mis[edge_list_mis != 0])}\n')     
-            ff.write(f'The average node number (non-zero) for ground truth community is {np.mean(node_list_ground[node_list_ground!=0])}, edge number is {np.mean(edge_list_ground[edge_list_ground!=0])}\n')
-            ff.write(f'\n For the correct classified examples: \n')     
-            ff.write(f'There are total {len(node_list_correct)} comminties, {len(node_list_correct[node_list_correct == 0])} are zero (not exist). \n') 
-            ff.write(f'The average node number (non-zero) for correct classified examples is {np.mean(node_list_correct[node_list_correct != 0])}, edge number is {np.mean(edge_list_correct[edge_list_correct!=0])}\n')        
+                elif metric.lower() == "w3":
+                    weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims)
+                    weights_inv = weights_inv1.detach()
+                    weights_inv2 = weights_inv2.detach()
+                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+                else:
+                    raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+                
+                res_l[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
+                
+        print(f'Finished label {l}.')
+                    
+    with open(res_path + model_full_n + metric + '_' + dataset + "_res_correct.pkl", 'wb') as file:
+        pickle.dump(res_l, file)
+    with open(res_path + model_full_n + metric + '_' + dataset + "_res_misclassified.pkl", 'wb') as file:
+        pickle.dump(res_l_non, file)
+

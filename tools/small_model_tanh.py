@@ -480,15 +480,7 @@ class FC_MD(nn.Module):
             
             sub_pos_a_inv2 = torch.where(mask_pos, 1./values_pos2, torch.tensor(0.))
             sub_neg_a_inv2 = torch.where(mask_neg, 1./values_neg2, torch.tensor(0.))
-            
-            # # w2
-            # values_pos2 = torch.abs(sub_pos_a2)
-            # values_neg2 = torch.abs(sub_neg_a2)
-            
-            # sub_pos_a_inv2 = 1./values_pos2
-            # sub_neg_a_inv2 = 1./values_neg2
-            
-            
+
             weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
             weights_inv2[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv2
 

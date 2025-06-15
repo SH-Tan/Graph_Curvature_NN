@@ -23,7 +23,7 @@ from tools.FC_linear import FC_Linear
 from tools.LeNet5_custom import LeNet_custom
 from tools.graph_curvature import graph_curvature_main_torch
 from tools.get_c import get_c
-from tools.get_community import multi_community_from_output, negative_edge_communities, community_split_by_community_louvain, find_all_backward_communities, write_graph_info_to_excel
+from tools.get_community import multi_community_from_output, negative_edge_communities, find_all_backward_communities, write_graph_info_to_excel
 
 
 np.set_printoptions(threshold=np.inf)

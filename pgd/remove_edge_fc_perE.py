@@ -10,26 +10,14 @@ from collections import defaultdict
 import seaborn as sns
 import copy
 
-# from GraphRicciCurvature.OllivierRicci import OllivierRicci
-import networkx as nx
-import community as community_louvain
-import matplotlib.pyplot as plt
-import statsmodels.api as sm
-from scipy.integrate import simps
-import pickle
-import time
 import pandas as pd
 
 import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.small_model_tanh import FC_MD
-from tools.FC_linear import FC_Linear
 from tools.graph_curvature import graph_curvature_main_torch
-from tools.draw_net import DrawNN
 from tools.edge_remove import Edge_Remove
-from tools.get_c import get_c
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=torch.inf)
@@ -222,26 +210,17 @@ def get_top_c(curvature, b, prefix_dims, threshold = -50):
             c.append((i,j,curr))
 
     c.sort(key=lambda x: x[2])
-    
-    # print(len(c))
-    
+
     for (i,j,curr) in c:
         i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
         i1 = (int)(i)
         j1 = (int)(j)
         if curr < 0:
-            # if i_layer == 3:  # Second layer (index 1)
-            #     neg_e_second.add((i1,j1))
-            # else:
             neg_e_other.add((i1,j1))
         elif curr >= 0:
             pos_e.add((i1,j1))
-            
-    # print(len(neg_e_other))
-    # print(len(pos_e))
-    # input()
-        
-    return c, neg_e_second, neg_e_other, pos_e
+
+    return neg_e_other, pos_e
 
 
 
@@ -281,6 +260,12 @@ def remove_edge_fc_perE(args):
     alpha = args.alpha
     hops = args.hops
     sample_size = args.sample_num
+    activation = args.activation
+    
+    if activation.lower() == "relu":
+        from tools.small_model_relu import FC_MD
+    elif activation.lower() == "tanh":
+        from tools.small_model_tanh import FC_MD
     
     model_full_n = model_type.lower() + model_pre_name.lower()
     
@@ -381,7 +366,7 @@ def remove_edge_fc_perE(args):
 
                         ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
 
-                        c, neg_e_second, neg_e_other, pos_e = get_top_c(ricci_curvature, 1, prefix_dims)
+                        neg_e_other, pos_e = get_top_c(ricci_curvature, 1, prefix_dims)
                         reversed_pos_e = list(pos_e)
                         reversed_pos_e.reverse()
 

@@ -18,10 +18,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.small_model_tanh import FC_MD
 from tools.graph_curvature import graph_curvature_main_torch
-from tools.get_community import multi_community_from_output, negative_edge_communities, community_split_by_community_louvain, find_all_backward_communities, write_graph_info_to_excel
-from tools.get_node import get_key_nodes
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=torch.inf)
@@ -211,6 +208,12 @@ def community_check_fc(args):
     alpha = args.alpha
     hops = args.hops
     sample_size = args.sample_num
+    activation = args.activation
+    
+    if activation.lower() == "relu":
+        from tools.small_model_relu import FC_MD
+    elif activation.lower() == "tanh":
+        from tools.small_model_tanh import FC_MD
     
     model_full_n = model_type.lower() + model_pre_name.lower()
     
@@ -244,9 +247,6 @@ def community_check_fc(args):
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_wd':
             model_name = "fc_big_wd.pth"
-            dims = model_zoo[21]
-        elif model_pre_name.lower() == 'big_wd_05':
-            model_name = "fc_big_wd_05.pth"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_wd_001':
             model_name = "fc_big_wd001.pth"

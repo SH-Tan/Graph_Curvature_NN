@@ -4,6 +4,8 @@ import numpy as np
 
 from collections import defaultdict
 import os
+import networkx as nx
+import sympy
 
 import sys
 sys.path.append("..")
@@ -44,12 +46,14 @@ def cal_community(args):
         if model_type.lower() == "fc":
             correct_suffix_res = dataset + "_res_correct.pkl"
             misclassified_suffix_res = dataset + "_res_misclassified.pkl"
+            res_name = model_full_n + metric + '_' + str(layer_num) + correct_suffix_res
+            misres_name = model_full_n + metric + '_' + str(layer_num) + misclassified_suffix_res
         # cnn model
         elif model_type.lower() == "cnn" and dataset.lower() == "mnist":
-            robust_suffix_gs = "_graphsize_robust_cnn.pkl"
-            norobust_suffix_gs = "_graphsize_norobust_cnn.pkl"
-            robust_suffix_res = "_res_robust_cnn.pkl"
-            norobust_suffix_res = "_res_norobust_cnn.pkl"
+            correct_suffix_res = dataset + "_res_correct.pkl"
+            misclassified_suffix_res = dataset + "_res_misclassified.pkl"
+            res_name = model_full_n + metric + '_' + correct_suffix_res
+            misres_name = model_full_n + metric + '_' + misclassified_suffix_res
             
         elif model_type.lower() == "cnn" and dataset.lower() == "cifar":
             robust_suffix_gs = "_graphsize_robust_cifar.pkl"
@@ -64,8 +68,8 @@ def cal_community(args):
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
         
-        res_name = model_full_n + metric + '_' + str(layer_num) + correct_suffix_res
-        misres_name = model_full_n + metric + '_' + str(layer_num) + misclassified_suffix_res
+        # res_name = model_full_n + metric + '_' + str(layer_num) + correct_suffix_res
+        # misres_name = model_full_n + metric + '_' + str(layer_num) + misclassified_suffix_res
 
         with open(data_path + res_name, 'rb') as file:
             res_dict = pickle.load(file)
@@ -88,6 +92,9 @@ def cal_community(args):
             single_node_communities_list = []
             zero_node_negative_outgoing_list = []
             zero_node_count_list = []
+            nonzero_node_negative_outgoing_list = []
+            nonzero_node_count_list = []
+            spanning_t_list = []
              
             with open(res_path + "community_" + str(l) + ".txt", "w+") as ff:
                 ff.write(f'W = {metric}: For model {model_type} - {model_pre_name}, layer {layer_num}: \n')
@@ -133,10 +140,19 @@ def cal_community(args):
                         ff.write(f"  Output neuron {i}: {val:.4f}\n")
                     ff.write("\n")
 
-                    # 2. Count all neurons with neg in-degree > 50
+                    # 2. Count all neurons with neg in-degree > 70
+                    # high_indegree_count = sum(
+                    #     1 for node, deg in neg_deg_dict.items() if deg > 70
+                    # )
+
+                    last_3_start = prefix_dims[-4]  # inclusive
+                    last_3_end = prefix_dims[-1]    # exclusive
+
                     high_indegree_count = sum(
-                        1 for node, deg in neg_deg_dict.items() if deg > 100
+                        1 for node in range(last_3_start, last_3_end)
+                        if neg_deg_dict.get(node, 0.0) > 60
                     )
+
                     high_indegree_counts.append(high_indegree_count)  # You may want to rename this variable
                     
                     # 3. Single-hop communities
@@ -149,9 +165,15 @@ def cal_community(args):
                     total_out_neg_edge = result["zero_node_negative_outgoing_edges"] 
                     ff.write(f"Number of zero input node: {total_zero_nodes}, total negative outgoing edge number of theses nodes is {total_out_neg_edge}\n")
 
+                    total_nonzero_nodes = result["total_nonzero_nodes"] 
+                    total_out_neg_edge_non = result["nonzero_node_negative_outgoing_edges"] 
+                    ff.write(f"Number of non-zero input node: {total_nonzero_nodes}, total negative outgoing edge number of theses nodes is {total_out_neg_edge_non}\n")
+                    
                     # Accumulate for averaging
                     zero_node_count_list.append(total_zero_nodes)
                     zero_node_negative_outgoing_list.append(total_out_neg_edge)
+                    nonzero_node_count_list.append(total_nonzero_nodes)
+                    nonzero_node_negative_outgoing_list.append(total_out_neg_edge_non)
 
                     ff.write("\n=== Inter-Layer Edge Counts (All Edges) ===\n")
                     for (layer_from, layer_to), count in sorted(inter_layer_info.items()):
@@ -191,7 +213,7 @@ def cal_community(args):
                             ff.write(f"Layer {layer_idx}: Avg. Neg In-Degree = {avg_indeg:.2f}, Avg. CW-Degree = {avg_cwdeg:.2f}\n")
 
                     ff.write("\n=== Node Counts by Layer for In-degree Thresholds ===\n")
-                    thresholds = [20, 30, 50, 100, 150]
+                    thresholds = [20, 30, 50, 100, 150, 200]
                     num_layers = len(prefix_dims) - 1
 
                     for deg_type in ["full", "negative", "filtered"]:
@@ -223,6 +245,7 @@ def cal_community(args):
                     if true_communities:
                         true_community_id = next(iter(true_communities))
                         true_comm_data = summary[true_community_id]
+                        gt_nodes = true_comm_data["nodes"]
 
                         true_nodes = true_comm_data["node_count"]
                         true_edges = true_comm_data["edge_count"]
@@ -261,7 +284,7 @@ def cal_community(args):
                         for layer_idx in range(len(prefix_dims) - 1):
                             start, end = prefix_dims[layer_idx], prefix_dims[layer_idx + 1]
                             layer_nodes = set(range(start, end))
-                            comm_nodes = set(true_comm_data["nodes"]) & layer_nodes
+                            comm_nodes = set(gt_nodes) & layer_nodes
 
                             if comm_nodes:
                                 indegs = [neg_deg_dict.get(n, 0) for n in comm_nodes]
@@ -346,15 +369,21 @@ def cal_community(args):
                 ff.write("\n=== Average Negative In-Degree of Output Neurons ===\n")
                 for i, (val1, val2) in enumerate(zip(avg_output_neg_indegree,avg_output_cw_degree)):
                     ff.write(f"  Output neuron {i}: in-degee edge: {val1:.2f} - curvature: {val2:.2f}\n")
-                    
+
                 ff.write("\n=== Aggregated Zero Input Node Statistics ===\n")
                 ff.write(f"Average number of zero input nodes: {np.mean(zero_node_count_list):.2f}\n")
                 ff.write(f"Average number of negative outgoing edges from zero input nodes: {np.mean(zero_node_negative_outgoing_list):.2f}\n")
+                
+                ff.write("\n=== Aggregated Non - Zero Input Node Statistics ===\n")
+                ff.write(f"Average number of non-zero input nodes: {np.mean(nonzero_node_count_list):.2f}\n")
+                ff.write(f"Average number of negative outgoing edges from zero input nodes: {np.mean(nonzero_node_negative_outgoing_list):.2f}\n")
+                
+                # ff.write(f"\nThe average number of spanning trees of the GT community is {np.mean(spanning_t_list)}\n")
 
                 input_layer_size = prefix_dims[1] - prefix_dims[0]
                 ff.write(f"Average percentage of zero input nodes: {np.mean(zero_node_count_list) / input_layer_size * 100:.2f}%\n")
 
-                ff.write(f"\n=== Average # of neurons with neg. in-degree > 100 for overall graph: {avg_second_layer_high:.2f} ===\n")
+                ff.write(f"\n=== Average # of neurons with neg. in-degree > 60 for overall graph: {avg_second_layer_high:.2f} ===\n")
                 ff.write(f"\n=== Average # of single hop communities: {avg_single_hop_communities:.2f} ===\n")
                 
                 print(f'Finish label {l}.')

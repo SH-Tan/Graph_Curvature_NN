@@ -17,6 +17,7 @@ from Lidar.draw_traj import lidar_draw
 from Lidar.avg_fraction_edge import avg_statics_lidar
 from analyze_community import cal_community
 from avg_fraction_edge_tanh import avg_f_cal_tanh
+from analyze_community_histogram import cal_community_npy
 
 
 import warnings
@@ -65,7 +66,8 @@ if __name__=='__main__':
         # cal_slope(args)
         
         print(f'Start calculate average fraction per label...\n')
-        avg_f_cal(args)
+        # avg_f_cal(args)
+        avg_f_cal_tanh(args)
         
     if args.lidar:
         # lidar_draw(args)
@@ -73,5 +75,5 @@ if __name__=='__main__':
         
     if args.community:
         cal_community(args)
-        # avg_f_cal_tanh(args)
+        # cal_community_npy(args)
         

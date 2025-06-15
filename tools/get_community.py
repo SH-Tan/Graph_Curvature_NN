@@ -106,41 +106,6 @@ def negative_edge_communities(curvature, b):
 
 
 
-def community_split_by_community_louvain(curvature, b):
-    G = nx.Graph()
-    all_nodes = set()
-    all_edges = set()
-    negative_edges = 0
-
-    for batch in range(b):
-        for u, v, curv in curvature[batch]:
-            u, v = int(u), int(v)
-            if curv < 0:
-                all_nodes.update([u, v])
-                all_edges.add((u, v))
-                negative_edges += 1
-
-                # Use magnitude of negative curvature as similarity weight
-                G.add_edge(u, v, weight=abs(curv), curvature=curv)
-
-    # Run Louvain on the graph with only negative curvature edges
-    partition = community_louvain.best_partition(G, weight='weight')
-
-    # Group nodes by community
-    communities = defaultdict(list)
-    for node, comm_id in partition.items():
-        communities[comm_id].append(node)
-
-    # Graph statistics
-    graph_info = {
-        "total_nodes": len(all_nodes),
-        "total_edges": len(all_edges),
-        "negative_edges": negative_edges,
-        "num_communities": len(communities)
-    }
-
-    return G, partition, communities, graph_info
-
 
 
 def find_all_backward_communities(curvature, b, prefix_dims, threshold=0.0):
@@ -293,9 +258,11 @@ def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, n
     curvature_weighted_degree = defaultdict(float)
 
     negative_outgoing_from_zero_nodes = 0
+    negative_outgoing_from_nonzero_nodes = 0
 
     input_start, input_end = prefix_dims[0], prefix_dims[1]
     zero_nodes = set(i for i in range(input_start, input_end) if node[0][i].item() == 0)
+    nonzero_nodes = set(i for i in range(input_start, input_end) if node[0][i].item() > 0)
 
     for batch in range(b):
         ricci_curv = curvature[batch]
@@ -322,6 +289,8 @@ def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, n
                 
                 if i in zero_nodes:
                     negative_outgoing_from_zero_nodes += 1
+                if i in nonzero_nodes:
+                    negative_outgoing_from_nonzero_nodes += 1
 
     # Build filtered graph for community detection
     neg_incoming = defaultdict(set)
@@ -393,6 +362,8 @@ def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, n
                 "stats_wo_input_layer": {
                     "node_count": len(nodes_wo_input),
                     "edge_count": len(edges_wo_input),
+                    "nodes": list(nodes_wo_input),
+                    "edges": list(edges_wo_input),
                     "total_internal_curvature": curvature_wo_input
                 },
                 "stats_wo_output_layer": {
@@ -448,7 +419,9 @@ def analyze_graph_structure_with_community_indegree(curvature, b, prefix_dims, n
         "curvature_weighted_in_degree": dict(curvature_weighted_degree),
         "node_participation": node_participation,
         "zero_node_negative_outgoing_edges": negative_outgoing_from_zero_nodes,
-        "total_zero_nodes": len(zero_nodes)
+        "total_zero_nodes": len(zero_nodes),
+        "nonzero_node_negative_outgoing_edges": negative_outgoing_from_nonzero_nodes,
+        "total_nonzero_nodes": len(nonzero_nodes)
     }
 
 

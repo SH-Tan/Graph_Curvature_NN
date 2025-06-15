@@ -113,3 +113,5 @@
 - python test.py --lidar 0 --image 0 --metric w3 --model_type fc --model_name ori --community 1 --mnist_data_path res/community0/ --mnist_res_path statistics/q_inv/
 
 - python removal.py --lidar 0 --metric w3 --model_type fc --model_name big_ori --model_path pgd/models/big/Lr2/ --mnist_res_path res/w3_with0/lr2_bigori/ --edge 1 --node 0
+
+- python test.py --lidar 0 --image 1 --metric w3 --model_type fc --model_name big_ori --community 0 --mnist_data_path res/w3_with0/relu/bigori/ --mnist_res_path statistics/w3_with0_community/relu/bigori/
