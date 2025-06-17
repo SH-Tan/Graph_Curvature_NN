@@ -47,12 +47,14 @@ def cal_community_npy(args):
         if model_type.lower() == "fc":
             correct_suffix_res = dataset + "_res_correct.pkl"
             misclassified_suffix_res = dataset + "_res_misclassified.pkl"
+            res_name = model_full_n + metric + '_' + str(layer_num) + correct_suffix_res
+            misres_name = model_full_n + metric + '_' + str(layer_num) + misclassified_suffix_res
         # cnn model
         elif model_type.lower() == "cnn" and dataset.lower() == "mnist":
-            robust_suffix_gs = "_graphsize_robust_cnn.pkl"
-            norobust_suffix_gs = "_graphsize_norobust_cnn.pkl"
-            robust_suffix_res = "_res_robust_cnn.pkl"
-            norobust_suffix_res = "_res_norobust_cnn.pkl"
+            correct_suffix_res = dataset + "_res_correct.pkl"
+            misclassified_suffix_res = dataset + "_res_misclassified.pkl"    
+            res_name = model_full_n + metric + '_' + correct_suffix_res
+            misres_name = model_full_n + metric + '_' + misclassified_suffix_res    
             
         elif model_type.lower() == "cnn" and dataset.lower() == "cifar":
             robust_suffix_gs = "_graphsize_robust_cifar.pkl"
@@ -67,33 +69,27 @@ def cal_community_npy(args):
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
         
-        res_name = model_full_n + metric + '_' + str(layer_num) + correct_suffix_res
-        misres_name = model_full_n + metric + '_' + str(layer_num) + misclassified_suffix_res
-
         with open(data_path + res_name, 'rb') as file:
             res_dict = pickle.load(file)
             
         for l in selected_classes:
             # Accumulate across examples
             non_input_in_degrees_all_examples = []
-             
-            with open(res_path + "community_" + str(l) + ".txt", "w+") as ff:
-                ff.write(f'W = {metric}: For model {model_type} - {model_pre_name}, layer {layer_num}: \n')
-                ff.write(f'For the correct examples - label {l}: \n')
-                for (ricci, batch, dim, node_ori) in res_dict[l]:
-                    prefix_dims = np.cumsum([0] + dim).tolist()
-                    
-                    result = analyze_graph_structure_with_community_indegree(
-                        ricci, batch, prefix_dims, node_ori, threshold=thre
-                    )
-                    
-                    in_degree_info = result["in_degree"]
-                    neg_deg_dict = in_degree_info["filtered"]
-                    
-                    # Get non-input nodes only
-                    non_input_node_indices = range(prefix_dims[1], prefix_dims[-1])
-                    example_in_degrees = [neg_deg_dict.get(node, 0.0) for node in non_input_node_indices]
-                    non_input_in_degrees_all_examples.append(example_in_degrees)
+
+            for (ricci, batch, dim, node_ori) in res_dict[l]:
+                prefix_dims = np.cumsum([0] + dim).tolist()
+                
+                result = analyze_graph_structure_with_community_indegree(
+                    ricci, batch, prefix_dims, node_ori, threshold=thre
+                )
+                
+                in_degree_info = result["in_degree"]
+                neg_deg_dict = in_degree_info["filtered"]
+                
+                # Get non-input nodes only
+                non_input_node_indices = range(prefix_dims[1], prefix_dims[-1])
+                example_in_degrees = [neg_deg_dict.get(node, 0.0) for node in non_input_node_indices]
+                non_input_in_degrees_all_examples.append(example_in_degrees)
                     
             # ==== After all examples processed for label l ====
             in_deg_array = np.array(non_input_in_degrees_all_examples)

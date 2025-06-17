@@ -14,8 +14,12 @@ sys.path.append("..")
 from pgd.remove_edge_fc import remove_edge_fc
 from pgd.remove_edge_fc_perE import remove_edge_fc_perE
 from pgd.remove_edge_fc_perE_vec import remove_edge_fc_perE_vec
+from pgd.remove_edge_fc_perE_alllabel import remove_edge_fc_perE_alllabels
+from pgd.remove_edge_fc_union import remove_edge_fc_union
 from pgd.remove_node_fc import remove_node_fc
 from CNN.remove_edge_cnn import remove_edge_cnn
+from CNN.remove_edge_cnn_alllabel_per import remove_edge_cnn_per_allL
+from CNN.remove_edge_cnn_union import remove_edge_cnn_union
 from CNN.remove_edge_cifar import remove_edge_cifar
 from pgd.community_check_fc import community_check_fc
 from CNN.community_check_cnn import community_check_cnn
@@ -50,6 +54,8 @@ def parse_args():
     parse.add_argument('--sample_num', type=int, default=50, required=False, help='Number of test examples')
     parse.add_argument('--mnist_res_path', type=str, default='./', required=False, help='Result path')
     parse.add_argument('--lidar_res_path', type=str, default='./', required=False, help='Result path')
+    parse.add_argument('--mnist_data_path', type=str, required=False, help='Data path')
+    parse.add_argument('--lidar_data_path', type=str, required=False, help='Data path')
     parse.add_argument('--edge', type=int, default=0, required=False, help='If test edge')
     parse.add_argument('--node', type=int, default=0, required=False, help='If test node')
     parse.add_argument('--community', type=int, default=0, required=False, help='If test community')
@@ -68,14 +74,14 @@ if __name__=='__main__':
     if args.image:
         if model_type.lower() == "fc":
             if args.edge:
-                remove_edge_fc_perE(args)
+                remove_edge_fc_union(args)
             if args.node:
                 remove_node_fc(args)
             if args.community:
                 community_check_fc(args)
         elif model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
-                remove_edge_cnn(args)
+                remove_edge_cnn_union(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
