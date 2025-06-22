@@ -112,10 +112,12 @@
 
 - python test.py --lidar 0 --image 1 --metric w3 --model_type fc --model_name ori --community 1 --mnist_data_path res/community0/ --mnist_res_path statistics/q_inv/
 
-- python removal.py --lidar 0 --metric w3 --model_type fc --model_name big_ori --model_path pgd/models/big/Lr2/ --mnist_data_path res/w3_with0/tanh/bigori/ --mnist_res_path statistics/remove_fre/tanh/bigori/ --edge 1 --node 0 --activation tanh
+- python removal.py --lidar 0 --metric w3 --model_type fc --model_name big_ori --model_path pgd/models/new/ --mnist_data_path res/w3_with0/tanh/bigori/ --mnist_res_path statistics/remove_fre/tanh/bigori/ --edge 1 --node 0 --activation tanh
 
 - python test.py --lidar 0 --image 1 --metric w3 --model_type fc --model_name big_ori --community 0 --mnist_data_path res/w3_with0/relu/bigori/ --mnist_res_path statistics/w3_with0_community/relu/bigori/
 
 - python test.py --lidar 0 --image 0 --metric w3 --model_type cnn --model_name adv --community 1 --mnist_data_path res/w3_with0/relu/cnnadv/ --mnist_res_path statistics/indegree/relu/cnnadv/
 
 - python test.py --lidar 0 --image 0 --metric w3 --model_type fc --model_name big_ori --community 1 --mnist_data_path res/w3_with0/tanh/bigori/ --mnist_res_path statistics/indegree/tanh/bigori/
+
+- python removal.py --lidar 0 --metric w3 --model_type fc --model_name big_ori --model_path pgd/models/new/ --mnist_res_path statistics/w3/tanh/bigori/ --edge 0 --node 0 --activation tanh --community 1 --sample_num 100

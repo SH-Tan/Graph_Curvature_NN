@@ -1,4 +1,5 @@
 import torch
+from torch.utils.data import TensorDataset, DataLoader
 from torchvision.datasets.mnist import MNIST
 import torchvision.transforms as transforms
 import numpy as np
@@ -59,6 +60,14 @@ model_dims = {
     5: {"name": "fc", "dim": {"out_size": 84}},
     6: {"name": "fc", "dim": {"out_size": 10}}
 }
+
+
+
+def load_dataset_from_disk(path, batch_size=128, shuffle=True):
+    data_path = f"{path}/data.pt"
+    images, labels = torch.load(data_path)
+    dataset = TensorDataset(images, labels)
+    return dataset
 
 
 
@@ -212,9 +221,10 @@ def community_check_cnn(args):
     print(f"Using {device} device")
 
     
-    train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
+    # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
-    sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
+    val_set = load_dataset_from_disk("./data/MNIST_val", batch_size=64, shuffle=False)
+    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=1000)
     
     eps = [0.03, 0.07, 0.1, 0.2]
     dims = cal_dims(model_dims)
@@ -247,7 +257,7 @@ def community_check_cnn(args):
     if model_pre_name == 'ori':
         model_name = "cnn_ori_"
     elif model_pre_name == 'adv':
-        model_name = "cnn_adv01_"
+        model_name = "cnn_adv_"
     elif model_pre_name == 'wd':
         model_name = "cnn_wd_"
         
@@ -264,41 +274,41 @@ def community_check_cnn(args):
     succ_pair, robust_pair = test(net_H, sep_dataloader, device=device)
     
     res_l = defaultdict(list)
-    res_l_non = defaultdict(list)
+    # res_l_non = defaultdict(list)
 
     for l in selected_classes:
-        for (images, labels) in succ_pair[l]:
-            for idx in range(images.shape[0]):
-                if (idx >= sample_size):
-                    print(f'Finish {idx} examples....')
-                    break
+        # for (images, labels) in succ_pair[l]:
+        #     for idx in range(images.shape[0]):
+        #         if (idx >= sample_size):
+        #             print(f'Finish {idx} examples....')
+        #             break
                     
-                img = images[idx].to(device)
-                edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
+        #         img = images[idx].to(device)
+        #         edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
 
-                if metric.lower() == "w1":
-                    weights = output.detach().clone().to(device)                   
-                    # weights[edge_array == 0] = 0.
+        #         if metric.lower() == "w1":
+        #             weights = output.detach().clone().to(device)                   
+        #             # weights[edge_array == 0] = 0.
                 
-                elif metric.lower() == "w3":
-                    weights = output.detach().clone().to(device)                   
-                    # weights[edge_array == 0] = 0.
+        #         elif metric.lower() == "w3":
+        #             weights = output.detach().clone().to(device)                   
+        #             # weights[edge_array == 0] = 0.
                     
-                if metric.lower() == "w1":
-                    weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
-                    weights_inv = weights_inv1.detach()
-                    weights_inv2 = weights_inv2.detach()
-                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+        #         if metric.lower() == "w1":
+        #             weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
+        #             weights_inv = weights_inv1.detach()
+        #             weights_inv2 = weights_inv2.detach()
+        #             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
                         
-                elif metric.lower() == "w3":
-                    weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims)
-                    weights_inv = weights_inv1.detach()
-                    weights_inv2 = weights_inv2.detach()
-                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
-                else:
-                    raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+        #         elif metric.lower() == "w3":
+        #             weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims)
+        #             weights_inv = weights_inv1.detach()
+        #             weights_inv2 = weights_inv2.detach()
+        #             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+        #         else:
+        #             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                 
-                res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
+        #         res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
                 
     
         for (images, labels) in robust_pair[l]:
@@ -338,6 +348,6 @@ def community_check_cnn(args):
                     
     with open(res_path + model_full_n + metric + '_' + dataset + "_res_correct.pkl", 'wb') as file:
         pickle.dump(res_l, file)
-    with open(res_path + model_full_n + metric + '_' + dataset + "_res_misclassified.pkl", 'wb') as file:
-        pickle.dump(res_l_non, file)
+    # with open(res_path + model_full_n + metric + '_' + dataset + "_res_misclassified.pkl", 'wb') as file:
+    #     pickle.dump(res_l_non, file)
 

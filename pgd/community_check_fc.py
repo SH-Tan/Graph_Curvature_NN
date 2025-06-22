@@ -1,4 +1,5 @@
 import torch
+from torch.utils.data import TensorDataset, DataLoader
 from torchvision.datasets.mnist import MNIST
 import torchvision.transforms as transforms
 import numpy as np
@@ -57,6 +58,12 @@ model_zoo = {
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
 
 
+
+def load_dataset_from_disk(path, batch_size=128, shuffle=True):
+    data_path = f"{path}/data.pt"
+    images, labels = torch.load(data_path)
+    dataset = TensorDataset(images, labels)
+    return dataset
 
 
 def standard_PGD(model, images, labels, device, eps=11/255, alpha=2/255, iters=40):
@@ -189,13 +196,13 @@ def community_check_fc(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
-    train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
-
-    sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
+    # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
+    val_set = load_dataset_from_disk("./data/MNIST_val", batch_size=64, shuffle=False)
+    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=1000)
     
     eps = [0.03, 0.07, 0.1, 0.2]
     
@@ -206,7 +213,6 @@ def community_check_fc(args):
     metric = args.metric
     dataset = args.dataset
     alpha = args.alpha
-    hops = args.hops
     sample_size = args.sample_num
     activation = args.activation
     
@@ -237,22 +243,18 @@ def community_check_fc(args):
         elif model_pre_name.lower() == "adv":
             model_name = "pgdtrain_" + str(layer_num) + ".pth"
         elif model_pre_name.lower() == 'big_adv':
-            model_name = "fc_big_adv.pth"
-            dims = model_zoo[21]
-        elif model_pre_name.lower() == 'big_adv_01':
-            model_name = "fc_big_adv01.pth"
+            model_name = "big_adv_"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_ori':
-            model_name = "fc_big_ori.pth"
+            model_name = "big_ori_"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_wd':
-            model_name = "fc_big_wd.pth"
-            dims = model_zoo[21]
-        elif model_pre_name.lower() == 'big_wd_001':
-            model_name = "fc_big_wd001.pth"
+            model_name = "big_wd_"
             dims = model_zoo[21]
         else:
             raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
+        
+        model_name = model_name + activation + ".pth"
         
         prefix_dims = np.cumsum([0] + dims).tolist()
         
@@ -278,45 +280,45 @@ def community_check_fc(args):
                 neural_list.append(p.shape[0])
             i += 1
    
-        test_cleanacc = test_clean(net_full, test_loader)
+        # test_cleanacc = test_clean(net_full, test_loader)
             
         succ_pair, robust_pair = test(net_H, sep_dataloader, device=device)
         
         res_l = defaultdict(list)
-        res_l_non = defaultdict(list)
+        # res_l_non = defaultdict(list)
 
         for l in selected_classes:      
-            for (images, labels) in succ_pair[l]:
-                for idx in range(images.shape[0]):
-                    if (idx >= sample_size):
-                        print(f'Finish {idx} examples....')
-                        break
-                    img = images[idx].to(device)
-                    edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
+            # for (images, labels) in succ_pair[l]:
+            #     for idx in range(images.shape[0]):
+            #         if (idx >= sample_size):
+            #             print(f'Finish {idx} examples....')
+            #             break
+            #         img = images[idx].to(device)
+            #         edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
                     
-                    if metric.lower() == "w1":
-                        weights = output.detach().clone().to(device)                   
-                        # weights[edge_array == 0] = 0.
+            #         if metric.lower() == "w1":
+            #             weights = output.detach().clone().to(device)                   
+            #             # weights[edge_array == 0] = 0.
                     
-                    elif metric.lower() == "w3":
-                        weights = output.detach().clone().to(device)                   
-                        # weights[edge_array == 0] = 0.
+            #         elif metric.lower() == "w3":
+            #             weights = output.detach().clone().to(device)                   
+            #             # weights[edge_array == 0] = 0.
                         
-                    if metric.lower() == "w1":
-                        weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)
-                        weights_inv = weights_inv1.detach()
-                        weights_inv2 = weights_inv2.detach()
-                        ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
+            #         if metric.lower() == "w1":
+            #             weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)
+            #             weights_inv = weights_inv1.detach()
+            #             weights_inv2 = weights_inv2.detach()
+            #             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
                             
-                    elif metric.lower() == "w3":
-                        weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
-                        weights_inv = weights_inv1.detach()
-                        weights_inv2 = weights_inv2.detach()
-                        ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
-                    else:
-                        raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+            #         elif metric.lower() == "w3":
+            #             weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
+            #             weights_inv = weights_inv1.detach()
+            #             weights_inv2 = weights_inv2.detach()
+            #             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
+            #         else:
+            #             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                     
-                    res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
+            #         res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
 
                                
             for (images, labels) in robust_pair[l]:
@@ -356,8 +358,8 @@ def community_check_fc(args):
                     
         with open(res_path + model_full_n + metric + '_' + str(layer_num) + dataset + "_res_correct.pkl", 'wb') as file:
             pickle.dump(res_l, file)
-        with open(res_path + model_full_n + metric + '_' + str(layer_num) + dataset + "_res_misclassified.pkl", 'wb') as file:
-            pickle.dump(res_l_non, file)
+        # with open(res_path + model_full_n + metric + '_' + str(layer_num) + dataset + "_res_misclassified.pkl", 'wb') as file:
+        #     pickle.dump(res_l_non, file)
 
 
            
