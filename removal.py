@@ -16,10 +16,12 @@ from pgd.remove_edge_fc_perE import remove_edge_fc_perE
 from pgd.remove_edge_fc_perE_vec import remove_edge_fc_perE_vec
 from pgd.remove_edge_fc_perE_alllabel import remove_edge_fc_perE_alllabels
 from pgd.remove_edge_fc_union import remove_edge_fc_union
+from pgd.remove_weights_fc import remove_w_fc
 from pgd.remove_node_fc import remove_node_fc
 from CNN.remove_edge_cnn import remove_edge_cnn
 from CNN.remove_edge_cnn_alllabel_per import remove_edge_cnn_per_allL
 from CNN.remove_edge_cnn_union import remove_edge_cnn_union
+from CNN.remove_weights_cnn import remove_w_cnn
 from CNN.remove_edge_cifar import remove_edge_cifar
 from pgd.community_check_fc import community_check_fc
 from CNN.community_check_cnn import community_check_cnn

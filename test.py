@@ -17,7 +17,7 @@ from Lidar.draw_traj import lidar_draw
 from Lidar.avg_fraction_edge import avg_statics_lidar
 from analyze_community import cal_community
 from avg_fraction_edge_tanh import avg_f_cal_tanh
-from analyze_community_histogram import cal_community_npy
+from analyze_indegree_histogram import cal_indegree_histogram
 
 
 import warnings
@@ -74,6 +74,6 @@ if __name__=='__main__':
         avg_statics_lidar(args)
         
     if args.community:
-        cal_community(args)
-        # cal_community_npy(args)
+        # cal_community(args)
+        cal_indegree_histogram(args)
         

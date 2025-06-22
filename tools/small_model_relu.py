@@ -52,6 +52,8 @@ class FC_MD(nn.Module):
         return y
     
     
+    
+    
     # return the activation value (node value) of each neural
     def activation(self, x):
         x = x.view(-1, self.in_dim)
