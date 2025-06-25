@@ -147,31 +147,79 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 
-def get_top_c(curvature, b, prefix_dims, threshold = -50):
-    c = []
-    neg_e = set()  # Negative curvature edges
-    pos_e = set()  # Positive curvature edges
+# def get_top_c(curvature, b, prefix_dims, threshold = -50):
+#     c = []
+#     neg_e = set()  # Negative curvature edges
+#     pos_e = set()  # Positive curvature edges
     
+#     for batch in range(b):
+#         ricci_curv = np.array(curvature[batch])
+#         for (i, j, curr) in ricci_curv:
+#             if curr > 1:
+#                 continue
+
+#             c.append((i,j,curr))
+
+#     c.sort(key=lambda x: x[2])
+    
+#     for (i,j,curr) in c:
+#         i1 = (int)(i)
+#         j1 = (int)(j)
+#         i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
+#         if curr < 0 and i_layer >= 2:
+#             neg_e.add((i1,j1,curr))
+#         elif curr >= 0 and i_layer >= 2:
+#             pos_e.add((i1,j1,curr))
+        
+#     return neg_e, pos_e
+
+
+
+def get_top_c(curvature, b, prefix_dims, threshold=-50):
+    c = []
+    neg_e = set()
+    pos_e = set()
+    seen_edges = set()
+    # print(prefix_dims)
+    noseen = 0
+
     for batch in range(b):
         ricci_curv = np.array(curvature[batch])
         for (i, j, curr) in ricci_curv:
             if curr > 1:
-                continue
-
-            c.append((i,j,curr))
+                curr = 1.0
+            i1, j1 = int(i), int(j)
+            c.append((i1, j1, curr))
+            seen_edges.add((i1, j1))
 
     c.sort(key=lambda x: x[2])
-    
-    for (i,j,curr) in c:
-        i1 = (int)(i)
-        j1 = (int)(j)
+    for (i, j, curr) in c:
         i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-        if curr < 0 and i_layer >= 2:
-            neg_e.add((i1,j1,curr))
-        elif curr >= 0 and i_layer >= 2:
-            pos_e.add((i1,j1,curr))
-        
-    return neg_e, pos_e
+        if i_layer >= 2: 
+            if curr < 0:
+                neg_e.add((i, j, curr))
+            else:
+                pos_e.add((i, j, curr))
+
+    # Get indices of FC layers only
+    fc_layers = [i for i in sorted(model_dims.keys()) if model_dims[i]["name"] == "fc"]
+    fc_indices = [list(model_dims.keys()).index(i) for i in fc_layers]  # 0-based index
+
+    # Generate all possible FC edges
+    all_fc_edges = set()
+    for l in range(fc_indices[0]-1, fc_indices[-1]):
+        start_i, end_i = prefix_dims[l], prefix_dims[l + 1]
+        start_j, end_j = prefix_dims[l + 1], prefix_dims[l + 2]
+        for i in range(start_i, end_i):
+            for j in range(start_j, end_j):
+                all_fc_edges.add((i, j))
+                if (i, j) not in seen_edges:
+                    pos_e.add((i, j, 1.0))  # default curvature
+                    noseen += 1
+
+    return neg_e, pos_e, noseen
+
+
 
 
 def cal_dims(model_dims):
@@ -238,7 +286,7 @@ def plot_curve(neg_acc_clean, pos_acc_clean, neg_freq_ratios, pos_freq_ratios, n
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(save_path, f'curve_label_{label}.png'))
+    plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
     plt.close()
 
 
@@ -275,7 +323,7 @@ def remove_edge_cnn_union(args):
     
     train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
-    sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
+    # sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
     
     eps = [0.03]
     dims = cal_dims(model_dims)
@@ -308,7 +356,7 @@ def remove_edge_cnn_union(args):
     if model_pre_name == 'ori':
         model_name = "cnn_ori_"
     elif model_pre_name == 'adv':
-        model_name = "cnn_adv01_"
+        model_name = "cnn_adv_"
     elif model_pre_name == 'wd':
         model_name = "cnn_wd_"
         
@@ -337,9 +385,9 @@ def remove_edge_cnn_union(args):
 
     freq_ratios = [1, 0.9, 0.8, 0.7, 0.5, 0.3, 0.2, 0.1, 0]
     
-    with open(res_path + "edge_cnn_" + ".txt", "w+") as ff:
+    with open(res_path + "edge_cnn_" + ".txt", "a+") as ff:
         ff.write(f'For model {model_name}: \n')
-        ff.write(f'The clean accuracy for original model is {test_cleanacc}\n\n')
+        ff.write(f'The clean accuracy for original model is {test_cleanacc}\n')
         # print(f'Current label {l}: \n')
         # ff.write(f'Current label {l}: \n')
 
@@ -347,14 +395,16 @@ def remove_edge_cnn_union(args):
         pos_acc_clean = []
         neg_edge_sets = []
         pos_edge_sets = []
+        noseen_num = []
         for l in selected_classes:
             idx = 0
             for (ricci, batch, dim, node) in res_dict[l]:
-                neg_e_other, pos_e = get_top_c(ricci, 1, prefix_dims)
+                neg_e_other, pos_e, noseen = get_top_c(ricci, 1, prefix_dims)
+                noseen_num.append(noseen)
                 neg_edge_sets.append(neg_e_other)
                 pos_edge_sets.append(pos_e)
                 idx += 1
-                if idx >= 10:
+                if idx >= sample_size:
                     break
 
         neg_freq_dict = count_edge_frequency(neg_edge_sets)
@@ -363,20 +413,21 @@ def remove_edge_cnn_union(args):
         pos_freq_edges_sorted = sorted(pos_freq_dict.items(), key=lambda x: x[1], reverse=True)
 
         print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
-        ff.write(f'\n\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
-
+        ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
+        ff.write(f'\n The average noseen edges is {np.mean(noseen_num)}\n')
+            
         neg_edges_only = [(i, j) for ((i, j), _) in neg_freq_edges_sorted]
         pos_edges_only = [(i, j) for ((i, j), _) in pos_freq_edges_sorted]
 
-        # overlap = set(neg_edges_only).intersection(set(pos_edges_only))
+        # Compute overlap
+        # Convert to sets for fast overlap calculation
+        neg_set = set(neg_edges_only)
+        pos_set = set(pos_edges_only)
+        overlap = neg_set & pos_set
+        overlap_count = len(overlap)
+        ff.write(f"\nNumber of overlapping edges: {overlap_count}\n")
 
-        # neg_edges_only = [e for e in neg_edges_only if e not in overlap]
-        # pos_edges_only = [e for e in pos_edges_only if e not in overlap]
-
-        # print(f'It has {len(neg_edges_only)} negative curvature edges, {len(pos_edges_only)} positive curvature egdes, overlap {len(overlap)} .. \n')
-        # ff.write(f'It has {len(neg_edges_only)} negative curvature edges, {len(pos_edges_only)} positive curvature egdes, overlap {len(overlap)} .. \n')
-
-        # remove_num = [0, (int)(len(neg_edges_only)*0.3), (int)(len(neg_edges_only)*0.5), (int)(len(neg_edges_only)*0.7), len(neg_edges_only), (int)(len(pos_edges_only)*0.3), (int)(len(pos_edges_only)*0.4), (int)(len(pos_edges_only)*0.5), (int)(len(pos_edges_only)*0.7), (int)(len(pos_edges_only)*0.9), (int)(len(pos_edges_only))]
+        # remove_num = [0, 5000, (int)(len(neg_edges_only)*0.3), (int)(len(neg_edges_only)*0.5), (int)(len(neg_edges_only)*0.7), len(neg_edges_only), (int)(len(pos_edges_only)*0.7), (int)(len(pos_edges_only)*0.9), (int)(len(pos_edges_only))]
         
         # Step 2: Choose thresholds — you can just use them all or downsample if too many
         neg_max_freq = max(freq for (_, freq) in neg_freq_edges_sorted)
@@ -424,6 +475,6 @@ def remove_edge_cnn_union(args):
                 
             # df.to_excel(excel_path, index=False)    
 
-        # plot_curve(neg_acc_clean, pos_acc_clean, remove_num, l, res_path)
-        plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, l, res_path)
+        # plot_curve(neg_acc_clean, pos_acc_clean, remove_num, sample_size, res_path)
+        plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
                 

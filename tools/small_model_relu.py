@@ -429,14 +429,14 @@ class FC_MD(nn.Module):
             sub_neg_a2 = torch.ones_like(weights[negative_s_i][:, in_edges]) * nodes[negative_s_i][:, neighbors]
             
             # w1
-            sub_pos_a1 = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
-            sub_neg_a1 = weights[negative_s_i][:, in_edges] * nodes[negative_s_i][:, neighbors]
+            # sub_pos_a1 = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
+            # sub_neg_a1 = weights[negative_s_i][:, in_edges] * nodes[negative_s_i][:, neighbors]
             sub_pos = weights[positive_s_i][:, in_edges]
             sub_neg = weights[negative_s_i][:, in_edges]
             
             # w1
-            mask_pos = sub_pos_a1 >= 0
-            mask_neg = sub_neg_a1 <= 0
+            mask_pos = sub_pos >= 0
+            mask_neg = sub_neg <= 0
 
             values_pos = torch.abs(sub_pos * (Sum[positive_s_i] / pos_sum[positive_s_i]))
             values_neg = torch.abs(sub_neg * (Sum[negative_s_i] / neg_sum[negative_s_i]))

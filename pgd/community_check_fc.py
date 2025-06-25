@@ -196,12 +196,12 @@ def community_check_fc(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
-    val_set = load_dataset_from_disk("./data/MNIST_val", batch_size=64, shuffle=False)
+    val_set = load_dataset_from_disk("./data/new/MNIST_val", batch_size=64, shuffle=False)
     sep_dataloader = utils.sep_label(val_set, selected_classes, bs=1000)
     
     eps = [0.03, 0.07, 0.1, 0.2]
@@ -249,7 +249,7 @@ def community_check_fc(args):
             model_name = "big_ori_"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_wd':
-            model_name = "big_wd_"
+            model_name = "big_wd4_"
             dims = model_zoo[21]
         else:
             raise Exception("Invalid model name, model name should be {ori, decay, adv}!")

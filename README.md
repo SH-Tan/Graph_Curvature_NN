@@ -121,3 +121,5 @@
 - python test.py --lidar 0 --image 0 --metric w3 --model_type fc --model_name big_ori --community 1 --mnist_data_path res/w3_with0/tanh/bigori/ --mnist_res_path statistics/indegree/tanh/bigori/
 
 - python removal.py --lidar 0 --metric w3 --model_type fc --model_name big_ori --model_path pgd/models/new/ --mnist_res_path statistics/w3/tanh/bigori/ --edge 0 --node 0 --activation tanh --community 1 --sample_num 100
+
+- python removal.py --lidar 0 --metric w3 --model_type fc --model_name big_ori --model_path pgd/models/new/ --mnist_data_path res/w3/relu/ori1/ --mnist_res_path statistics/remove_new/relu/bigori/ --edge 1 --node 0 --activation relu --sample_num 10

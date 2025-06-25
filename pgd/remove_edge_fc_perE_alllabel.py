@@ -9,6 +9,7 @@ import torch.nn as nn
 from collections import defaultdict
 import seaborn as sns
 import copy
+import matplotlib.pyplot as plt
 
 import pandas as pd
 
@@ -196,6 +197,27 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 
+def plot_curve(neg_clean_acc, pos_clean_acc, remove_num, label, res_path):
+    # Zip, sort, and unzip to reorder all lists by remove_numbers
+    combined = sorted(zip(remove_num, neg_clean_acc, pos_clean_acc), key=lambda x: x[0])
+    remove_sorted, neg_sorted, pos_sorted = zip(*combined)
+
+    # Plot
+    plt.figure(figsize=(8, 5))
+    plt.plot(remove_sorted, neg_sorted, label='Negative Edge Clean Acc', marker='o', linestyle='--')
+    plt.plot(remove_sorted, pos_sorted, label='Positive Edge Clean Acc', marker='x', linestyle='-')
+
+    plt.xlabel('Remove Number')
+    plt.ylabel('Clean Accuracy')
+    plt.title('Clean Accuracy vs Remove Number')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(res_path + f'{label}_curve.png')
+    plt.close()
+    
+
+
 def get_top_c(curvature, b, prefix_dims, threshold = -50):
     c = []
     neg_e_second = set()  # Negative edges in second layer
@@ -290,25 +312,18 @@ def remove_edge_fc_perE_alllabels(args):
         elif model_pre_name.lower() == "adv":
             model_name = "pgdtrain_" + str(layer_num) + ".pth"
         elif model_pre_name.lower() == 'big_adv':
-            model_name = "fc_big_adv.pth"
-            dims = model_zoo[21]
-        elif model_pre_name.lower() == 'big_adv_01':
-            model_name = "fc_big_adv01.pth"
+            model_name = "big_adv_"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_ori':
-            model_name = "fc_big_ori.pth"
+            model_name = "big_ori_"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_wd':
-            model_name = "fc_big_wd.pth"
-            dims = model_zoo[21]
-        elif model_pre_name.lower() == 'big_wd_05':
-            model_name = "fc_big_wd_05.pth"
-            dims = model_zoo[21]
-        elif model_pre_name.lower() == 'big_wd_001':
-            model_name = "fc_big_wd001.pth"
+            model_name = "big_wd_"
             dims = model_zoo[21]
         else:
             raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
+        
+        model_name = model_name + activation + ".pth"
         
         prefix_dims = np.cumsum([0] + dims).tolist()
         
@@ -390,6 +405,7 @@ def remove_edge_fc_perE_alllabels(args):
                             os.remove(res_path + cur_n + "other_neg.pth")
 
                             acc_clean_neg_other = test_clean(net_neg, test_loader)
+                            neg_acc_clean.append(acc_clean_neg_other)
 
                             # remove positive curvature edges
                             net_H.load_state_dict(torch.load(model_path + model_name))
@@ -404,43 +420,46 @@ def remove_edge_fc_perE_alllabels(args):
                             os.remove(res_path + cur_n + "pos.pth")
 
                             acc_clean_pos = test_clean(net_pos, test_loader)
-
-                            for e in eps:
-                                print(f'Current eps {e}: ')
-                                ff.write(f'Current eps {e}: \n')
-
-                                test_advacc = test_adversarial(net_full, test_loader, eps=e, alpha=2/255, iters=40)
-                                ff.write(f'The adversary accuracy eps = {e} for original model is {test_advacc}\n\n')
-
-                                acc_adv_neg_other = test_adversarial(net_neg, test_loader, eps=e, alpha=2/255, iters=40)
-
-                                neg_acc_adv.append(acc_adv_neg_other)
-                                neg_acc_clean.append(acc_clean_neg_other)
+                            pos_acc_clean.append(acc_clean_pos)
                             
-                                ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e_other), rem_f))} neg_e_other edges: clean acc {acc_clean_neg_other}, eps = {e}: adv acc {acc_adv_neg_other:.3f}...\n')
+                        plot_curve(neg_acc_clean, pos_acc_clean, remove_num, l, res_path)
 
-                                acc_adv_pos = test_adversarial(net_pos, test_loader, eps=e, alpha=2/255, iters=40)
+                            # for e in eps:
+                            #     print(f'Current eps {e}: ')
+                            #     ff.write(f'Current eps {e}: \n')
+
+                            #     test_advacc = test_adversarial(net_full, test_loader, eps=e, alpha=2/255, iters=40)
+                            #     ff.write(f'The adversary accuracy eps = {e} for original model is {test_advacc}\n\n')
+
+                            #     acc_adv_neg_other = test_adversarial(net_neg, test_loader, eps=e, alpha=2/255, iters=40)
+
+                            #     neg_acc_adv.append(acc_adv_neg_other)
+                            #     neg_acc_clean.append(acc_clean_neg_other)
                             
-                                pos_acc_adv.append(acc_adv_pos)
-                                pos_acc_clean.append(acc_clean_pos)
+                            #     ff.write(f'Test Accuracy after remove {(int)(min(len(neg_e_other), rem_f))} neg_e_other edges: clean acc {acc_clean_neg_other}, eps = {e}: adv acc {acc_adv_neg_other:.3f}...\n')
 
-                                ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_pos_e), rem_f))} reversed_pos_e1 edges: clean acc {acc_clean_pos}, eps = {e}: adv acc {acc_adv_pos:.3f}...\n')
-                                ff.write("\n\n")
-                                excel_path = res_path + f'accuracies_layer{layer_num}_eps{e}.xlsx'
+                            #     acc_adv_pos = test_adversarial(net_pos, test_loader, eps=e, alpha=2/255, iters=40)
+                            
+                            #     pos_acc_adv.append(acc_adv_pos)
+                            #     pos_acc_clean.append(acc_clean_pos)
+
+                            #     ff.write(f'Test Accuracy after remove {(int)(min(len(reversed_pos_e), rem_f))} reversed_pos_e1 edges: clean acc {acc_clean_pos}, eps = {e}: adv acc {acc_adv_pos:.3f}...\n')
+                            #     ff.write("\n\n")
+                            #     excel_path = res_path + f'accuracies_layer{layer_num}_eps{e}.xlsx'
                                 
-                                ## Create DataFrame for this fraction
-                                df = pd.DataFrame({
-                                    'Label': [l],
-                                    'Remove Number': [rem_f],
-                                    'Negative Edge Clean Acc Other': [neg_acc_clean[-1]],
-                                    'Negative Edge Adv Acc Other': [neg_acc_adv[-1]],
-                                    'Positive Edge Clean Acc': [pos_acc_clean[-1]],
-                                    'Positive Edge Adv Acc': [pos_acc_adv[-1]]
-                                })
+                            #     ## Create DataFrame for this fraction
+                            #     df = pd.DataFrame({
+                            #         'Label': [l],
+                            #         'Remove Number': [rem_f],
+                            #         'Negative Edge Clean Acc Other': [neg_acc_clean[-1]],
+                            #         'Negative Edge Adv Acc Other': [neg_acc_adv[-1]],
+                            #         'Positive Edge Clean Acc': [pos_acc_clean[-1]],
+                            #         'Positive Edge Adv Acc': [pos_acc_adv[-1]]
+                            #     })
 
-                                # If file exists, append to it, otherwise create new
-                                if os.path.exists(excel_path):
-                                    existing_df = pd.read_excel(excel_path)
-                                    df = pd.concat([existing_df, df], ignore_index=True)
+                            #     # If file exists, append to it, otherwise create new
+                            #     if os.path.exists(excel_path):
+                            #         existing_df = pd.read_excel(excel_path)
+                            #         df = pd.concat([existing_df, df], ignore_index=True)
                                     
-                                df.to_excel(excel_path, index=False)                    
+                            #     df.to_excel(excel_path, index=False)                    

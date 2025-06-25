@@ -247,7 +247,7 @@ def remove_w_cnn(args):
     activation = args.activation
     
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -283,7 +283,7 @@ def remove_w_cnn(args):
     if model_pre_name == 'ori':
         model_name = "cnn_ori_"
     elif model_pre_name == 'adv':
-        model_name = "cnn_adv01_"
+        model_name = "cnn_adv_"
     elif model_pre_name == 'wd':
         model_name = "cnn_wd_"
         

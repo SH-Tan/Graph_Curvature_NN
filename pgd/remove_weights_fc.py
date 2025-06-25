@@ -176,7 +176,7 @@ def remove_w_fc(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
     
@@ -212,25 +212,18 @@ def remove_w_fc(args):
         elif model_pre_name.lower() == "adv":
             model_name = "pgdtrain_" + str(layer_num) + ".pth"
         elif model_pre_name.lower() == 'big_adv':
-            model_name = "fc_big_adv.pth"
-            dims = model_zoo[21]
-        elif model_pre_name.lower() == 'big_adv_01':
-            model_name = "fc_big_adv01.pth"
+            model_name = "big_adv_"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_ori':
-            model_name = "fc_big_ori.pth"
+            model_name = "big_ori_"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_wd':
-            model_name = "fc_big_wd.pth"
-            dims = model_zoo[21]
-        elif model_pre_name.lower() == 'big_wd_05':
-            model_name = "fc_big_wd_05.pth"
-            dims = model_zoo[21]
-        elif model_pre_name.lower() == 'big_wd_001':
-            model_name = "fc_big_wd001.pth"
+            model_name = "big_wd_"
             dims = model_zoo[21]
         else:
             raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
+        
+        model_name = model_name + activation + ".pth"
         
         prefix_dims = np.cumsum([0] + dims).tolist()
         
