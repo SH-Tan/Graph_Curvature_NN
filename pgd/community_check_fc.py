@@ -19,7 +19,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature import graph_curvature_main_torch
+from tools.graph_curvature_dynamic import graph_curvature_main_torch
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=torch.inf)
@@ -28,20 +28,6 @@ import warnings
 
 # Ignore all warnings
 warnings.filterwarnings("ignore")
-
-data_train = MNIST('./data/mnist',
-                  train=True,
-                  download=True,
-                  transform=transforms.Compose([
-                      # transforms.Resize((32, 32)),
-                      transforms.ToTensor()]))
-
-data_test = MNIST('./data/mnist',
-                  train=False,
-                  download=True,
-                  transform=transforms.Compose([
-                      # transforms.Resize((32, 32)),
-                      transforms.ToTensor()]))
 
 
 layers = [2, 4, 5, 6, 7]
@@ -148,36 +134,6 @@ def test(n, loader, device):
 
 
 
-def get_top_c(curvature, b, prefix_dims, threshold = -50):
-    c = []
-    neg_e_second = set()  # Negative edges in second layer
-    neg_e_other = set()   # Negative edges in other layers 
-    pos_e = set()
-    
-    for batch in range(b):
-        ricci_curv = np.array(curvature[batch])
-        for (i, j, curr) in ricci_curv:
-            if curr > 1:
-                continue
-            c.append((i,j,curr))
-
-    c.sort(key=lambda x: x[2])
-    
-    for (i,j,curr) in c:
-        i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-        i1 = (int)(i)
-        j1 = (int)(j)
-        if curr < 0:
-            if i_layer == 3:  # Second layer (index 1)
-                neg_e_second.add((i1,j1))
-            else:
-                neg_e_other.add((i1,j1))
-        elif curr >= 0:
-            pos_e.add((i1,j1))
-        
-    return c, neg_e_second, neg_e_other, pos_e
-
-
 
 def set_seed(seed):
     random.seed(seed)
@@ -196,12 +152,12 @@ def community_check_fc(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
-    val_set = load_dataset_from_disk("./data/new/MNIST_val", batch_size=64, shuffle=False)
+    val_set = load_dataset_from_disk("./data/MNIST_val", batch_size=64, shuffle=False)
     sep_dataloader = utils.sep_label(val_set, selected_classes, bs=1000)
     
     eps = [0.03, 0.07, 0.1, 0.2]
@@ -249,7 +205,7 @@ def community_check_fc(args):
             model_name = "big_ori_"
             dims = model_zoo[21]
         elif model_pre_name.lower() == 'big_wd':
-            model_name = "big_wd4_"
+            model_name = "big_wd_"
             dims = model_zoo[21]
         else:
             raise Exception("Invalid model name, model name should be {ori, decay, adv}!")
@@ -336,19 +292,19 @@ def community_check_fc(args):
                     
                     elif metric.lower() == "w3":
                         weights = output.detach().clone().to(device)                   
-                        # weights[edge_array == 0] = 0.
+                        weights[edge_array == 0] = 0.
                         
                     if metric.lower() == "w1":
                         weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)
                         weights_inv = weights_inv1.detach()
                         weights_inv2 = weights_inv2.detach()
-                        ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
+                        ricci_curvature= graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
                             
                     elif metric.lower() == "w3":
                         weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
                         weights_inv = weights_inv1.detach()
                         weights_inv2 = weights_inv2.detach()
-                        ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
+                        ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
                     else:
                         raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                     

@@ -8,6 +8,8 @@ import torch.nn.functional as F
 import time
 from collections import defaultdict
 import sys
+import random
+import os
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=sys.maxsize)
@@ -21,6 +23,7 @@ _sp_dict = {}
 _distribution_in = {}
 _distribution_out = {}
 _alpha = 0.
+_pre_n = 0
 
 
 # For CNN
@@ -49,19 +52,26 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
             # f.write(f'{i}-{i+1}: {shortest_paths[(i, i+1)]}\n')
             
         elif current_layer['name'] in ['cnn', 'pooling']:
-            adjacent_m = torch.zeros((batch_size, src_size, dst_size), dtype=torch.float32, device=device)
-            
             # CNN layer handling
             k = current_layer['dim']['kernel']
             s = current_layer['dim']['stride']
             in_size = model_dims[l]['dim']['out_size']
             pre_ch = model_dims[l]['dim'].get('channel', 1)
             cur_ch = current_layer['dim']['channel']
+            padding = current_layer['dim'].get('padding', 0)
+            pool = current_layer['dim'].get('pool', False)
+            if pool:
+                dst_size = dst_size * 2 * 2
+            else:
+                dst_size = dst_size
+            
+            adjacent_m = torch.zeros((batch_size, src_size, dst_size), dtype=torch.float32, device=device)
+            
             # Generate receptive field indices
             dummy = torch.arange(src_size, device=device).reshape(1, pre_ch, in_size, in_size).float()
 
             # Unfold operation to get receptive field indices
-            unfolded = F.unfold(dummy, kernel_size=k, stride=s).transpose(1, 2).int()
+            unfolded = F.unfold(dummy, kernel_size=k, stride=s, padding=padding).transpose(1, 2).int()
             patches = unfolded.shape[1]
 
             step = k**2 
@@ -179,11 +189,12 @@ def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda'):
             in_size = model_dims[l]['dim']['out_size']
             pre_ch = model_dims[l]['dim'].get('channel', 1)
             cur_ch = current_layer['dim']['channel']
+            padding = current_layer['dim'].get('padding', 0)
             # Generate receptive field indices
             dummy = torch.arange(src_size, device=device).reshape(1, pre_ch, in_size, in_size).float()
 
             # Unfold operation to get receptive field indices
-            unfolded = F.unfold(dummy, kernel_size=k, stride=s).transpose(1, 2).int()
+            unfolded = F.unfold(dummy, kernel_size=k, stride=s, padding=padding).transpose(1, 2).int()
             patches = unfolded.shape[1]
 
             step = k**2 
@@ -237,10 +248,10 @@ def process_edge(b, edge):
     j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
     
     if j_layer != i_layer + 1:
-        return (b, i, j, 2.0)
+        return (b, i+_pre_n, j+_pre_n, 2.0)
     
     if (i_layer, j_layer) not in _sp_dict:
-        return (b, i, j, 2.0)
+        return (b, i+_pre_n, j+_pre_n, 2.0)
     
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
@@ -251,7 +262,7 @@ def process_edge(b, edge):
         mu = np.array([1.0])
         in_neigh = [i]
     else:
-        mu = _distribution_in[i_layer][b, :, i - _prefix_dims[i_layer]]
+        mu = _distribution_in[i_layer][b, :, i_idx]
         if len(np.nonzero(mu)[0]) == 0:   
             mu = np.array([1.0])
             in_neigh = [i]
@@ -269,7 +280,7 @@ def process_edge(b, edge):
         nu = np.array([1.0])
         out_neigh = [j]
     else:
-        nu = _distribution_out[j_layer][b, j - _prefix_dims[j_layer], :]
+        nu = _distribution_out[j_layer][b, j_idx, :]
         if len(np.nonzero(nu)[0]) == 0:     
             nu = np.array([1.0])
             out_neigh = [j]
@@ -283,7 +294,7 @@ def process_edge(b, edge):
             nu = np.hstack((nu[non_zero], np.array(_alpha)))
 
     # Get submatrix for neighbors
-    d_np = np.zeros((len(in_neigh), len(out_neigh)))
+    d_np = np.full((len(in_neigh), len(out_neigh)), np.inf)
     for m_idx, m in enumerate(in_neigh):
         for n_idx, n in enumerate(out_neigh):
             if (m == n):
@@ -292,11 +303,11 @@ def process_edge(b, edge):
                 d_np[m_idx, n_idx] = get_layer_path(_sp_dict, _prefix_dims, b, m, n)
     
     if d_np.size == 0 or np.isinf(d_np).all():
-        return (b, i, j, 2.0)
+        return (b,i+_pre_n, j+_pre_n, 2.0)
 
     m = ot.emd2(mu, nu, d_np)
     
-    return (b, i, j, 1.0 - m/sp)
+    return (b, i+_pre_n, j+_pre_n, 1.0 - m/sp)
 
 
 
@@ -305,15 +316,17 @@ def _wrap_compute_single_edge(stuff):
     return process_edge(*stuff)
 
 
-def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0.):
+def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., pre_n=0, layers_to_process=None,):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
     global _distribution_in 
     global _distribution_out
     global _alpha
+    global _pre_n
     
     _alpha = alpha
+    _pre_n = pre_n
 
     weights = weights.to(device)
     batch_size = weights.shape[0]
@@ -321,6 +334,10 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
 
     _dims = dims
     _prefix_dims = np.array(prefix_dims)
+    
+    layers = layers_to_process or list(range(len(dims) - 1))
+    if layers_to_process is None:
+        layers = [l+1 for l in layers]
 
     # Compute shortest paths
     if model_dims:
@@ -334,7 +351,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             
         
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
-    
+
     if probability_w != None:
         dis_w = sp1
     else:
@@ -342,7 +359,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     
     # Precompute distributions using dictionary
     distribution_in, distribution_out = {}, {}
-    for layer in range(1, len(dims)):
+    for layer in layers:
+        layer -= 1
         if (layer-1, layer) in dis_w:
             path_sub = dis_w[(layer-1, layer)]
             mask = (path_sub != float('inf'))
@@ -359,7 +377,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             
             distribution_in[layer] = dist_prev.cpu().numpy()
 
-    for layer in range(len(dims)-1):
+    for layer in layers:
         if (layer, layer+1) in dis_w:
             path_sub = dis_w[(layer, layer+1)]
             mask = (path_sub != float('inf'))
@@ -381,7 +399,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
 
     # Generate edges from original weights
     edges = []
-    for layer in range(len(dims)-1):
+    for layer in layers:
+        layer -= 1
         sp_array = sp_dict[(layer, layer+1)]
         
         for b in range(batch_size):
@@ -410,7 +429,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     for b, i, j, val in results:
         ricci_results[b].append((i,j,val))
 
-    return ricci_results, _sp_dict
+    return ricci_results
 
 
 if __name__ == '__main__':
@@ -419,6 +438,18 @@ if __name__ == '__main__':
     #     [1, 0, 0.5, 1.5, 1, 2, 0.5, 0.2, 0.3],
     #     [1.2, 2, 0.5, 1.58, 1, 1.8, 0.5, 0.7, 0.8]
     # ], device='cuda')
+
+    seed = 29
+    
+    # set random seed
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
     
     model_dims = {
         1: {"name": "input", "dim": {"channel": 1, "out_size": 3}},
@@ -429,12 +460,13 @@ if __name__ == '__main__':
     
     dims = [9, 8, 2, 1]
     
-    edge_num = 32 + 32*2 + 2
+    edge_num = 32 + 8*2 + 2
     weights = torch.rand(1, edge_num)
     
     print(weights)
 
     ricci_curvature = graph_curvature_main_torch(dims, weights, model_dims=model_dims)
+
     print("Ricci Curvature Results:")
     for b in range(weights.shape[0]):
         print(f"\nBatch {b}:")

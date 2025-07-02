@@ -62,8 +62,6 @@ class LeNet_custom_v2(nn.Module):
                 s = l2_dim["stride"]
                 
                 tensor_2d = torch.arange(l1_nodes).reshape(1,l1_channel,l1_size,l1_size).float()
-        
-                tensor_2d = torch.arange(l1_nodes).reshape(1,l1_channel,l1_size,l1_size).float()
                 input_indices = F.unfold(tensor_2d, (k,k), stride = s).transpose(1,2).int()
                 
                 map_size = l2_size**2

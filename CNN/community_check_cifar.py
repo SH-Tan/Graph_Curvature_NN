@@ -1,5 +1,6 @@
 import torch
 from torchvision.datasets.cifar import CIFAR10
+from torch.utils.data import TensorDataset, DataLoader
 import torchvision.transforms as transforms
 import torchvision
 import numpy as np
@@ -18,12 +19,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.small_model_relu import FC_MD
-from tools.FC_linear import FC_Linear
-from tools.LeNet5_custom import LeNet_custom
 from tools.graph_curvature import graph_curvature_main_torch
-from tools.get_c import get_c
-from tools.get_community import multi_community_from_output, negative_edge_communities, find_all_backward_communities, write_graph_info_to_excel
 
 
 np.set_printoptions(threshold=np.inf)
@@ -34,34 +30,44 @@ import warnings
 # Ignore all warnings
 warnings.filterwarnings("ignore")
 
-transform_train = torchvision.transforms.Compose([
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomCrop(size=32, padding=4),
-    transforms.ToTensor(),
-    # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-])
-
-transform_test = torchvision.transforms.Compose([
-    transforms.ToTensor(),
-    # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-])
-
-data_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
-data_test = CIFAR10('./data/cifar10', train=False, download=True, transform=transform_test)
 
 
 model_dims = {
-    1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},
-    2: {"name": "cnn", "dim": {"channel": 6, "kernel": 6, "stride": 2, "out_size": 14}},
-    3: {"name": "cnn", "dim": {"channel": 16, "kernel": 6, "stride": 2, "out_size": 5}},
-    4: {"name": "fc", "dim": {"out_size": 120}},
-    5: {"name": "fc", "dim": {"out_size": 84}},
-    6: {"name": "fc", "dim": {"out_size": 10}}
+    1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
+
+    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
+    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
+    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
+    5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
+
+    6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
+    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
+    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 1}},   # conv5_3 + pool
+
+    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
+    10: {"name": "fc", "dim": {"out_size": 512}},
+    11: {"name": "fc", "dim": {"out_size": 10}}
 }
 
-# 4852 + 10
+
+model_dims_small = {
+    1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
+    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 1}},   # conv5_3 + pool
+
+    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
+    4: {"name": "fc", "dim": {"out_size": 512}},
+    5: {"name": "fc", "dim": {"out_size": 10}}
+}
+
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
+
+
+def load_dataset_from_disk(path, batch_size=128, shuffle=True):
+    data_path = f"{path}/data.pt"
+    images, labels = torch.load(data_path)
+    dataset = TensorDataset(images, labels)
+    return dataset
 
 
 
@@ -147,36 +153,6 @@ def test(n, loader, device):
 
 
 
-def get_top_c(curvature, b, prefix_dims, threshold = -50):
-    c = []
-    neg_e_second = set()  # Negative edges in second layer
-    neg_e_other = set()   # Negative edges in other layers 
-    pos_e = set()
-    
-    for batch in range(b):
-        ricci_curv = np.array(curvature[batch])
-        for (i, j, curr) in ricci_curv:
-            if curr > 1:
-                continue
-            c.append((i,j,curr))
-
-    c.sort(key=lambda x: x[2])
-    
-    for (i,j,curr) in c:
-        i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-        i1 = (int)(i)
-        j1 = (int)(j)
-        if curr < 0:
-            if i_layer == 1:  # Second layer (index 1)
-                neg_e_second.add((i1,j1))
-            else:
-                neg_e_other.add((i1,j1))
-        elif curr >= 0:
-            pos_e.add((i1,j1))
-        
-    return c, neg_e_second, neg_e_other, pos_e
-
-
 def cal_dims(model_dims):
     dims = []
     layer_num = len(model_dims)
@@ -198,6 +174,35 @@ def cal_dims(model_dims):
     return dims
 
 
+def cal_edges(model_dims):
+    edges = []
+    layer_num = len(model_dims)
+    
+    for i in range(2, layer_num + 1):
+        cur_name = model_dims[i]["name"]
+        cur_dim = model_dims[i]["dim"]
+        cur_size = cur_dim['out_size']
+
+        pre_name = model_dims[i-1]["name"]
+        pre_dim = model_dims[i-1]["dim"]
+        pre_size = pre_dim['out_size']
+
+        if cur_name == "cnn":
+            k = cur_dim['kernel']
+            pool = cur_dim.get('pool', False)
+            if pool:
+                cur_size *= 2
+            pre_channel = 1 if (pre_name == "fc") else pre_dim['channel']
+            cur_edges = pre_channel * k**2 * cur_size**2 * cur_dim['channel']
+        else:
+            pre_nodes = pre_size if (pre_name == "fc") else pre_dim['channel']*(pre_size**2)
+            cur_edges = cur_size * pre_nodes
+            
+        edges.append(cur_edges)
+    
+    return edges
+
+
 
 
 def community_check_cifar(args):
@@ -212,18 +217,23 @@ def community_check_cifar(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
-    
-    train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
+    # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
-    sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
+    val_set = load_dataset_from_disk("./data/CIFAR10_val", batch_size=64, shuffle=False)
+    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=100)
     
-    eps = [1,2,3,5]
-    dims = cal_dims(model_dims)
-    
+    dims_full = cal_dims(model_dims)
+    dims = cal_dims(model_dims_small)
+    edge_dims = cal_edges(model_dims_small)
+
+    print(dims_full)
+    print(dims)
+    print(edge_dims)
+
     model_type = args.model_type
     model_pre_name = args.model_name
     res_path = args.mnist_res_path
@@ -233,174 +243,121 @@ def community_check_cifar(args):
     alpha = args.alpha
     hops = args.hops
     sample_size = args.sample_num
+    activation = args.activation
     
     model_full_n = model_type.lower() + model_pre_name.lower()
+    
+    if activation.lower() == "relu":
+        from tools.vgg16_custom_relu import VGG16_CIFAR10
+    elif activation.lower() == "tanh":
+        from tools.vgg16_custom_tanh import VGG16_CIFAR10
 
-    dims = cal_dims(model_dims)
-    prefix_dims = np.cumsum([0] + dims).tolist()
+    # prefix_dims = np.cumsum([0] + edge_dims).tolist()
     
     if not os.path.exists(res_path):
         os.makedirs(res_path)
         
     # build model
-    model_name= "cnn_cifar_ori.pth"
-    if model_pre_name.lower() == 'ori':
-        model_name= "cnn_cifar_ori.pth"
-    elif model_pre_name.lower() == 'adv':
-        model_name= "cnn_cifar_adv.pth"
+    if model_pre_name == 'ori':
+        model_name = "vgg16_ori_"
+    elif model_pre_name == 'adv':
+        model_name = "vgg16_adv_"
+    elif model_pre_name == 'wd':
+        model_name = "vgg16_wd_"
+        
+    model_name = model_name + activation + ".pth"
     
-    net_H = LeNet_custom(model_dims, device, input_c=3)
+    net_H = VGG16_CIFAR10(model_dims, None, device)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
     net_full = copy.deepcopy(net_H)
 
     print(model_name)
-    # remove_frac = [0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.8, 1]
-    remove_num = [5,20,50,100,150,300,500,700,1000,1500,2000,2500,3000,3500,5000]
-      
-    test_cleanacc = test_clean(net_full, test_loader)
+
     succ_pair, robust_pair = test(net_H, sep_dataloader, device=device)
-         
-    # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
+    res_l = defaultdict(list)
 
-    for l in selected_classes:
-        with open(res_path + "community_cifar_" + str(l) + ".txt", "w+") as ff:
-            ff.write(f'For model {model_name}: \n')
-            ff.write(f'The clean accuracy for original model is {test_cleanacc}\n\n')
-            print(f'Current label {l}: \n')
-            ff.write(f'Current label {l}: \n')
+    print("Finished loading model and test data..")
+    
+    # Track how many samples have been processed for each class
+    label_progress = defaultdict(int)
 
-            edge_list_mis = []
-            node_list_mis= [] 
-            edge_list_ground = []
-            node_list_ground = [] 
-            for (images, labels) in succ_pair[l]:
-                for idx in range(images.shape[0]):
-                    if (idx >= sample_size):
-                        print(f'Finish {idx} examples....')
-                        break
-                    
-                    ff.write(f'\nFor misclassified example {idx}: True label {l}, Acctual output {labels[idx]} \n')
-                    img = images[idx].to(device)
-                    edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
+    # Prepare iterators for each label's data
+    data_iterators = {l: iter(robust_pair[l]) for l in selected_classes}
+    finished_labels = set()
 
-                    weights = output.detach().clone().to(device)                   
-                    weights[edge_array == 0] = 0.
-                    weights_inv = net_full.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
-                    weights_inv = weights_inv.detach()
-                    
-                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha)
+    while len(finished_labels) < len(selected_classes):
+        for l in selected_classes:
+            if label_progress[l] >= sample_size:
+                finished_labels.add(l)
+                continue
 
-                    summary, node_communities, graph_info = find_all_backward_communities(
-                        ricci_curvature, 1, prefix_dims, threshold=-2
-                    )
+            num_needed = min(10, sample_size - label_progress[l])  # Process up to 10 per round
+            current_count = 0
 
-                    # Get node indices for true and predicted labels
-                    true_output_node = prefix_dims[-2] + l
-                    pred_output_node = prefix_dims[-2] + labels[idx].item()
-                    
-                    # Get community IDs that contain each output node
-                    true_comms = node_communities.get(true_output_node, set())
-                    pred_comms = node_communities.get(pred_output_node, set())
+            try:
+                while current_count < num_needed:
+                    images, labels = next(data_iterators[l])
 
-                    # Extract stats for the true label community (only one community expected)
-                    if true_comms:
-                        true_cid = next(iter(true_comms))  # Take the first (should usually be only one)
-                        true_nodes = set(summary[true_cid]["nodes"])
-                        true_edges = set(map(tuple, summary[true_cid]["edges"]))
+                    for idx in range(images.shape[0]):
+                        if label_progress[l] >= sample_size:
+                            finished_labels.add(l)
+                            break
 
-                        ff.write(f"\n--- Ground Truth Community ---\n")
-                        ff.write(f"  Community ID: {true_cid}\n")
-                        ff.write(f"  Node count: {len(true_nodes)}\n")
-                        ff.write(f"  Edge count: {len(true_edges)}\n")
+                        if current_count >= num_needed:
+                            break
 
-                        node_list_ground.append(len(true_nodes))
-                        edge_list_ground.append(len(true_edges))
-                    else:
-                        ff.write(f"\n--- Ground Truth Community ---\n")
-                        ff.write(f"  Not found for node {true_output_node}\n")
-                        node_list_ground.append(0)
-                        edge_list_ground.append(0)
+                        if (label_progress[l] % 10 == 0):
+                            print(f'Label {l}: finish {label_progress[l]} examples...')
 
-                    # Extract stats for the predicted label community (only if different)
-                    if pred_output_node != true_output_node and pred_comms:
-                        pred_cid = next(iter(pred_comms))
-                        pred_nodes = set(summary[pred_cid]["nodes"])
-                        pred_edges = set(map(tuple, summary[pred_cid]["edges"]))
+                        with torch.no_grad():
+                            net_full.eval()
+                            img = images[idx].to(device, non_blocking=True)
+                            edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
 
-                        ff.write(f"\n--- Predicted Output Community ---\n")
-                        ff.write(f"  Community ID: {pred_cid}\n")
-                        ff.write(f"  Node count: {len(pred_nodes)}\n")
-                        ff.write(f"  Edge count: {len(pred_edges)}\n")
+                            weights = output.detach().to(device)
+                            del output
+                            # weights[edge_array == 0] = 0.
 
-                        node_list_mis.append(len(pred_nodes))
-                        edge_list_mis.append(len(pred_edges))
-                    else:
-                        ff.write(f"\n--- Predicted Output Community ---\n")
-                        ff.write(f"  Not found for node {pred_output_node} (or same as ground truth)\n")
-                        node_list_mis.append(0)
-                        edge_list_mis.append(0)
-            
-            edge_list_correct = []
-            node_list_correct = []        
-            for (images, labels) in robust_pair[l]:
-                for idx in range(images.shape[0]):
-                    if (idx >= sample_size):
-                        print(f'Finish {idx} examples....')
-                        break
-                    
-                    ff.write(f'\nFor correct classified example {idx}: True label {l}, Acctual output {labels[idx]} \n')
-                    img = images[idx].to(device)
-                    edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
+                            if metric.lower() == "w1":
+                                weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims_small)
+                                weights_inv = weights_inv1.detach()
+                                weights_inv2 = weights_inv2.detach()
+                                ricci_curvature = graph_curvature_main_torch(
+                                    dims, weights_inv, device=device,
+                                    model_dims=model_dims_small,
+                                    probability_w=weights_inv2, alpha=alpha
+                                )
+                            elif metric.lower() == "w3":
+                                weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims_small)
+                                weights_inv = weights_inv1.detach()
+                                weights_inv2 = weights_inv2.detach()
+                                ricci_curvature = graph_curvature_main_torch(
+                                    dims, weights_inv, device=device,
+                                    model_dims=model_dims_small,
+                                    probability_w=weights_inv2, alpha=alpha,
+                                    pre_n=(np.sum(dims_full) - np.sum(dims)),
+                                    layers_to_process=[2, 3, 4]
+                                )
+                            else:
+                                raise Exception("Invalid graph metric, should be {w1, w3}!")
 
-                    weights = output.detach().clone().to(device)                   
-                    weights[edge_array == 0] = 0.
-                    weights_inv = net_full.normalization_weight_w2(nodes_ori, weights, dims, model_dims)
-                    weights_inv = weights_inv.detach()
-                    
-                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, alpha=alpha)
+                            res_l[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
 
-                    summary, node_communities, graph_info = find_all_backward_communities(
-                        ricci_curvature, 1, prefix_dims, threshold=-2
-                    )
+                            # GPU memory cleanup
+                            del img, edge_array, nodes_ori
+                            del weights, weights_inv1, weights_inv2, weights_inv
+                            torch.cuda.empty_cache()
 
-                    # Get node indices for true and predicted labels
-                    true_output_node = prefix_dims[-2] + l
+                        label_progress[l] += 1
+                        current_count += 1
 
-                    # Get community IDs that contain each output node
-                    true_comms = node_communities.get(true_output_node, set())
+            except StopIteration:
+                finished_labels.add(l)
+                continue
 
-                    # Extract stats for the true label community (only one community expected)
-                    if true_comms:
-                        true_cid = next(iter(true_comms))  # Take the first (should usually be only one)
-                        true_nodes = set(summary[true_cid]["nodes"])
-                        true_edges = set(map(tuple, summary[true_cid]["edges"]))
-
-                        ff.write(f"\n--- Ground Truth Community ---\n")
-                        ff.write(f"  Community ID: {true_cid}\n")
-                        ff.write(f"  Node count: {len(true_nodes)}\n")
-                        ff.write(f"  Edge count: {len(true_edges)}\n")
-
-                        node_list_correct.append(len(true_nodes))
-                        edge_list_correct.append(len(true_edges))
-                    else:
-                        ff.write(f"\n--- Ground Truth Community ---\n")
-                        ff.write(f"  Not found for node {true_output_node}\n")
-                        node_list_correct.append(0)
-                        edge_list_correct.append(0)
-
-            node_list_mis = np.array(node_list_mis)
-            node_list_ground = np.array(node_list_ground)
-            node_list_correct = np.array(node_list_correct)
-            edge_list_mis = np.array(edge_list_mis)
-            edge_list_ground = np.array(edge_list_ground)
-            edge_list_correct = np.array(edge_list_correct)
-                        
-            ff.write(f'\n For the misclassified examples: \n') 
-            ff.write(f'There are total {len(node_list_mis)} comminties, {len(node_list_mis[node_list_mis == 0])} are zero (not exist); {len(node_list_ground)} ground truth communities, {len(node_list_ground[node_list_ground == 0])} are zero (not exist). \n')
-            ff.write(f'The average node number (non-zero) for misclassified community is {np.mean(node_list_mis[node_list_mis != 0])}, edge number is {np.mean(edge_list_mis[edge_list_mis != 0])}\n')     
-            ff.write(f'The average node number (non-zero) for ground truth community is {np.mean(node_list_ground[node_list_ground!=0])}, edge number is {np.mean(edge_list_ground[edge_list_ground!=0])}\n')
-            ff.write(f'\n For the correct classified examples: \n')     
-            ff.write(f'There are total {len(node_list_correct)} comminties, {len(node_list_correct[node_list_correct == 0])} are zero (not exist). \n') 
-            ff.write(f'The average node number (non-zero) for correct classified examples is {np.mean(node_list_correct[node_list_correct != 0])}, edge number is {np.mean(edge_list_correct[edge_list_correct!=0])}\n')        
+        # === Save progress every round ===
+        with open(res_path + model_full_n + metric + '_' + dataset + "_res_correct.pkl", 'wb') as file:
+            pickle.dump(res_l, file)
+        print(f'[Progress] Saved results after one full round of 10 samples per label')

@@ -17,12 +17,15 @@ from pgd.remove_edge_fc_perE_vec import remove_edge_fc_perE_vec
 from pgd.remove_edge_fc_perE_alllabel import remove_edge_fc_perE_alllabels
 from pgd.remove_edge_fc_union import remove_edge_fc_union
 from pgd.remove_weights_fc import remove_w_fc
-from pgd.remove_node_fc import remove_node_fc
+from pgd.remove_edge_fc_union_perlayer import remove_edge_fc_union_perlayer
 from CNN.remove_edge_cnn import remove_edge_cnn
 from CNN.remove_edge_cnn_alllabel_per import remove_edge_cnn_per_allL
 from CNN.remove_edge_cnn_union import remove_edge_cnn_union
 from CNN.remove_weights_cnn import remove_w_cnn
-from CNN.remove_edge_cifar import remove_edge_cifar
+from CNN.remove_edge_cnn_union_perlayer import remove_edge_cnn_union_perlayer
+from CNN.remove_edge_cifar_union import remove_edge_cifar_union
+from CNN.remove_edge_cifar_union_perlayer import remove_edge_cifar_union_perlayer
+from CNN.remove_weights_cifar import remove_w_cifar
 from pgd.community_check_fc import community_check_fc
 from CNN.community_check_cnn import community_check_cnn
 from CNN.community_check_cifar import community_check_cifar
@@ -77,17 +80,15 @@ if __name__=='__main__':
         if model_type.lower() == "fc":
             if args.edge:
                 remove_edge_fc_union(args)
-            if args.node:
-                remove_node_fc(args)
             if args.community:
                 community_check_fc(args)
         elif model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
-                remove_edge_cnn_union(args)
+                remove_edge_cnn_union_perlayer(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                remove_edge_cifar(args)
+                remove_w_cifar(args)
             if args.community and args.dataset.lower() == "cifar":
                 community_check_cifar(args)
         else:

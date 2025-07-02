@@ -18,7 +18,6 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -175,7 +174,7 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 
-def get_top_c(curvature, b, prefix_dims, threshold=-50):
+def get_top_c(curvature, b, prefix_dims):
     c = []
     neg_e = set()
     pos_e = set()
@@ -290,16 +289,23 @@ def plot_curve(neg_acc_clean, pos_acc_clean, neg_freq_ratios, pos_freq_ratios, n
     plt.close()
 
 
-
 from collections import Counter
 def count_edge_frequency(edge_sets):
     freq = Counter()
+    curvature_sum = defaultdict(float)
+
     for edge_set in edge_sets:
-        # Normalize edge direction if undirected
         for i, j, c in edge_set:
-            key = tuple(sorted((i, j)))
+            key = tuple(sorted((i, j)))  # normalize direction for undirected edges
             freq[key] += 1
-    return freq
+            curvature_sum[key] += c
+
+    results = []
+    for key in freq:
+        avg_curv = curvature_sum[key] / freq[key]
+        results.append((key[0], key[1], freq[key], avg_curv))
+
+    return results
 
 
 
@@ -409,15 +415,15 @@ def remove_edge_cnn_union(args):
 
         neg_freq_dict = count_edge_frequency(neg_edge_sets)
         pos_freq_dict = count_edge_frequency(pos_edge_sets)
-        neg_freq_edges_sorted = sorted(neg_freq_dict.items(), key=lambda x: x[1], reverse=True)
-        pos_freq_edges_sorted = sorted(pos_freq_dict.items(), key=lambda x: x[1], reverse=True)
+        neg_freq_edges_sorted = sorted(neg_freq_dict, key=lambda x: (-x[2], x[3]))
+        pos_freq_edges_sorted = sorted(pos_freq_dict, key=lambda x: (-x[2], -x[3]))
 
         print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
         ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
         ff.write(f'\n The average noseen edges is {np.mean(noseen_num)}\n')
             
-        neg_edges_only = [(i, j) for ((i, j), _) in neg_freq_edges_sorted]
-        pos_edges_only = [(i, j) for ((i, j), _) in pos_freq_edges_sorted]
+        neg_edges_only = [(i, j) for ((i, j), _,_) in neg_freq_edges_sorted]
+        pos_edges_only = [(i, j) for ((i, j), _,_) in pos_freq_edges_sorted]
 
         # Compute overlap
         # Convert to sets for fast overlap calculation
