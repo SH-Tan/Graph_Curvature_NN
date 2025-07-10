@@ -82,13 +82,13 @@
 
 - python test.py --lidar 0 --metric q_ngr --model_type fc_linear --model_name ori --model_path pgd/models/ --mnist_data_path res/q_ngr/ --mnist_res_path statistics/q_ngr/
 - python test.py --lidar 0 --metric q_inv --model_type fc_linear --model_name ori --model_path pgd/models/ --mnist_data_path res/q_inv/ --mnist_res_path statistics/q_inv/
-- python test.py --lidar 0 --metric q_exp --model_type fc_linear --model_name ori --model_path pgd/models/ --mnist_data_path res/q_exp/ --mnist_res_path statistics/q_exp/
+- python test.py --lidar 0 --metric w3 --model_type fc --model_name ori --model_path pgd/models/ --mnist_data_path res/q_exp/ --mnist_res_path statistics/q_exp/
 
 
 
 ## LiDAR
 
-- python main.py --image 0 --lidar 1 --metric q_inv --lidar_res_path res/lidar/q_inv/
+- python main.py --image 0 --lidar 1 --metric w3 --lidar_res_path res/lidar/w3/ --model_path Lidar/models/ --sample_size 50
 
 - python test.py --image 0 --lidar 1 --metric q_inv --lidar_data_path res/lidar/ --lidar_res_path statistics/lidar/ 
 
@@ -118,10 +118,10 @@
 
 - python test.py --lidar 0 --image 0 --metric w3 --model_type cnn --model_name adv --community 1 --mnist_data_path res/w3_with0/relu/cnnadv/ --mnist_res_path statistics/indegree/relu/cnnadv/
 
-- python test.py --lidar 0 --image 0 --metric w3 --model_type fc --model_name big_ori --community 1 --mnist_data_path res/w3_with0/tanh/bigori/ --mnist_res_path statistics/indegree/tanh/bigori/
-
 - python removal.py --lidar 0 --metric w3 --model_type fc --model_name big_ori --model_path pgd/models/new/ --mnist_res_path statistics/w3/tanh/bigori/ --edge 0 --node 0 --activation tanh --community 1 --sample_num 100
 
 - python removal.py --lidar 0 --metric w3 --model_type fc --model_name big_ori --model_path pgd/models/new/ --mnist_data_path res/w3/relu/ori1/ --mnist_res_path statistics/remove_new/relu/bigori/ --edge 1 --node 0 --activation relu --sample_num 10
 
 - python removal.py --lidar 0 --metric w3 --model_type cnn --model_name ori --model_path CNN/models/new/ --mnist_data_path res/w3/relu/cifarori/ --mnist_res_path statistics/remove/relu/cifarori/ --edge 1 --node 0 --activation relu --sample_num 10 --dataset cifar
+
+- python removal.py --lidar 1 --image 0 --metric w3 --model_type DDPG --model_name 64 --model_path Lidar/models/ --mnist_data_path res/lidar/w3/ --mnist_res_path statistics/remove/lidar/ddpg64/ --edge 1 --sample_num 10

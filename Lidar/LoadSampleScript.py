@@ -17,7 +17,8 @@ import pickle
 from collections import defaultdict
 from Lidar.lidar_tools.getNNweights import getNN_info
 from Lidar.lidar_tools.graph_cal import *
-from Lidar.lidar_tools.graph_curvature_multihops import graph_curvature_main_torch
+from Lidar.lidar_tools.graph_curvature import graph_curvature_main_torch
+from tools.controller import Controller
 
 import warnings
 
@@ -25,6 +26,19 @@ import warnings
 warnings.filterwarnings("ignore")
 
 Keys =  ['DDPG_128_1', 'DDPG_128_2', 'DDPG_128_3', 'DDPG_64_1', 'DDPG_64_2', 'DDPG_64_3', 'TD3_128_1', 'TD3_128_2', 'TD3_128_3', 'TD3_64_1', 'TD3_64_2', 'TD3_64_3']
+
+model_zoo = {
+    '64': [21, 64, 64, 1],
+    '128': [21, 128, 128, 1]
+}
+
+series = [1,2,3]
+
+
+def normalize(s):
+    mean = [2.5]
+    spread = [5.0]
+    return (s - mean) / spread
 
 
 def custom_predict_yaml(model, inputs):
@@ -54,6 +68,7 @@ def custom_predict_yaml(model, inputs):
             curNeurons = np.tanh(curNeurons)
 
     return np.array(curNeurons)
+
 
 def vectorize_predict_yaml(model, inputs, temps=1):
     weights = {}
@@ -104,43 +119,6 @@ def load_all_controllers(controller_dir = 'Lidar/controllers/'):
 
 
 
-# def get_fraction(curvature, b):
-#     c = []
-#     neg = []
-#     total_e = []
-#     for i in range(b):
-#         curr = np.array(curvature[i])
-#         neg.append(len(curr[curr<0]))
-#         total_e.append(len(curr))
-#     return np.array(neg), np.array(total_e), curr
-
-
-def get_fraction(curvature, b, dims):
-    c = []
-    layer_num = len(dims) - 1
-    neg = np.zeros((layer_num), dtype=np.float32)
-    top_neg = np.zeros((layer_num), dtype=np.float32)
-    total_e = np.zeros((layer_num), dtype=np.float32)
-    # neg = 0.
-    # total_e = 0.
-    
-    for batch in range(b):
-        ricci_curv = np.array(curvature[batch])
-        for (i, j, curr) in ricci_curv:
-            if curr > 1:
-                continue
-    
-            l = int(i)
-            if curr < 0:
-                neg[l] += 1
-            if curr < -10:
-                top_neg[l] += 1
-            total_e[l] += 1
-            c.append(curr)
-    return neg, total_e, top_neg, c
-
-
-
 def start_lidar(args):
     seed = 59
     
@@ -157,129 +135,96 @@ def start_lidar(args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
     
-    controllers = load_all_controllers()
+    # controllers = load_all_controllers()
     
     res_path = args.lidar_res_path
     metric = args.metric
     alpha = args.alpha
-    hops = args.hops
+    model_path = args.model_path
+    sample_size = args.sample_num
     
     if not os.path.exists(res_path):
         os.makedirs(res_path)
     
-    
-    with open("Lidar/synthetic.yml", 'r') as f:
-        lidar_traj_by_controller = yaml.full_load(f)
-    
-    keys = lidar_traj_by_controller.keys()
-    print("Keys = ", keys)
-  
-  
     types = ['DDPG', 'TD3']
     cs = ['1','2','3']
     szs = ['64','128']
     
-    num_samples = 80
-
+    num_samples = sample_size
+    
+    with open("Lidar/trajectory.yml", 'r') as f:
+        lidar_traj_by_controller = yaml.full_load(f)
+    
+    keys = lidar_traj_by_controller.keys()
+    print("Keys = ", keys)
+    
     for t in types:
         for s in szs:
+            dims = model_zoo[s]
             for c in cs:
-                gs_l = defaultdict(list) # graph size
-                en_l = defaultdict(list) # edge num
-                el_l = defaultdict(list) # per layer
-                curv_l = defaultdict(list) # curvature
                 res_l = defaultdict(list)
     
                 name = '_'.join([t,s,c])
-                cur_c = controllers[name]
+                # cur_c = controllers[name]
+                
+                model = Controller(dims, 2)
+                model = model.double()
+                model_name = t + "_" + s + "_C" + str(c) + ".pth"
+                model.load_state_dict(torch.load(model_path + model_name))
+                cur_c = model.to(device)
                 
                 print(f'Controller: {name}')
                 
                 traj_l = lidar_traj_by_controller[name]
 
                 # all the trajectories for one controller
-                for i in range(len(traj_l)):
+                for i in range(min(20,len(traj_l))):
                     traj = np.array(traj_l[i]) # 219 * 21
                     sampled_inputs = traj[np.random.randint(traj.shape[0], size=num_samples), :] # sample * 21
-                     
-                    graph_size = []
-                    edge_n = []
-                    edge_layer = []
-                    curv_n = []
-                    res = []
-                    
+
                     for index, input in enumerate(sampled_inputs):
-                        input = np.array(input)
+                        input = np.array(input, dtype=np.float64)
                         input = input.reshape(1, -1)
-                        input = torch.tensor(input)
-                        dims, nodes_num, edges_num, NN_w, edge_v, nodes = getNN_info(cur_c, input, device)
+                        input = normalize(input)
+                        input = torch.tensor(input, dtype=torch.float64)
+                        edge_array, nodes_ori, output, all_node = cur_c.NN_info_batch(input.to(device)) # [21,64,64,1]
+
+                        weights = output.detach().to(device)
+                        del output
+                        # weights[edge_array == 0] = 0.
                         
-                        if metric.lower() == "q_ngr":
-                            weights = NN_w.detach().clone().to(device)                   
-                            weights[edge_v == 0] = 0.
-                        
-                        elif metric.lower() == "q_inv":
-                            weights = NN_w.detach().clone().to(device)                   
-                            weights[edge_v == 0] = 0.
-                            
-                        elif metric.lower() == "q_exp":
-                            weights = edge_v.detach().clone().to(device) 
-                            
-                        if metric.lower() == "q_ngr":
-                            weights_inv, weights_inv2 = normalization_weight_w1(nodes, weights, dims)
-                            weights_inv = weights_inv.detach()
+                        if metric.lower() == "w1":
+                            weights_inv1, weights_inv2 = normalization_weight_w1(nodes_ori, weights, dims)
+                            weights_inv = weights_inv1.detach()
                             weights_inv2 = weights_inv2.detach()
-                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha, hops=hops)
-                            
-                        elif metric.lower() == "q_inv":
-                            weights_inv = normalization_weight_w2(nodes, weights, dims)
-                            weights_inv = weights_inv.detach()
-                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, alpha=alpha, hops=hops)
-            
-                        elif metric.lower() == "q_exp":
-                            weights_inv = normalization_weight_w6(nodes, weights, dims, q=1)
-                            weights_inv = weights_inv.detach()
-                            ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, alpha=alpha)
+                            ricci_curvature = graph_curvature_main_torch(
+                                dims, weights_inv, device=device,
+                                probability_w=weights_inv2, alpha=alpha
+                            )
+                        elif metric.lower() == "w3":
+                            weights_inv1, weights_inv2 = normalization_weight_w3(nodes_ori, weights, dims)
+                            weights_inv = weights_inv1.detach()
+                            weights_inv2 = weights_inv2.detach()
+                            ricci_curvature = graph_curvature_main_torch(
+                                dims, weights_inv, device=device,
+                                probability_w=weights_inv2, alpha=alpha
+                            )
                         else:
-                            raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-
-                        # neg_num, total_edge, top_neg_num, curv = get_fraction(ricci_curvature, weights_inv.shape[0], dims)
-
-                        # graph size before/after normalization
-                        graph_size.append((len(weights[weights!=0]),len(weights[weights==0]),len(weights_inv[weights_inv!=0])))
-                        # # edge num
-                        # edge_n.append((len(weights[weights==0]), len(weights[weights!=0])))
-                        # # per layer
-                        # edge_layer.append((neg_num, top_neg_num, total_edge))
-                        # # curvature
-                        # curv_n.append(curv)
-                        # all the results
-                        res.append((ricci_curvature, weights_inv.shape[0], dims))
+                            raise Exception("Invalid graph metric, should be {w1, w3}!")
                         
+                        res_l[i].append(ricci_curvature)
+                        
+                        # GPU memory cleanup
+                        del input, edge_array, all_node
+                        del weights, weights_inv1, weights_inv2, weights_inv
+                        torch.cuda.empty_cache()
                  
                     print(f'Finish {i} trajectory...')
-                  
-                    gs_l[i].append(graph_size)
-                    # en_l[i].append(edge_n)
-                    # el_l[i].append(edge_layer)
-                    # curv_l[i].append(curv_n)
-                    res_l[i].append(res)
-                
-                
+
                 with open(res_path + metric + name + "_res.pkl", 'wb') as file:
                     pickle.dump(res_l, file)
                     
-                with open(res_path + metric + name + "_graphsize.pkl", 'wb') as file:
-                    pickle.dump(gs_l, file)
 
-                # with open(res_path + metric + name + "_edgenum.pkl", 'wb') as file:
-                #     pickle.dump(en_l, file)
-                
-                # with open(res_path + metric + name + "_perlayer.pkl", 'wb') as file:
-                #     pickle.dump(el_l, file)
-                    
-                # with open(res_path + metric + name + "_curv.pkl", 'wb') as file:
-                #     pickle.dump(curv_l, file)
  
  
         

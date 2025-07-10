@@ -233,13 +233,51 @@ def fc_adjacent_layer(dims, weights, device='cuda'):
     return shortest_paths
 
 
-def get_layer_path(sp_dict, prefix_dims, b, i, j):     
-    i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-    j_layer = np.searchsorted(prefix_dims, j, side='right') - 1
+# def get_layer_path(sp_dict, prefix_dims, b, i, j):     
+#     i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
+#     j_layer = np.searchsorted(prefix_dims, j, side='right') - 1
     
-    i_idx = i - prefix_dims[i_layer]
-    j_idx = j - prefix_dims[j_layer]
-    return sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
+#     i_idx = i - prefix_dims[i_layer]
+#     j_idx = j - prefix_dims[j_layer]
+#     return sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
+
+
+def compute_full_path_matrix(b, in_neigh, out_neigh):
+    d_np = np.full((len(in_neigh), len(out_neigh)), np.inf)
+
+    if len(in_neigh) > 1 and len(out_neigh) > 1:
+        fill_shortest_paths(d_np,  b, in_neigh[:-1], out_neigh[:-1])
+    if len(in_neigh) > 0 and len(out_neigh) > 1:
+        fill_shortest_paths(d_np, b, [in_neigh[-1]], out_neigh[:-1], row_offset=len(in_neigh) - 1, col_offset=0)
+    if len(in_neigh) > 1 and len(out_neigh) > 0:
+        fill_shortest_paths(d_np, b, in_neigh[:-1], [out_neigh[-1]], row_offset=0, col_offset=len(out_neigh) - 1)
+    return d_np
+
+
+
+
+def fill_shortest_paths(d_np, b, in_neigh, out_neigh, row_offset=0, col_offset=0):
+    if len(in_neigh) == 0 or len(out_neigh) == 0:
+        return
+
+    in_neigh = np.atleast_1d(np.array(in_neigh))
+    out_neigh = np.atleast_1d(np.array(out_neigh))
+
+    i_layer = np.searchsorted(_prefix_dims, in_neigh[0], side='right') - 1
+    j_layer = np.searchsorted(_prefix_dims, out_neigh[0], side='right') - 1
+
+    assert np.all(np.searchsorted(_prefix_dims, in_neigh, side='right') - 1 == i_layer), "in_neigh not in same layer"
+    assert np.all(np.searchsorted(_prefix_dims, out_neigh, side='right') - 1 == j_layer), "out_neigh not in same layer"
+
+    in_idx = in_neigh - _prefix_dims[i_layer]
+    out_idx = out_neigh - _prefix_dims[j_layer]
+
+    sp_tensor = _sp_dict[(i_layer, j_layer)][b]
+    submat = sp_tensor[np.ix_(in_idx, out_idx)]
+    
+    # Correctly insert into the right region of d_np
+    d_np[row_offset:row_offset + len(in_neigh), col_offset:col_offset + len(out_neigh)] = submat
+
 
 
 def process_edge(b, edge):
@@ -248,10 +286,10 @@ def process_edge(b, edge):
     j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
     
     if j_layer != i_layer + 1:
-        return (b, i+_pre_n, j+_pre_n, 2.0)
+        return (b, i, j, 2.0)
     
     if (i_layer, j_layer) not in _sp_dict:
-        return (b, i+_pre_n, j+_pre_n, 2.0)
+        return (b, i, j, 2.0)
     
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
@@ -293,21 +331,28 @@ def process_edge(b, edge):
             out_neigh = list(out_neigh[non_zero]) + [j]
             nu = np.hstack((nu[non_zero], np.array(_alpha)))
 
+    
     # Get submatrix for neighbors
-    d_np = np.full((len(in_neigh), len(out_neigh)), np.inf)
-    for m_idx, m in enumerate(in_neigh):
-        for n_idx, n in enumerate(out_neigh):
-            if (m == n):
-                d_np[m_idx, n_idx] = 0.
-            else:
-                d_np[m_idx, n_idx] = get_layer_path(_sp_dict, _prefix_dims, b, m, n)
+    # d_np = np.full((len(in_neigh), len(out_neigh)), np.inf)
+    assert(in_neigh[-1] == i and out_neigh[-1] == j)
+    d_np = compute_full_path_matrix(0, in_neigh, out_neigh)
     
-    if d_np.size == 0 or np.isinf(d_np).all():
-        return (b,i+_pre_n, j+_pre_n, 2.0)
+    # for m_idx, m in enumerate(in_neigh):
+    #     for n_idx, n in enumerate(out_neigh):
+    #         if (m == n):
+    #             d_np[m_idx, n_idx] = 0.
+    #         else:
+    #             d_np[m_idx, n_idx] = get_layer_path(_sp_dict, _prefix_dims, b, m, n)
+    d_np[-1, -1] = sp
+    if np.isinf(d_np).any():
+        print(i_layer, np.isinf(d_np).sum(), np.isnan(d_np).sum())
 
-    m = ot.emd2(mu, nu, d_np)
+    if d_np.size == 0 or np.isinf(d_np).all():
+        return (b,i, j, 2.0)
     
-    return (b, i+_pre_n, j+_pre_n, 1.0 - m/sp)
+    m = ot.emd2(mu, nu, d_np)
+
+    return (b, i, j, 1.0 - m/sp)
 
 
 
@@ -316,7 +361,7 @@ def _wrap_compute_single_edge(stuff):
     return process_edge(*stuff)
 
 
-def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., pre_n=0, layers_to_process=None,):
+def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., pre_n=0, layers_to_process=None):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
@@ -335,9 +380,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     _dims = dims
     _prefix_dims = np.array(prefix_dims)
     
-    layers = layers_to_process or list(range(len(dims) - 1))
-    if layers_to_process is None:
-        layers = [l+1 for l in layers]
+    layers = layers_to_process or list(range(len(dims)-1))
 
     # Compute shortest paths
     if model_dims:
@@ -349,18 +392,16 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
         if probability_w != None:
             sp1 = fc_adjacent_layer(dims, probability_w, device)
             
-        
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
 
     if probability_w != None:
         dis_w = sp1
     else:
         dis_w = sp_dict
-    
+        
     # Precompute distributions using dictionary
     distribution_in, distribution_out = {}, {}
-    for layer in layers:
-        layer -= 1
+    for layer in range(1, len(dims)):
         if (layer-1, layer) in dis_w:
             path_sub = dis_w[(layer-1, layer)]
             mask = (path_sub != float('inf'))
@@ -377,7 +418,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             
             distribution_in[layer] = dist_prev.cpu().numpy()
 
-    for layer in layers:
+    for layer in range(len(dims)-1):
         if (layer, layer+1) in dis_w:
             path_sub = dis_w[(layer, layer+1)]
             mask = (path_sub != float('inf'))
@@ -393,14 +434,13 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             dist_next *= mask
      
             distribution_out[layer] = dist_next.cpu().numpy()
-            
+       
     _distribution_in = distribution_in
     _distribution_out = distribution_out
 
     # Generate edges from original weights
     edges = []
     for layer in layers:
-        layer -= 1
         sp_array = sp_dict[(layer, layer+1)]
         
         for b in range(batch_size):
@@ -408,11 +448,12 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             for src, dst in non_inf:
                 global_src = prefix_dims[layer] + src
                 global_dst = prefix_dims[layer+1] + dst
+     
                 # print(f'{src} - {dst}: {sp_array[b][src][dst]} {_sp_dict[(layer, layer+1)][b][src][dst]} - {global_src}:{global_dst}')
                 edges.append((b, (global_src, global_dst)))
 
     args = [(b, edge) for b, edge in edges]
-   
+
     # Process edges in parallel
     ricci_results = defaultdict(list)
     with get_context('fork').Pool(processes=proc) as pool:
@@ -420,14 +461,13 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
         chunksize, extra = divmod(len(args), proc * 4)
         if extra:
             chunksize += 1
-        
+
         results = pool.imap_unordered(_wrap_compute_single_edge, args, chunksize=chunksize)
         pool.close()
         pool.join()
     
-
     for b, i, j, val in results:
-        ricci_results[b].append((i,j,val))
+        ricci_results[b].append((i+_pre_n,j+_pre_n,val))
 
     return ricci_results
 
@@ -462,10 +502,11 @@ if __name__ == '__main__':
     
     edge_num = 32 + 8*2 + 2
     weights = torch.rand(1, edge_num)
+    weights[0,0] = float('inf')
     
     print(weights)
 
-    ricci_curvature = graph_curvature_main_torch(dims, weights, model_dims=model_dims)
+    ricci_curvature = graph_curvature_main_torch(dims, weights, model_dims=model_dims, layers_to_process=[1])
 
     print("Ricci Curvature Results:")
     for b in range(weights.shape[0]):

@@ -462,14 +462,14 @@ class FC_MD(nn.Module):
             sub_neg = weights[negative_s_i][:, in_edges]
             
             # w1
-            mask_pos = sub_pos_a1 >= 0
-            mask_neg = sub_neg_a1 <= 0
+            final_mask_pos = (sub_pos_a1 >= 0) & (sub_pos != 0)
+            final_mask_neg = (sub_neg_a1 <= 0) & (sub_neg != 0)
 
             values_pos = torch.abs(sub_pos * (Sum[positive_s_i] / pos_sum[positive_s_i]))
             values_neg = torch.abs(sub_neg * (Sum[negative_s_i] / neg_sum[negative_s_i]))
             
-            sub_pos_a_inv = torch.where(mask_pos, 1./values_pos, torch.tensor(0.))
-            sub_neg_a_inv = torch.where(mask_neg, 1./values_neg, torch.tensor(0.))
+            sub_pos_a_inv = torch.where(final_mask_pos, 1./values_pos, torch.tensor(0.))
+            sub_neg_a_inv = torch.where(final_mask_neg, 1./values_neg, torch.tensor(0.))
             
             weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
             weights_inv1[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv
@@ -478,8 +478,8 @@ class FC_MD(nn.Module):
             values_pos2 = torch.abs(sub_pos_a2 * (Sum[positive_s_i] / pos_sum[positive_s_i]))
             values_neg2 = torch.abs(sub_neg_a2 * (Sum[negative_s_i] / neg_sum[negative_s_i]))
             
-            sub_pos_a_inv2 = torch.where(mask_pos, 1./values_pos2, torch.tensor(0.))
-            sub_neg_a_inv2 = torch.where(mask_neg, 1./values_neg2, torch.tensor(0.))
+            sub_pos_a_inv2 = torch.where(final_mask_pos, 1./values_pos2, torch.tensor(0.))
+            sub_neg_a_inv2 = torch.where(final_mask_neg, 1./values_neg2, torch.tensor(0.))
 
             weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
             weights_inv2[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv2

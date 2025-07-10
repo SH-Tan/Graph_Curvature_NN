@@ -292,7 +292,7 @@ def community_check_fc(args):
                     
                     elif metric.lower() == "w3":
                         weights = output.detach().clone().to(device)                   
-                        weights[edge_array == 0] = 0.
+                        # weights[edge_array == 0] = 0.
                         
                     if metric.lower() == "w1":
                         weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)

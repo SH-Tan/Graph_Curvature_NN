@@ -21,7 +21,6 @@ sys.path.append("..")
 import tools.utils as utils
 
 from tools.graph_curvature import graph_curvature_main_torch
-from tools.get_community import multi_community_from_output, negative_edge_communities, find_all_backward_communities, write_graph_info_to_excel
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=torch.inf)
@@ -216,7 +215,7 @@ def community_check_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -332,13 +331,13 @@ def community_check_cnn(args):
                     weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
                     weights_inv = weights_inv1.detach()
                     weights_inv2 = weights_inv2.detach()
-                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+                    ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
                         
                 elif metric.lower() == "w3":
                     weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims)
                     weights_inv = weights_inv1.detach()
                     weights_inv2 = weights_inv2.detach()
-                    ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+                    ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha, layers_to_process=[0,1,2,3,4])
                 else:
                     raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                 

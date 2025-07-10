@@ -12,7 +12,7 @@ import copy
 import torch.nn.functional as F
 
 import pandas as pd
-from tools.vgg16_custom_mnist import VGG16_CIFAR10
+# from tools.vgg16_custom_mnist import VGG16_CIFAR10
 
 import sys
 sys.path.append("..")
@@ -28,87 +28,95 @@ import warnings
 # Ignore all warnings
 warnings.filterwarnings("ignore")
 
-# transform_train = torchvision.transforms.Compose([
-#     transforms.RandomHorizontalFlip(),
-#     transforms.RandomCrop(size=32, padding=4),
-#     transforms.ToTensor(),
-#     # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-# ])
+transform_train = torchvision.transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomCrop(size=32, padding=4),
+    transforms.ToTensor(),
+    # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+])
 
-# transform_test = torchvision.transforms.Compose([
-#     transforms.ToTensor(),
-#     # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-# ])
+transform_test = torchvision.transforms.Compose([
+    transforms.ToTensor(),
+    # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+])
 
-# data_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
-# data_test = CIFAR10('./data/cifar10', train=False, download=True, transform=transform_test)
-
-# model_dims = {
-#     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
-
-#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
-#     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
-#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
-#     5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
-
-#     6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
-#     7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
-#     8: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 1}},   # conv5_3 + pool
-
-#     9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-#     10: {"name": "fc", "dim": {"out_size": 512}},
-#     11: {"name": "fc", "dim": {"out_size": 10}}
-# }
-
-
-# model_dims_small = {
-#     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
-#     2: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 1}},   # conv5_3 + pool
-
-#     3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-#     4: {"name": "fc", "dim": {"out_size": 512}},
-#     5: {"name": "fc", "dim": {"out_size": 10}}
-# }
+data_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
+data_test = CIFAR10('./data/cifar10', train=False, download=True, transform=transform_test)
 
 model_dims = {
-    1: {"name": "input", "dim": {"channel": 1, "out_size": 28}},   # Input image
+    1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
-    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding": 1, "out_size": 14}},  # After conv1_2 + pool
-    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding": 1, "out_size": 7}},   # After conv2_2 + pool
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding": 1, "out_size": 3}},   # After conv3_3 + pool
-    5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding": 1, "out_size": 1}},   # After conv4_2 + pool
+    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
+    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
+    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
+    5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
 
-    6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding": 1, "out_size": 1}},   # conv5_1
+    6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
+    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
+    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
 
-    7: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    8: {"name": "fc", "dim": {"out_size": 512}},
-    9: {"name": "fc", "dim": {"out_size": 10}},
+    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
+    10: {"name": "fc", "dim": {"out_size": 512}},
+    11: {"name": "fc", "dim": {"out_size": 10}}
 }
+
 
 model_dims_small = {
-    1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding": 1, "out_size": 1}}, 
-    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding": 1, "out_size": 1}},   # conv5_1
+    1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
+    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
 
-    3: {"name": "fc", "dim": {"out_size": 1024}},
+    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
     4: {"name": "fc", "dim": {"out_size": 512}},
-    5: {"name": "fc", "dim": {"out_size": 10}},
+    5: {"name": "fc", "dim": {"out_size": 10}}
 }
 
+# model_dims_small = {
+#     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 1}},   # conv5_3 + pool
+
+#     2: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
+#     3: {"name": "fc", "dim": {"out_size": 512}},
+#     4: {"name": "fc", "dim": {"out_size": 10}}
+# }
+
+# model_dims = {
+#     1: {"name": "input", "dim": {"channel": 1, "out_size": 28}},   # Input image
+
+#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding": 1, "out_size": 14}},  # After conv1_2 + pool
+#     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding": 1, "out_size": 7}},   # After conv2_2 + pool
+#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding": 1, "out_size": 3}},   # After conv3_3 + pool
+#     5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding": 1, "out_size": 1}},   # After conv4_2 + pool
+
+#     6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding": 1, "out_size": 1}},   # conv5_1
+
+#     7: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
+#     8: {"name": "fc", "dim": {"out_size": 512}},
+#     9: {"name": "fc", "dim": {"out_size": 10}},
+# }
+
+# model_dims_small = {
+#     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding": 1, "out_size": 1}}, 
+#     2: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding": 1, "out_size": 1}},   # conv5_1
+
+#     3: {"name": "fc", "dim": {"out_size": 1024}},
+#     4: {"name": "fc", "dim": {"out_size": 512}},
+#     5: {"name": "fc", "dim": {"out_size": 10}},
+# }
 
 
-data_train = MNIST('./data/mnist',
-                  train=True,
-                  download=True,
-                  transform=transforms.Compose([
-                      # transforms.Resize((32, 32)),
-                      transforms.ToTensor()]))
 
-data_test = MNIST('./data/mnist',
-                  train=False,
-                  download=True,
-                  transform=transforms.Compose([
-                      # transforms.Resize((32, 32)),
-                      transforms.ToTensor()]))
+# data_train = MNIST('./data/mnist',
+#                   train=True,
+#                   download=True,
+#                   transform=transforms.Compose([
+#                       # transforms.Resize((32, 32)),
+#                       transforms.ToTensor()]))
+
+# data_test = MNIST('./data/mnist',
+#                   train=False,
+#                   download=True,
+#                   transform=transforms.Compose([
+#                       # transforms.Resize((32, 32)),
+#                       transforms.ToTensor()]))
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
 
@@ -307,7 +315,7 @@ def remove_w_cifar(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
     
@@ -316,6 +324,11 @@ def remove_w_cifar(args):
     res_path = args.mnist_res_path
     model_path = args.model_path
     activation = args.activation
+    
+    if activation.lower() == "relu":
+        from tools.vgg16_custom_relu import VGG16_CIFAR10
+    elif activation.lower() == "tanh":
+        from tools.vgg16_custom_tanh import VGG16_CIFAR10
     
     if not os.path.exists(res_path):
         os.makedirs(res_path)
@@ -337,12 +350,15 @@ def remove_w_cifar(args):
     elif model_pre_name == 'wd':
         model_name = "vgg16_wd_"
         
-    model_name = model_name + activation + "_mnist.pth"
+    model_name = model_name + activation + ".pth"
     
     net_H = VGG16_CIFAR10(model_dims, None, device)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
+    # acc_clean = test_clean(net_H, test_loader)
+    # print(acc_clean)
+    
     net_full = copy.deepcopy(net_H)
 
     print(model_name)
@@ -375,6 +391,8 @@ def remove_w_cifar(args):
         # These are just lists of (i, j), not 4-tuples
         neg_edges = sorted_edges_low_by_layer.get(layer, [])
         pos_edges = sorted_edges_high_by_layer.get(layer, [])
+        
+        print(neg_edges[:10], pos_edges[:10])
 
         neg_set = set(neg_edges)
         pos_set = set(pos_edges)
@@ -385,8 +403,8 @@ def remove_w_cifar(args):
         neg_total = len(neg_edges)
         pos_total = len(pos_edges)
 
-        low_remove_num = list(np.linspace(0, neg_total, num=20, dtype=int))
-        high_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
+        low_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
+        high_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
 
         print(f"Layer {layer}:")
         print(f"  low total = {neg_total}, high total = {pos_total}, overlap = {overlap_count}")

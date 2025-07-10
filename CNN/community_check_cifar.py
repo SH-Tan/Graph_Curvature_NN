@@ -41,8 +41,8 @@ model_dims = {
     5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
 
     6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
-    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
-    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 1}},   # conv5_3 + pool
+    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2 + pool
+    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 
 
     9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
     10: {"name": "fc", "dim": {"out_size": 512}},
@@ -50,15 +50,15 @@ model_dims = {
 }
 
 
+
 model_dims_small = {
     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
-    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 1}},   # conv5_3 + pool
+    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3
 
     3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
     4: {"name": "fc", "dim": {"out_size": 512}},
     5: {"name": "fc", "dim": {"out_size": 10}}
 }
-
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
 
@@ -217,14 +217,14 @@ def community_check_cifar(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
     val_set = load_dataset_from_disk("./data/CIFAR10_val", batch_size=64, shuffle=False)
-    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=100)
+    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=64)
     
     dims_full = cal_dims(model_dims)
     dims = cal_dims(model_dims_small)
@@ -252,8 +252,6 @@ def community_check_cifar(args):
     elif activation.lower() == "tanh":
         from tools.vgg16_custom_tanh import VGG16_CIFAR10
 
-    # prefix_dims = np.cumsum([0] + edge_dims).tolist()
-    
     if not os.path.exists(res_path):
         os.makedirs(res_path)
         
@@ -286,9 +284,12 @@ def community_check_cifar(args):
     # Prepare iterators for each label's data
     data_iterators = {l: iter(robust_pair[l]) for l in selected_classes}
     finished_labels = set()
+    round_id = 1  # Track how many full batches have been saved
 
     while len(finished_labels) < len(selected_classes):
+        finished_l = 0
         for l in selected_classes:
+            finished_l += 1
             if label_progress[l] >= sample_size:
                 finished_labels.add(l)
                 continue
@@ -319,7 +320,9 @@ def community_check_cifar(args):
                             weights = output.detach().to(device)
                             del output
                             # weights[edge_array == 0] = 0.
-
+                            
+                            # print(len(weights[0]), len(weights[weights!=0]))
+                            
                             if metric.lower() == "w1":
                                 weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims_small)
                                 weights_inv = weights_inv1.detach()
@@ -333,31 +336,43 @@ def community_check_cifar(args):
                                 weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims_small)
                                 weights_inv = weights_inv1.detach()
                                 weights_inv2 = weights_inv2.detach()
+   
                                 ricci_curvature = graph_curvature_main_torch(
                                     dims, weights_inv, device=device,
                                     model_dims=model_dims_small,
                                     probability_w=weights_inv2, alpha=alpha,
                                     pre_n=(np.sum(dims_full) - np.sum(dims)),
-                                    layers_to_process=[2, 3, 4]
+                                    layers_to_process=[1,2,3]
                                 )
                             else:
                                 raise Exception("Invalid graph metric, should be {w1, w3}!")
 
-                            res_l[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
+                            res_l[l].append(ricci_curvature)
 
                             # GPU memory cleanup
                             del img, edge_array, nodes_ori
                             del weights, weights_inv1, weights_inv2, weights_inv
                             torch.cuda.empty_cache()
 
-                        label_progress[l] += 1
-                        current_count += 1
+                            label_progress[l] += 1
+                            current_count += 1
 
             except StopIteration:
                 finished_labels.add(l)
                 continue
 
-        # === Save progress every round ===
-        with open(res_path + model_full_n + metric + '_' + dataset + "_res_correct.pkl", 'wb') as file:
-            pickle.dump(res_l, file)
-        print(f'[Progress] Saved results after one full round of 10 samples per label')
+        # === Check if all labels have collected 10 new samples ===
+        if all(len(res_l[l]) == 10 for l in selected_classes if label_progress[l] < sample_size) or finished_l >= len(selected_classes):
+            save_name = f"{model_full_n}_{metric}_{dataset}_batch{round_id}.pkl"
+            save_path = os.path.join(res_path, save_name)
+
+            with open(save_path, 'wb') as f:
+                pickle.dump(dict(res_l), f)  # use dict to avoid defaultdict issues
+
+            print(f"[Saved] Batch {round_id}: 10 examples per label saved to {save_name}")
+
+            # Clear all buffers
+            for l in selected_classes:
+                res_l[l].clear()
+
+            round_id += 1

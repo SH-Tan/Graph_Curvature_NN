@@ -29,6 +29,10 @@ from CNN.remove_weights_cifar import remove_w_cifar
 from pgd.community_check_fc import community_check_fc
 from CNN.community_check_cnn import community_check_cnn
 from CNN.community_check_cifar import community_check_cifar
+from Lidar.plot_trajectories import main_lidar
+from Lidar.plot_trajectories_perlayer import main_lidar_perlayer
+from Lidar.remove_weights_fc import remove_w_lidar
+
 import warnings
 
 # Ignore all warnings
@@ -84,17 +88,17 @@ if __name__=='__main__':
                 community_check_fc(args)
         elif model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
-                remove_edge_cnn_union_perlayer(args)
+                remove_edge_cnn_union(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                remove_w_cifar(args)
+                remove_edge_cifar_union_perlayer(args)
             if args.community and args.dataset.lower() == "cifar":
                 community_check_cifar(args)
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
     
-    # if args.lidar:
-    #     start_lidar(args)
+    if args.lidar:
+        main_lidar_perlayer(args)
     
         

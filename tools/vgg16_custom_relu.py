@@ -40,7 +40,7 @@ class VGG16_CIFAR10(nn.Module):
         self.conv5_2 = nn.Conv2d(512, 512, kernel_size=3, padding=1)
         self.bn5_2 = nn.BatchNorm2d(512)
 
-        self.conv5_3 = nn.Conv2d(512, 512, kernel_size=3, padding=1)
+        self.conv5_3 = nn.Conv2d(512, 512, kernel_size=1, padding=0)
         self.bn5_3 = nn.BatchNorm2d(512)
 
         self.pool5 = nn.MaxPool2d(kernel_size=2, stride=2)  # 2x2 → 1x1
@@ -207,15 +207,12 @@ class VGG16_CIFAR10(nn.Module):
 
         x = self.features(x)  # First 11 conv layers (conv1_1 to conv4_3)
 
-        # first CNN
-        x_cov1 = self.activation(self.bn5_1(self.CNN(x, self.conv5_1.weight, self.conv5_1.bias.unsqueeze(1), 5, 6)))
-        
-        # second CNN
-        x_cov2 = self.activation(self.bn5_2(self.CNN(x_cov1, self.conv5_2.weight, self.conv5_2.bias.unsqueeze(1), 6, 7)))
-        x_cov2 = self.pool5(x_cov2)
+        x = self.activation(self.bn5_1(self.conv5_1(x)))
+        x = self.activation(self.bn5_2(self.conv5_2(x)))
+        x = self.pool5(x)
         
         # third CNN
-        x_cov3 = self.activation(self.bn5_3(self.CNN(x_cov2, self.conv5_3.weight, self.conv5_3.bias.unsqueeze(1), 7, 8)))
+        x_cov3 = self.activation(self.bn5_3(self.CNN(x, self.conv5_3.weight, self.conv5_3.bias.unsqueeze(1), 7, 8)))
         
         # fc
         fc = x_cov3.view(-1, self.num_flat_features(x_cov3))
@@ -426,14 +423,14 @@ class VGG16_CIFAR10(nn.Module):
                         sub_neg = weights[negative_s_i][:, in_edges]
                         
                         # w1
-                        mask_pos = sub_pos_a1 >= 0
-                        mask_neg = sub_neg_a1 <= 0
+                        final_mask_pos = (sub_pos_a1 >= 0) & (sub_pos != 0)
+                        final_mask_neg = (sub_neg_a1 <= 0) & (sub_neg != 0)
 
                         values_pos = torch.abs(sub_pos * (Sum[positive_s_i] / pos_sum[positive_s_i]))
                         values_neg = torch.abs(sub_neg * (Sum[negative_s_i] / neg_sum[negative_s_i]))
                         
-                        sub_pos_a_inv = torch.where(mask_pos, 1./values_pos, torch.tensor(0.))
-                        sub_neg_a_inv = torch.where(mask_neg, 1./values_neg, torch.tensor(0.))
+                        sub_pos_a_inv = torch.where(final_mask_pos, 1./values_pos, torch.tensor(0.))
+                        sub_neg_a_inv = torch.where(final_mask_neg, 1./values_neg, torch.tensor(0.))
                         
                         weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
                         weights_inv1[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv
@@ -442,9 +439,9 @@ class VGG16_CIFAR10(nn.Module):
                         values_pos2 = torch.abs(sub_pos_a2 * (Sum[positive_s_i] / pos_sum[positive_s_i]))
                         values_neg2 = torch.abs(sub_neg_a2 * (Sum[negative_s_i] / neg_sum[negative_s_i]))
                         
-                        sub_pos_a_inv2 = torch.where(mask_pos, 1./values_pos2, torch.tensor(0.))
-                        sub_neg_a_inv2 = torch.where(mask_neg, 1./values_neg2, torch.tensor(0.))
-
+                        sub_pos_a_inv2 = torch.where(final_mask_pos, 1./values_pos2, torch.tensor(0.))
+                        sub_neg_a_inv2 = torch.where(final_mask_neg, 1./values_neg2, torch.tensor(0.))
+                        
                         weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
                         weights_inv2[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv2
                     
@@ -480,14 +477,14 @@ class VGG16_CIFAR10(nn.Module):
                 sub_neg = weights[negative_s_i][:, in_edges]
                 
                 # w1
-                mask_pos = sub_pos_a1 >= 0
-                mask_neg = sub_neg_a1 <= 0
-
+                final_mask_pos = (sub_pos_a1 >= 0) & (sub_pos != 0)
+                final_mask_neg = (sub_neg_a1 <= 0) & (sub_neg != 0)
+                
                 values_pos = torch.abs(sub_pos * (Sum[positive_s_i] / pos_sum[positive_s_i]))
                 values_neg = torch.abs(sub_neg * (Sum[negative_s_i] / neg_sum[negative_s_i]))
                 
-                sub_pos_a_inv = torch.where(mask_pos, 1./values_pos, torch.tensor(0.))
-                sub_neg_a_inv = torch.where(mask_neg, 1./values_neg, torch.tensor(0.))
+                sub_pos_a_inv = torch.where(final_mask_pos, 1./values_pos, torch.tensor(0.))
+                sub_neg_a_inv = torch.where(final_mask_neg, 1./values_neg, torch.tensor(0.))
                 
                 weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
                 weights_inv1[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv
@@ -496,8 +493,8 @@ class VGG16_CIFAR10(nn.Module):
                 values_pos2 = torch.abs(sub_pos_a2 * (Sum[positive_s_i] / pos_sum[positive_s_i]))
                 values_neg2 = torch.abs(sub_neg_a2 * (Sum[negative_s_i] / neg_sum[negative_s_i]))
                 
-                sub_pos_a_inv2 = torch.where(mask_pos, 1./values_pos2, torch.tensor(0.))
-                sub_neg_a_inv2 = torch.where(mask_neg, 1./values_neg2, torch.tensor(0.))
+                sub_pos_a_inv2 = torch.where(final_mask_pos, 1./values_pos2, torch.tensor(0.))
+                sub_neg_a_inv2 = torch.where(final_mask_neg, 1./values_neg2, torch.tensor(0.))
 
                 weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
                 weights_inv2[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv2

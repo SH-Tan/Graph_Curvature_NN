@@ -322,7 +322,7 @@ def remove_edge_cnn_union(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -422,8 +422,8 @@ def remove_edge_cnn_union(args):
         ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
         ff.write(f'\n The average noseen edges is {np.mean(noseen_num)}\n')
             
-        neg_edges_only = [(i, j) for ((i, j), _,_) in neg_freq_edges_sorted]
-        pos_edges_only = [(i, j) for ((i, j), _,_) in pos_freq_edges_sorted]
+        neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
+        pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]
 
         # Compute overlap
         # Convert to sets for fast overlap calculation
@@ -432,19 +432,26 @@ def remove_edge_cnn_union(args):
         overlap = neg_set & pos_set
         overlap_count = len(overlap)
         ff.write(f"\nNumber of overlapping edges: {overlap_count}\n")
+        
+        neg_total = len(neg_edges_only)
+        pos_total = len(pos_edges_only)
 
         # remove_num = [0, 5000, (int)(len(neg_edges_only)*0.3), (int)(len(neg_edges_only)*0.5), (int)(len(neg_edges_only)*0.7), len(neg_edges_only), (int)(len(pos_edges_only)*0.7), (int)(len(pos_edges_only)*0.9), (int)(len(pos_edges_only))]
+        # Generate uniformly spaced points (including 0 and total) for each list
+        # neg_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
+        # pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
         
         # Step 2: Choose thresholds — you can just use them all or downsample if too many
-        neg_max_freq = max(freq for (_, freq) in neg_freq_edges_sorted)
+        neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
         neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
 
-        pos_max_freq = max(freq for (_, freq) in pos_freq_edges_sorted)
+        pos_max_freq = max(freq for (_, _, freq, _) in pos_freq_edges_sorted)
         pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
         
         # Step 3: For each threshold, count how many edges would be removed
-        neg_remove_num = [sum(1 for (_, freq) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
-        pos_remove_num = [sum(1 for (_, freq) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
+        neg_remove_num = [sum(1 for (_, _, freq, _) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
+        pos_remove_num = [sum(1 for (_, _, freq, _) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
+            
             
         # start remove
         for index, rem_f in enumerate(neg_remove_num):

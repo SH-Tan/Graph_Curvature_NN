@@ -19,7 +19,6 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.vgg16_custom_relu import VGG16_CIFAR10
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=torch.inf)
@@ -54,7 +53,7 @@ model_dims = {
 
     6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
     7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
-    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 1}},   # conv5_3 + pool
+    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
 
     9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
     10: {"name": "fc", "dim": {"out_size": 512}},
@@ -62,9 +61,10 @@ model_dims = {
 }
 
 
+
 model_dims_small = {
     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
-    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 1}},   # conv5_3 + pool
+    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
 
     3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
     4: {"name": "fc", "dim": {"out_size": 512}},
@@ -72,6 +72,7 @@ model_dims_small = {
 }
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
+all_classes = [0,1,2,3,4,5,6,7,8,9]
 
 
 
@@ -111,7 +112,6 @@ def test_clean(n, loader, device = 'cuda'):
         total_correct += pred.eq(labels.view_as(pred)).sum()
 
     # print(f'Test Accuracy for label {l}: {(float(total_correct) / len(loader.dataset)):.3f}')
-    
     acc = float(total_correct) / len(loader.dataset)
     return acc
 
@@ -178,8 +178,6 @@ def get_top_c(curvature, b, prefix_dims):
             c.append((i1, j1, curr))
             seen_edges.add((i1, j1))
             
-    # print(len(c))
-            
     c.sort(key=lambda x: x[2])
     for (i, j, curr) in c:
         i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
@@ -188,7 +186,7 @@ def get_top_c(curvature, b, prefix_dims):
                 neg_e.add((i, j, curr))
             else:
                 pos_e.add((i, j, curr))
-                
+ 
     # Get indices of FC layers only
     fc_layers = [i for i in sorted(model_dims.keys()) if model_dims[i]["name"] == "fc"]
     fc_indices = [list(model_dims.keys()).index(i) for i in fc_layers]  # 0-based index
@@ -258,50 +256,50 @@ def cal_edges(model_dims):
     return edges
 
 
-def plot_curve(neg_acc_clean, pos_acc_clean, neg_freq_ratios, pos_freq_ratios, neg_freq_thresholds, pos_freq_thresholds, label, save_path):
-    plt.figure(figsize=(8, 6))
+# def plot_curve(neg_acc_clean, pos_acc_clean, neg_freq_ratios, pos_freq_ratios, neg_freq_thresholds, pos_freq_thresholds, label, save_path):
+#     plt.figure(figsize=(8, 6))
 
-    plt.plot(neg_freq_ratios, neg_acc_clean, 'r-o', label='Negative Edge Removal')
-    plt.plot(pos_freq_ratios, pos_acc_clean, 'b-o', label='Positive Edge Removal')
+#     plt.plot(neg_freq_ratios, neg_acc_clean, 'r-o', label='Negative Edge Removal')
+#     plt.plot(pos_freq_ratios, pos_acc_clean, 'b-o', label='Positive Edge Removal')
 
-    for x, y, freq in zip(neg_freq_ratios, neg_acc_clean, neg_freq_thresholds):
-        plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, 10),
-                     ha='center', fontsize=8, color='red')
+#     for x, y, freq in zip(neg_freq_ratios, neg_acc_clean, neg_freq_thresholds):
+#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, 10),
+#                      ha='center', fontsize=8, color='red')
 
-    for x, y, freq in zip(pos_freq_ratios, pos_acc_clean, pos_freq_thresholds):
-        plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, -15),
-                     ha='center', fontsize=8, color='blue')
+#     for x, y, freq in zip(pos_freq_ratios, pos_acc_clean, pos_freq_thresholds):
+#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, -15),
+#                      ha='center', fontsize=8, color='blue')
 
-    plt.xlabel("Edge Frequency Threshold (ratio × max frequency)")
-    plt.ylabel("Accuracy")
-    plt.title(f"Accuracy vs Frequency Ratio for Label {label}")
-    plt.xticks(neg_freq_ratios)  # or freq_ratios if shared
-    plt.gca().invert_xaxis()
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
-    plt.close()
-    
-    
-# def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg_end, pos_end, label, res_path):
-#     # Plot
-#     plt.figure(figsize=(8, 5))
-#     plt.plot(neg_remove_num, neg_clean_acc, label='Negative Edge Clean Acc', marker='o', linestyle='--')
-#     plt.plot(pos_remove_num, pos_clean_acc, label='Positive Edge Clean Acc', marker='x', linestyle='-')
-
-#     # Vertical lines
-#     plt.axvline(x=neg_end, color='red', linestyle=':', label=f'Neg End ({neg_end})')
-#     plt.axvline(x=pos_end, color='green', linestyle=':', label=f'Pos End ({pos_end})')
-
-#     plt.xlabel('Remove Number')
-#     plt.ylabel('Clean Accuracy')
-#     plt.title('Clean Accuracy vs Remove Number')
-#     plt.legend()
+#     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)")
+#     plt.ylabel("Accuracy")
+#     plt.title(f"Accuracy vs Frequency Ratio for Label {label}")
+#     plt.xticks(neg_freq_ratios)  # or freq_ratios if shared
+#     plt.gca().invert_xaxis()
 #     plt.grid(True)
+#     plt.legend()
 #     plt.tight_layout()
-#     plt.savefig(res_path + f'{label}_curve_all.png')
+#     plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
 #     plt.close()
+    
+    
+def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg_end, pos_end, label, res_path):
+    # Plot
+    plt.figure(figsize=(8, 5))
+    plt.plot(neg_remove_num, neg_clean_acc, label='Negative Edge Clean Acc', marker='o', linestyle='--')
+    plt.plot(pos_remove_num, pos_clean_acc, label='Positive Edge Clean Acc', marker='x', linestyle='-')
+
+    # Vertical lines
+    plt.axvline(x=neg_end, color='red', linestyle=':', label=f'Neg End ({neg_end})')
+    plt.axvline(x=pos_end, color='green', linestyle=':', label=f'Pos End ({pos_end})')
+
+    plt.xlabel('Remove Number')
+    plt.ylabel('Clean Accuracy')
+    plt.title('Clean Accuracy vs Remove Number')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(res_path + f'{label}_curve_all.png')
+    plt.close()
     
     
     
@@ -323,6 +321,41 @@ def count_edge_frequency(edge_sets):
     return results
 
 
+import re
+def load_batches_with_limit(data_path, model_full_n, metric, dataset, selected_classes, sample_size):
+    """
+    Load batched pkl files and keep up to `sample_size` samples per label.
+    """
+    prefix = f"{model_full_n}_{metric}_{dataset}_batch"
+    suffix = ".pkl"
+
+    def extract_batch_num(f):
+        match = re.search(r'batch(\d+)', f)
+        return int(match.group(1)) if match else -1
+
+    all_files = sorted([
+        f for f in os.listdir(data_path)
+        if f.startswith(prefix) and f.endswith(suffix)
+    ], key=extract_batch_num)
+
+    print(all_files)
+    
+    res_dict = defaultdict(list)
+    for f in all_files:
+        with open(os.path.join(data_path, f), 'rb') as file:
+            batch_data = pickle.load(file)  # {label: [riccis]}
+            for l in selected_classes:
+                if len(res_dict[l]) >= sample_size:
+                    continue
+                new_data = batch_data.get(l, [])
+                available = sample_size - len(res_dict[l])
+                res_dict[l].extend(new_data[:available])
+        if all(len(res_dict[l]) >= sample_size for l in selected_classes):
+            break
+
+    return res_dict
+
+
 
 def remove_edge_cifar_union(args):
     seed = 29
@@ -336,14 +369,14 @@ def remove_edge_cifar_union(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     
     train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=200, valid_num=5000)
 
-    # sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
+    # sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=128)
     
     eps = [1,2,3,5]
     dims = cal_dims(model_dims)
@@ -358,6 +391,11 @@ def remove_edge_cifar_union(args):
     sample_size = args.sample_num
     activation = args.activation
     data_path = args.mnist_data_path
+    
+    if activation.lower() == "relu":
+        from tools.vgg16_custom_relu import VGG16_CIFAR10
+    elif activation.lower() == "tanh":
+        from tools.vgg16_custom_tanh import VGG16_CIFAR10
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -389,13 +427,26 @@ def remove_edge_cifar_union(args):
       
     test_cleanacc = test_clean(net_full, test_loader)
     
-    correct_suffix_res = dataset + "_res_correct.pkl"  
-    res_name = model_full_n + metric + '_' + correct_suffix_res
+    print(f'Finish Test..')
+    
+    # correct_suffix_res = dataset + "_res_correct.pkl"  
+    # res_name = model_full_n + metric + '_' + correct_suffix_res
          
-    with open(data_path + res_name, 'rb') as file:
-        res_dict = pickle.load(file)    
+    # with open(data_path + res_name, 'rb') as file:
+    #     res_dict = pickle.load(file)    
+
+    res_dict = load_batches_with_limit(
+        data_path=data_path,
+        model_full_n=model_full_n,
+        metric=metric,
+        dataset=dataset,
+        selected_classes=selected_classes,
+        sample_size=sample_size
+    )
 
     freq_ratios = [1, 0.9, 0.8, 0.7, 0.5, 0.3, 0.2, 0.1, 0]
+    
+    print(f'Start removal..')
 
     with open(res_path + "edge_cnn_" + ".txt", "w+") as ff:
         ff.write(f'For model {model_name}: \n')
@@ -408,7 +459,8 @@ def remove_edge_cifar_union(args):
         noseen_num = []
         for l in selected_classes:
             idx = 0
-            for (ricci, batch, dim, node) in res_dict[l]:
+            print(len(res_dict[l]))
+            for ricci in res_dict[l]:
                 neg_e_other, pos_e, noseen = get_top_c(ricci, 1, prefix_dims)
                 noseen_num.append(noseen)
                 neg_edge_sets.append(neg_e_other)
@@ -441,19 +493,19 @@ def remove_edge_cifar_union(args):
         pos_total = len(pos_edges_only)
 
         # Generate uniformly spaced points (including 0 and total) for each list
-        # neg_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
-        # pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
+        neg_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
+        pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
         
         # Step 2: Choose thresholds — you can just use them all or downsample if too many
-        neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
-        neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
+        # neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
+        # neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
 
-        pos_max_freq = max(freq for (_, _, freq, _) in pos_freq_edges_sorted)
-        pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
+        # pos_max_freq = max(freq for (_, _, freq, _) in pos_freq_edges_sorted)
+        # pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
         
-        # Step 3: For each threshold, count how many edges would be removed
-        neg_remove_num = [sum(1 for (_, _, freq, _) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
-        pos_remove_num = [sum(1 for (_, _, freq, _) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
+        # # Step 3: For each threshold, count how many edges would be removed
+        # neg_remove_num = [sum(1 for (_, _, freq, _) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
+        # pos_remove_num = [sum(1 for (_, _, freq, _) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
             
         # start remove
         for index, rem_f in enumerate(neg_remove_num):
@@ -475,11 +527,12 @@ def remove_edge_cifar_union(args):
             # test acc
             acc_clean_pos = test_clean(net_pos, test_loader)
             pos_acc_clean.append(acc_clean_pos)
+            ff.write(f'After remove {rem_f} negative edges, the acc is {acc_clean_pos}\n')
 
         ff.write(f'\n\n')
 
-        # plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, sample_size, res_path)
-        plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
+        plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, sample_size, res_path)
+        # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
 
 
                 
