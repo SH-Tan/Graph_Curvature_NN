@@ -16,10 +16,11 @@ from pgd.remove_edge_fc_perE import remove_edge_fc_perE
 from pgd.remove_edge_fc_perE_vec import remove_edge_fc_perE_vec
 from pgd.remove_edge_fc_perE_alllabel import remove_edge_fc_perE_alllabels
 from pgd.remove_edge_fc_union import remove_edge_fc_union
+from pgd.remove_edge_fc_union_pgd import remove_edge_fc_union_pgd
+from pgd.remove_edge_union_fcold import remove_edge_fc_union_old
 from pgd.remove_weights_fc import remove_w_fc
 from pgd.remove_edge_fc_union_perlayer import remove_edge_fc_union_perlayer
-from CNN.remove_edge_cnn import remove_edge_cnn
-from CNN.remove_edge_cnn_alllabel_per import remove_edge_cnn_per_allL
+from pgd.remove_edge_fc_perlayer_old import remove_edge_fc_union_perlayer_old
 from CNN.remove_edge_cnn_union import remove_edge_cnn_union
 from CNN.remove_weights_cnn import remove_w_cnn
 from CNN.remove_edge_cnn_union_perlayer import remove_edge_cnn_union_perlayer
@@ -92,13 +93,13 @@ if __name__=='__main__':
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                remove_edge_cifar_union_perlayer(args)
+                remove_edge_cifar_union(args)
             if args.community and args.dataset.lower() == "cifar":
                 community_check_cifar(args)
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
     
     if args.lidar:
-        main_lidar_perlayer(args)
+        main_lidar(args)
     
         

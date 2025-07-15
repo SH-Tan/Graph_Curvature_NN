@@ -192,6 +192,7 @@ def start_lidar(args):
                         weights = output.detach().to(device)
                         del output
                         # weights[edge_array == 0] = 0.
+                    
                         
                         if metric.lower() == "w1":
                             weights_inv1, weights_inv2 = normalization_weight_w1(nodes_ori, weights, dims)
@@ -202,7 +203,7 @@ def start_lidar(args):
                                 probability_w=weights_inv2, alpha=alpha
                             )
                         elif metric.lower() == "w3":
-                            weights_inv1, weights_inv2 = normalization_weight_w3(nodes_ori, weights, dims)
+                            weights_inv1, weights_inv2 = cur_c.normalization_weight_w3(nodes_ori, weights, dims)
                             weights_inv = weights_inv1.detach()
                             weights_inv2 = weights_inv2.detach()
                             ricci_curvature = graph_curvature_main_torch(

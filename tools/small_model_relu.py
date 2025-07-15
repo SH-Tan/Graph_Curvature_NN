@@ -125,7 +125,7 @@ class FC_MD(nn.Module):
         x =  self.layer_list[self.num_hidden_layers](x)
         nodes = torch.cat((nodes, x), axis = 1)
         
-        return output, nodes, weights, all_node
+        return output, nodes, weights
     
 
     
@@ -458,7 +458,54 @@ class FC_MD(nn.Module):
             weights_inv2[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv2
 
         return weights_inv1, weights_inv2
-    
+
+
+        # weights regularization 
+    def normalization_weight_w4(self, nodes, weights, dims):
+        """
+        Compute two regularization terms using inverse of absolute weights and node-weight products.
+
+        Args:
+            nodes: (batch_size, total_nodes)
+            weights: (batch_size, total_edges)
+            dims: list of layer sizes (e.g., [784, 512, 10])
+
+        Returns:
+            weights_inv1: inverse absolute weights
+            weights_inv2: inverse absolute weighted node activations
+        """
+        nodes_num = nodes.shape[1]
+        prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
+        prefix_dims = torch.cat([torch.tensor([0]), prefix_dims])
+
+        cur_layer = 1
+        start_col = 0
+        end_col = dims[cur_layer-1] * dims[cur_layer]
+        step = dims[cur_layer]
+        neighbors = torch.arange(prefix_dims[cur_layer-1], prefix_dims[cur_layer])
+
+        weights_inv1 = torch.zeros_like(weights)
+        weights_inv2 = torch.zeros_like(weights)
+
+        for n in range(dims[0], nodes_num):
+            if n >= prefix_dims[cur_layer + 1]:
+                cur_layer += 1
+                start_col = end_col
+                end_col += dims[cur_layer-1] * dims[cur_layer]
+                step = dims[cur_layer]
+                neighbors = torch.arange(prefix_dims[cur_layer-1], prefix_dims[cur_layer])
+
+            in_edges = torch.arange(start_col + (n - prefix_dims[cur_layer]), end_col, step)
+
+            # Shape: (batch_size, fan-in)
+            node_slice = nodes[:, neighbors]
+            weight_slice = weights[:, in_edges]
+
+            # Prevent divide-by-zero
+            weights_inv1[:, in_edges] = 1.0 / (torch.abs(weight_slice))
+            weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
+
+        return weights_inv1, weights_inv2
 
     
     def normalization_weight_w6(self, nodes, weights, dims, q):

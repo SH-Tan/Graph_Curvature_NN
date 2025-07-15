@@ -454,6 +454,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
 
     args = [(b, edge) for b, edge in edges]
 
+    # print(len(args))
     # Process edges in parallel
     ricci_results = defaultdict(list)
     with get_context('fork').Pool(processes=proc) as pool:
@@ -467,7 +468,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
         pool.join()
     
     for b, i, j, val in results:
-        ricci_results[b].append((i+_pre_n,j+_pre_n,val))
+        ricci_results[b].append((i+_pre_n, j+_pre_n, val))
 
     return ricci_results
 

@@ -14,6 +14,8 @@ import time
 import matplotlib.pyplot as plt
 import pandas as pd
 from collections import Counter
+import gc
+import re
 
 import sys
 sys.path.append("..")
@@ -184,26 +186,26 @@ def get_top_c(curvature, b, prefix_dims):
         if i_layer >= 7: 
             if curr < 0:
                 neg_e.add((i, j, curr))
-            else:
+            elif curr > 0:
                 pos_e.add((i, j, curr))
  
-    # Get indices of FC layers only
-    fc_layers = [i for i in sorted(model_dims.keys()) if model_dims[i]["name"] == "fc"]
-    fc_indices = [list(model_dims.keys()).index(i) for i in fc_layers]  # 0-based index
+    # # Get indices of FC layers only
+    # fc_layers = [i for i in sorted(model_dims.keys()) if model_dims[i]["name"] == "fc"]
+    # fc_indices = [list(model_dims.keys()).index(i) for i in fc_layers]  # 0-based index
 
-    # Generate all possible FC edges
-    all_fc_edges = set()
-    for l in range(fc_indices[0]-1, fc_indices[-1]):
-        start_i, end_i = prefix_dims[l], prefix_dims[l + 1]
-        start_j, end_j = prefix_dims[l + 1], prefix_dims[l + 2]
-        for i in range(start_i, end_i):
-            for j in range(start_j, end_j):
-                all_fc_edges.add((i, j))
-                if (i, j) not in seen_edges:
-                    pos_e.add((i, j, 1.0))  # default curvature
-                    noseen += 1
+    # # Generate all possible FC edges
+    # all_fc_edges = set()
+    # for l in range(fc_indices[0]-1, fc_indices[-1]):
+    #     start_i, end_i = prefix_dims[l], prefix_dims[l + 1]
+    #     start_j, end_j = prefix_dims[l + 1], prefix_dims[l + 2]
+    #     for i in range(start_i, end_i):
+    #         for j in range(start_j, end_j):
+    #             all_fc_edges.add((i, j))
+    #             if (i, j) not in seen_edges:
+    #                 pos_e.add((i, j, 1.0))  # default curvature
+    #                 noseen += 1
 
-    return neg_e, pos_e, noseen
+    return neg_e, pos_e
 
 
 def cal_dims(model_dims):
@@ -283,24 +285,59 @@ def cal_edges(model_dims):
     
     
 def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg_end, pos_end, label, res_path):
-    # Plot
-    plt.figure(figsize=(8, 5))
-    plt.plot(neg_remove_num, neg_clean_acc, label='Negative Edge Clean Acc', marker='o', linestyle='--')
-    plt.plot(pos_remove_num, pos_clean_acc, label='Positive Edge Clean Acc', marker='x', linestyle='-')
-
-    # Vertical lines
-    plt.axvline(x=neg_end, color='red', linestyle=':', label=f'Neg End ({neg_end})')
-    plt.axvline(x=pos_end, color='green', linestyle=':', label=f'Pos End ({pos_end})')
-
-    plt.xlabel('Remove Number')
-    plt.ylabel('Clean Accuracy')
-    plt.title('Clean Accuracy vs Remove Number')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(res_path + f'{label}_curve_all.png')
-    plt.close()
+    # CMYK-like colors (manually mapped to RGB approximations)
+    # Separate CMYK-safe colors for NEG and POS
+    neg_colors = ['#00A3E0', '#6CACE4', '#00AB84', '#9E1B32']  # Cyan, Blue-gray, Greenish cyan, Dark red
+    pos_colors = ['#EC008C', '#FF6F61', '#FEDD00', '#000000']  # Magenta, Warm red, Yellow, Black
     
+    # Plot
+    plt.figure(figsize=(10, 6))  # Slightly wider for spacing
+
+    plt.plot(
+        neg_remove_num, neg_clean_acc,
+        label='Negative Edge Accuracy',
+        marker='o',
+        linestyle='--',
+        linewidth=2,
+        markersize=6,
+        color=neg_colors[0]
+    )
+
+    plt.plot(
+        pos_remove_num, pos_clean_acc,
+        label='Positive Edge Accuracy',
+        marker='s',
+        linestyle='-',
+        linewidth=2,
+        markersize=6,
+        color=pos_colors[0]
+    )
+
+    # Vertical lines for termination points
+    plt.axvline(
+        x=neg_end, color=neg_colors[1], linestyle=':', linewidth=2,
+        label=f'Neg Stop @ {neg_end}'
+    )
+    plt.axvline(
+        x=pos_end, color=pos_colors[1], linestyle=':', linewidth=2,
+        label=f'Pos Stop @ {pos_end}'
+    )
+
+    # Axes and title
+    plt.xlabel('Number of Edges Removed', fontsize=23)
+    plt.ylabel('Clean Accuracy', fontsize=23)
+    plt.title('Clean Accuracy vs. Edge Removal Count', fontsize=23)
+    plt.ylim(0.0, 1.0)
+    plt.xticks(fontsize=22)
+    plt.yticks(fontsize=22)
+
+    plt.legend(fontsize=22, loc='best')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout()
+
+    # Save
+    plt.savefig(res_path + f'{label}_curve_all.png', dpi=300)
+    plt.close()
     
     
 def count_edge_frequency(edge_sets):
@@ -321,11 +358,17 @@ def count_edge_frequency(edge_sets):
     return results
 
 
-import re
-def load_batches_with_limit(data_path, model_full_n, metric, dataset, selected_classes, sample_size):
-    """
-    Load batched pkl files and keep up to `sample_size` samples per label.
-    """
+
+
+
+def process_batches_memory_efficient(
+    data_path,
+    model_full_n,
+    metric,
+    dataset,
+    sample_size,
+    prefix_dims
+):
     prefix = f"{model_full_n}_{metric}_{dataset}_batch"
     suffix = ".pkl"
 
@@ -338,22 +381,45 @@ def load_batches_with_limit(data_path, model_full_n, metric, dataset, selected_c
         if f.startswith(prefix) and f.endswith(suffix)
     ], key=extract_batch_num)
 
-    print(all_files)
-    
-    res_dict = defaultdict(list)
+    print(f"Found files: {all_files}")
+
+    label_counts = {l: 0 for l in selected_classes}
+    neg_edge_sets = []
+    pos_edge_sets = []
+
     for f in all_files:
-        with open(os.path.join(data_path, f), 'rb') as file:
-            batch_data = pickle.load(file)  # {label: [riccis]}
-            for l in selected_classes:
-                if len(res_dict[l]) >= sample_size:
-                    continue
-                new_data = batch_data.get(l, [])
-                available = sample_size - len(res_dict[l])
-                res_dict[l].extend(new_data[:available])
-        if all(len(res_dict[l]) >= sample_size for l in selected_classes):
+        file_path = os.path.join(data_path, f)
+        with open(file_path, 'rb') as file:
+            batch_data = pickle.load(file)
+
+        for l in selected_classes:
+            if label_counts[l] >= sample_size:
+                continue
+
+            new_data = batch_data.get(l, [])
+            available = sample_size - label_counts[l]
+            use_data = new_data[:available]
+
+            for ricci in use_data:
+                neg_e, pos_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
+                neg_edge_sets.append(neg_e)
+                pos_edge_sets.append(pos_e)
+                del ricci, neg_e, pos_e
+
+            label_counts[l] += len(use_data)
+
+        del batch_data
+        gc.collect()
+
+        if all(label_counts[l] >= sample_size for l in selected_classes):
             break
 
-    return res_dict
+    print("Finished processing all required batches.")
+
+    neg_freq = count_edge_frequency(neg_edge_sets)
+    pos_freq = count_edge_frequency(pos_edge_sets)
+
+    return neg_freq, pos_freq
 
 
 
@@ -428,21 +494,6 @@ def remove_edge_cifar_union(args):
     test_cleanacc = test_clean(net_full, test_loader)
     
     print(f'Finish Test..')
-    
-    # correct_suffix_res = dataset + "_res_correct.pkl"  
-    # res_name = model_full_n + metric + '_' + correct_suffix_res
-         
-    # with open(data_path + res_name, 'rb') as file:
-    #     res_dict = pickle.load(file)    
-
-    res_dict = load_batches_with_limit(
-        data_path=data_path,
-        model_full_n=model_full_n,
-        metric=metric,
-        dataset=dataset,
-        selected_classes=selected_classes,
-        sample_size=sample_size
-    )
 
     freq_ratios = [1, 0.9, 0.8, 0.7, 0.5, 0.3, 0.2, 0.1, 0]
     
@@ -454,29 +505,20 @@ def remove_edge_cifar_union(args):
 
         neg_acc_clean = []
         pos_acc_clean = []
-        neg_edge_sets = []
-        pos_edge_sets = []
-        noseen_num = []
-        for l in selected_classes:
-            idx = 0
-            print(len(res_dict[l]))
-            for ricci in res_dict[l]:
-                neg_e_other, pos_e, noseen = get_top_c(ricci, 1, prefix_dims)
-                noseen_num.append(noseen)
-                neg_edge_sets.append(neg_e_other)
-                pos_edge_sets.append(pos_e)
-                idx += 1
-                if idx >= sample_size:
-                    break
-                
-        neg_freq_dict = count_edge_frequency(neg_edge_sets)
-        pos_freq_dict = count_edge_frequency(pos_edge_sets)
+        
+        neg_freq_dict, pos_freq_dict = process_batches_memory_efficient(
+            data_path,
+            model_full_n,
+            metric,
+            dataset,
+            sample_size,
+            prefix_dims
+        )
         neg_freq_edges_sorted = sorted(neg_freq_dict, key=lambda x: (-x[2], x[3]))
         pos_freq_edges_sorted = sorted(pos_freq_dict, key=lambda x: (-x[2], -x[3]))
 
         print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
         ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
-        ff.write(f'\n The average noseen edges is {np.mean(noseen_num)}\n')
             
         neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
         pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]
@@ -493,8 +535,8 @@ def remove_edge_cifar_union(args):
         pos_total = len(pos_edges_only)
 
         # Generate uniformly spaced points (including 0 and total) for each list
-        neg_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
-        pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
+        neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
+        pos_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
         
         # Step 2: Choose thresholds — you can just use them all or downsample if too many
         # neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
@@ -530,6 +572,21 @@ def remove_edge_cifar_union(args):
             ff.write(f'After remove {rem_f} negative edges, the acc is {acc_clean_pos}\n')
 
         ff.write(f'\n\n')
+        
+        data_to_save = {
+            'neg_acc_clean': neg_acc_clean,
+            'pos_acc_clean': pos_acc_clean,
+            'neg_remove_num': neg_remove_num,
+            'pos_remove_num': pos_remove_num,
+            'neg_total': neg_total,
+            'pos_total': pos_total
+        }
+        
+        save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}.pkl"
+        save_path = os.path.join(res_path, save_name)
+
+        with open(save_path, 'wb') as f:
+            pickle.dump(data_to_save, f)  # use dict to avoid defaultdict issues
 
         plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, sample_size, res_path)
         # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)

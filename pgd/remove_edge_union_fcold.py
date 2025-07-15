@@ -12,8 +12,6 @@ import seaborn as sns
 import copy
 import pickle
 import matplotlib.pyplot as plt
-import re
-import gc
 
 import sys
 sys.path.append("..")
@@ -59,82 +57,6 @@ selected_classes = [0,1,2,3,4,5,6,7,8,9]
 
 
 
-def process_batches_memory_efficient(
-    data_path: str,
-    model_full_n: str,
-    metric: str,
-    dataset: str,
-    sample_size: int,
-    prefix_dims
-):
-
-    prefix = f"{model_full_n}_{metric}_{dataset}_batch"
-    suffix = ".pkl"
-
-    def extract_batch_num(filename: str) -> int:
-        match = re.search(r'batch(\d+)', filename)
-        return int(match.group(1)) if match else -1
-
-    all_files = sorted(
-        [f for f in os.listdir(data_path) if f.startswith(prefix) and f.endswith(suffix)],
-        key=extract_batch_num
-    )
-
-    print(f"Found files: {all_files}")
-
-    label_counts = {l: 0 for l in selected_classes}
-    neg_edges_all = []  # list of (i, j, curvature)
-    pos_edges_all = []
-
-    for filename in all_files:
-        file_path = os.path.join(data_path, filename)
-        with open(file_path, 'rb') as f:
-            batch_data = pickle.load(f)
-
-        for l in selected_classes:
-            if label_counts[l] >= sample_size:
-                continue
-
-            new_data = batch_data.get(l, [])
-            available = sample_size - label_counts[l]
-            use_data = new_data[:available]
-
-            for ricci in use_data:
-                neg_e, pos_e, _ = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
-                neg_edges_all.extend(neg_e)
-                pos_edges_all.extend(pos_e)
-                label_counts[l] += 1
-
-            del new_data, use_data
-            gc.collect()
-
-        del batch_data
-        gc.collect()
-
-        if all(label_counts[l] >= sample_size for l in selected_classes):
-            break
-
-    print("Finished processing all required batches.")
-
-    # === Frequency + curvature summarization ===
-    def count_edge_frequency(edge_list):
-        freq = Counter()
-        curvature_sum = defaultdict(float)
-        for i, j, c in edge_list:
-            key = tuple(sorted((i, j)))  # undirected
-            freq[key] += 1
-            curvature_sum[key] += c
-        results = [
-            (i, j, freq[(i, j)], curvature_sum[(i, j)] / freq[(i, j)])
-            for (i, j) in freq
-        ]
-        return results
-
-    neg_summary = sorted(count_edge_frequency(neg_edges_all), key=lambda x: x[3])      # sort by avg curvature ↑
-    pos_summary = sorted(count_edge_frequency(pos_edges_all), key=lambda x: -x[3])     # sort by avg curvature ↓
-
-    return neg_summary, pos_summary
-
 
 def standard_PGD(model, images, labels, device, eps=11/255, alpha=2/255, iters=40):
     images = images.to(device)
@@ -175,6 +97,7 @@ def test_clean(n, loader, device = 'cuda'):
     
     acc = float(total_correct) / len(loader.dataset)
     return acc
+
 
 
 
@@ -222,12 +145,14 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 
+
 def get_top_c(curvature, b, prefix_dims):
     c = []
     seen_edges = set()
     neg_e = set()
     pos_e = set()
     noseen = 0
+    zero = 0.
 
     # Step 1: Collect existing curvature edges
     for batch in range(b):
@@ -262,10 +187,10 @@ def get_top_c(curvature, b, prefix_dims):
         # i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
         if curr < 0:
             neg_e.add((i, j, curr))
-        elif curr >= 0:
+        elif curr > 0:
             pos_e.add((i, j, curr))
 
-    return neg_e, pos_e, noseen
+    return neg_e, pos_e
 
 
 
@@ -286,7 +211,6 @@ def get_top_c(curvature, b, prefix_dims):
 #     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)")
 #     plt.ylabel("Accuracy")
 #     plt.title(f"Accuracy vs Frequency Ratio for Label {label}")
-#     plt.ylim(0.0, 1.0)
 #     plt.xticks(neg_freq_ratios)  # or freq_ratios if shared
 #     plt.gca().invert_xaxis()
 #     plt.grid(True)
@@ -297,58 +221,22 @@ def get_top_c(curvature, b, prefix_dims):
     
     
 def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg_end, pos_end, label, res_path):
-    # CMYK-like colors (manually mapped to RGB approximations)
-    # Separate CMYK-safe colors for NEG and POS
-    neg_colors = ['#00A3E0', '#6CACE4', '#00AB84', '#9E1B32']  # Cyan, Blue-gray, Greenish cyan, Dark red
-    pos_colors = ['#EC008C', '#FF6F61', '#FEDD00', '#000000']  # Magenta, Warm red, Yellow, Black
-    
-    # Plot
-    plt.figure(figsize=(10, 6))  # Slightly wider for spacing
+    plt.figure(figsize=(8, 5))
+    plt.plot(neg_remove_num, neg_clean_acc, label='Negative Edge Clean Acc', marker='o', linestyle='--')
+    plt.plot(pos_remove_num, pos_clean_acc, label='Positive Edge Clean Acc', marker='x', linestyle='-')
 
-    plt.plot(
-        neg_remove_num, neg_clean_acc,
-        label='Negative Edge Accuracy',
-        marker='o',
-        linestyle='--',
-        linewidth=2,
-        markersize=6,
-        color=neg_colors[0]
-    )
+    # Vertical lines
+    plt.axvline(x=neg_end, color='red', linestyle=':', label=f'Neg End ({neg_end})')
+    plt.axvline(x=pos_end, color='green', linestyle=':', label=f'Pos End ({pos_end})')
 
-    plt.plot(
-        pos_remove_num, pos_clean_acc,
-        label='Positive Edge Accuracy',
-        marker='s',
-        linestyle='-',
-        linewidth=2,
-        markersize=6,
-        color=pos_colors[0]
-    )
-
-    # Vertical lines for termination points
-    plt.axvline(
-        x=neg_end, color=neg_colors[1], linestyle=':', linewidth=2,
-        label=f'Neg Stop @ {neg_end}'
-    )
-    plt.axvline(
-        x=pos_end, color=pos_colors[1], linestyle=':', linewidth=2,
-        label=f'Pos Stop @ {pos_end}'
-    )
-
-    # Axes and title
-    plt.xlabel('Number of Edges Removed', fontsize=21)
-    plt.ylabel('Clean Accuracy', fontsize=21)
-    plt.title('Clean Accuracy vs. Edge Removal Count', fontsize=22)
-    plt.ylim(0.0, 1.0)
-    plt.xticks(fontsize=20)
-    plt.yticks(fontsize=20)
-
-    plt.legend(fontsize=18, loc='best')
-    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.xlabel('Remove Number')
+    plt.ylabel('Clean Accuracy')
+    plt.title('Clean Accuracy vs Remove Number')
+    plt.ylim(0.0, 1.0)  # Invert y-axis from 1 to 0
+    plt.legend()
+    plt.grid(True)
     plt.tight_layout()
-
-    # Save
-    plt.savefig(res_path + f'{label}_curve_all.png', dpi=300)
+    plt.savefig(res_path + f'{label}_curve_all.png')
     plt.close()
 
 
@@ -425,7 +313,7 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
-def remove_edge_fc_union(args):
+def remove_edge_fc_union_old(args):
     set_seed(59)
     
     os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
@@ -465,6 +353,25 @@ def remove_edge_fc_union(args):
         layer = [2,4]
 
     for layer_num in layer:
+        if model_type.lower() == "fc":
+            correct_suffix_res = dataset + "_res_correct.pkl"
+            misclassified_suffix_res = dataset + "_res_misclassified.pkl"  
+            res_name = model_full_n + metric + '_' + str(layer_num) + correct_suffix_res
+            misres_name = model_full_n + metric + '_' + str(layer_num) + misclassified_suffix_res                 
+        # cnn model
+        elif model_type.lower() == "cnn" and dataset.lower() == "mnist":
+            correct_suffix_res = dataset + "_res_correct.pkl"
+            misclassified_suffix_res = dataset + "_res_misclassified.pkl"    
+            res_name = model_full_n + metric + '_' + correct_suffix_res
+            misres_name = model_full_n + metric + '_' + misclassified_suffix_res    
+        else:
+            raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
+        
+        with open(data_path + res_name, 'rb') as file:
+            res_dict = pickle.load(file)
+        
+        remove_num = []
+        
         # build model
         dims = model_zoo[layer_num]
         
@@ -510,43 +417,55 @@ def remove_edge_fc_union(args):
             
             neg_acc_clean = []
             pos_acc_clean = []
+            neg_edge_sets = []
+            pos_edge_sets = []
+            noseen_num = []
+            zero_c = 0
+            for l in selected_classes:
+                idx = 0
+                for (ricci, batch, dim, node) in res_dict[l]:
+                    neg_e, pos_e = get_top_c(ricci, 1, prefix_dims)
+                    neg_edge_sets.append(neg_e)
+                    pos_edge_sets.append(pos_e)
+
+                    idx += 1
+                    if idx >= sample_size:
+                        break
+
+            neg_freq_dict = count_edge_frequency(neg_edge_sets)
+            pos_freq_dict = count_edge_frequency(pos_edge_sets)
+            neg_freq_edges_sorted = sorted(neg_freq_dict, key=lambda x: (-x[2], x[3]))
+            pos_freq_edges_sorted = sorted(pos_freq_dict, key=lambda x: (-x[2], -x[3]))
+
+
+            print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
+            ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
             
-            neg_summary, pos_summary = process_batches_memory_efficient(
-                data_path,
-                model_full_n,
-                metric,
-                dataset,
-                sample_size,
-                prefix_dims
-            )
-
-            print(f'It has {len(neg_summary)} negative curvature edges, {len(pos_summary)} positive curvature edges .. \n')
-            ff.write(f'\nIt has {len(neg_summary)} negative curvature edges, {len(pos_summary)} positive curvature edges .. \n')
-
-            neg_edges_only = [(i, j) for (i, j, _, _) in neg_summary]
-            pos_edges_only = [(i, j) for (i, j, _, _) in pos_summary]
-
+            neg_edges_only = [(i, j) for (i, j, _,_) in neg_freq_edges_sorted]
+            pos_edges_only = [(i, j) for (i, j, _,_) in pos_freq_edges_sorted]
+            
             neg_total = len(neg_edges_only)
             pos_total = len(pos_edges_only)
 
+            # Generate uniformly spaced points (including 0 and total) for each list
             neg_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
             pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
 
-            # Step 2: Choose thresholds — you can just use them all or downsample if too many
-            # neg_max_freq = max(freq for (_, _, freq, _) in neg_summary)
+            # # Step 2: Choose thresholds — you can just use them all or downsample if too many
+            # neg_max_freq = max(freq for (_, freq) in neg_freq_edges_sorted)
             # neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
 
-            # pos_max_freq = max(freq for (_, _, freq, _) in pos_summary)
+            # pos_max_freq = max(freq for (_, freq) in pos_freq_edges_sorted)
             # pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
 
             # # Step 3: For each threshold, count how many edges would be removed
-            # neg_remove_num = [sum(1 for (_, _, freq, _) in neg_summary if freq >= t) for t in neg_freq_thresholds]
-            # pos_remove_num = [sum(1 for (_, _, freq, _) in pos_summary if freq >= t) for t in pos_freq_thresholds]
+            # neg_remove_num = [sum(1 for (_, freq) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
+            # pos_remove_num = [sum(1 for (_, freq) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
 
             # start remove
             for index, rem_f in enumerate(neg_remove_num):
                 print(f'Remove edge number {rem_f}:')
-                cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f)
+                cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) + '_' + str(l)
 
                 # remove negative curvature edges
                 net_H.load_state_dict(torch.load(model_path + model_name))
@@ -566,7 +485,7 @@ def remove_edge_fc_union(args):
             
             for index, rem_f in enumerate(pos_remove_num):
                 # ff.write(f'Remove edge number {rem_f}: \n')
-                cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) 
+                cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) + '_' + str(l)
                 # remove positive curvature edges
                 net_H.load_state_dict(torch.load(model_path + model_name))
                 edge_r = Edge_Remove(net_H, dims, min(rem_f, len(pos_edges_only)), res_path)

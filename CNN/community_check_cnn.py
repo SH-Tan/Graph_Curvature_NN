@@ -152,33 +152,6 @@ def test(n, loader, device):
 
 
 
-def get_top_c(curvature, b, prefix_dims, threshold = -50):
-    c = []
-    neg_e = set()  # Negative curvature edges
-    pos_e = set()  # Positive curvature edges
-    
-    for batch in range(b):
-        ricci_curv = np.array(curvature[batch])
-        for (i, j, curr) in ricci_curv:
-            if curr > 1:
-                continue
-
-            i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-            if i_layer >= 3:
-                c.append((i,j,curr))
-
-    c.sort(key=lambda x: x[2])
-    
-    for (i,j,curr) in c:
-        i1 = (int)(i)
-        j1 = (int)(j)
-        if curr < 0:
-            neg_e.add((i1,j1))
-        else:
-            pos_e.add((i1,j1))
-        
-    return c, neg_e, pos_e
-
 
 def cal_dims(model_dims):
     dims = []
@@ -215,7 +188,7 @@ def community_check_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -276,40 +249,6 @@ def community_check_cnn(args):
     # res_l_non = defaultdict(list)
 
     for l in selected_classes:
-        # for (images, labels) in succ_pair[l]:
-        #     for idx in range(images.shape[0]):
-        #         if (idx >= sample_size):
-        #             print(f'Finish {idx} examples....')
-        #             break
-                    
-        #         img = images[idx].to(device)
-        #         edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
-
-        #         if metric.lower() == "w1":
-        #             weights = output.detach().clone().to(device)                   
-        #             # weights[edge_array == 0] = 0.
-                
-        #         elif metric.lower() == "w3":
-        #             weights = output.detach().clone().to(device)                   
-        #             # weights[edge_array == 0] = 0.
-                    
-        #         if metric.lower() == "w1":
-        #             weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
-        #             weights_inv = weights_inv1.detach()
-        #             weights_inv2 = weights_inv2.detach()
-        #             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
-                        
-        #         elif metric.lower() == "w3":
-        #             weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims)
-        #             weights_inv = weights_inv1.detach()
-        #             weights_inv2 = weights_inv2.detach()
-        #             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
-        #         else:
-        #             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-                
-        #         res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
-                
-    
         for (images, labels) in robust_pair[l]:
             for idx in range(images.shape[0]):
                 if (idx >= sample_size):
@@ -323,8 +262,8 @@ def community_check_cnn(args):
                     weights = output.detach().clone().to(device)                   
                     # weights[edge_array == 0] = 0.
                 
-                elif metric.lower() == "w3":
-                    weights = output.detach().clone().to(device)                   
+                elif metric.lower() == "w3" or metric.lower() == "w4":
+                    weights = output.detach().clone().to(device)      
                     # weights[edge_array == 0] = 0.
                     
                 if metric.lower() == "w1":
@@ -337,7 +276,13 @@ def community_check_cnn(args):
                     weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims)
                     weights_inv = weights_inv1.detach()
                     weights_inv2 = weights_inv2.detach()
-                    ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha, layers_to_process=[0,1,2,3,4])
+                    ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+                    
+                elif metric.lower() == "w4":
+                    weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims)
+                    weights_inv = weights_inv1.detach()
+                    weights_inv2 = weights_inv2.detach()
+                    ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
                 else:
                     raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                 

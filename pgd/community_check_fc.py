@@ -152,13 +152,13 @@ def community_check_fc(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
     val_set = load_dataset_from_disk("./data/MNIST_val", batch_size=64, shuffle=False)
-    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=1000)
+    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=1)
     
     eps = [0.03, 0.07, 0.1, 0.2]
     
@@ -242,80 +242,99 @@ def community_check_fc(args):
         
         res_l = defaultdict(list)
         # res_l_non = defaultdict(list)
+        
+        print("Finished loading model and test data..")
+    
+        # Track how many samples have been processed for each class
+        label_progress = defaultdict(int)
 
-        for l in selected_classes:      
-            # for (images, labels) in succ_pair[l]:
-            #     for idx in range(images.shape[0]):
-            #         if (idx >= sample_size):
-            #             print(f'Finish {idx} examples....')
-            #             break
-            #         img = images[idx].to(device)
-            #         edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
-                    
-            #         if metric.lower() == "w1":
-            #             weights = output.detach().clone().to(device)                   
-            #             # weights[edge_array == 0] = 0.
-                    
-            #         elif metric.lower() == "w3":
-            #             weights = output.detach().clone().to(device)                   
-            #             # weights[edge_array == 0] = 0.
-                        
-            #         if metric.lower() == "w1":
-            #             weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)
-            #             weights_inv = weights_inv1.detach()
-            #             weights_inv2 = weights_inv2.detach()
-            #             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
-                            
-            #         elif metric.lower() == "w3":
-            #             weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
-            #             weights_inv = weights_inv1.detach()
-            #             weights_inv2 = weights_inv2.detach()
-            #             ricci_curvature, sp_dict = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
-            #         else:
-            #             raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-                    
-            #         res_l_non[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
+        # Prepare iterators for each label's data
+        data_iterators = {l: iter(robust_pair[l]) for l in selected_classes}
+        finished_labels = set()
+        round_id = 1  # Track how many full batches have been saved
+        
+        while len(finished_labels) < len(selected_classes):
+            finished_l = 0
+            for l in selected_classes:
+                finished_l += 1
+                if label_progress[l] >= sample_size:
+                    finished_labels.add(l)
+                    continue
 
-                               
-            for (images, labels) in robust_pair[l]:
-                for idx in range(images.shape[0]):
-                    if (idx >= sample_size):
-                        print(f'Finish {idx} examples....')
-                        break
+                num_needed = min(10, sample_size - label_progress[l])  # Process up to 10 per round
+                current_count = 0
+                
+                try:
+                    while current_count < num_needed:
+                        images, labels = next(data_iterators[l])
 
-                    img = images[idx].to(device)
-                    edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
+                        for idx in range(images.shape[0]):
+                            if label_progress[l] >= sample_size:
+                                finished_labels.add(l)
+                                break
 
-                    if metric.lower() == "w1":
-                        weights = output.detach().clone().to(device)                   
-                        # weights[edge_array == 0] = 0.
-                    
-                    elif metric.lower() == "w3":
-                        weights = output.detach().clone().to(device)                   
-                        # weights[edge_array == 0] = 0.
-                        
-                    if metric.lower() == "w1":
-                        weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)
-                        weights_inv = weights_inv1.detach()
-                        weights_inv2 = weights_inv2.detach()
-                        ricci_curvature= graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
-                            
-                    elif metric.lower() == "w3":
-                        weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
-                        weights_inv = weights_inv1.detach()
-                        weights_inv2 = weights_inv2.detach()
-                        ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
-                    else:
-                        raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-                    
-                    res_l[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
-                    
-            print(f'Finished label {l}.')
-                    
-        with open(res_path + model_full_n + metric + '_' + str(layer_num) + dataset + "_res_correct.pkl", 'wb') as file:
-            pickle.dump(res_l, file)
-        # with open(res_path + model_full_n + metric + '_' + str(layer_num) + dataset + "_res_misclassified.pkl", 'wb') as file:
-        #     pickle.dump(res_l_non, file)
+                            if current_count >= num_needed:
+                                break
 
+                            if (label_progress[l] % 10 == 0):
+                                print(f'Label {l}: finish {label_progress[l]} examples...')
 
-           
+                            with torch.no_grad():
+                                net_full.eval()
+                                img = images[idx].to(device, non_blocking=True)
+                                edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
+
+                                weights = output.detach().to(device)
+                                del output
+                                
+                                if metric.lower() == "w1":
+                                    weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims)
+                                    weights_inv = weights_inv1.detach()
+                                    weights_inv2 = weights_inv2.detach()
+                                    ricci_curvature= graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
+                                        
+                                elif metric.lower() == "w3":
+                                    weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims)
+                                    weights_inv = weights_inv1.detach()
+                                    weights_inv2 = weights_inv2.detach()
+                                    ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
+                                
+                                elif metric.lower() == "w4":
+                                    weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims)
+                                    weights_inv = weights_inv1.detach()
+                                    weights_inv2 = weights_inv2.detach()
+                                    ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, probability_w=weights_inv2, alpha=alpha)
+                                else:
+                                    raise Exception("Invalid graph metric, metric should be {w1,w2,w3}!")
+                                            
+                                res_l[l].append(ricci_curvature)
+
+                                # GPU memory cleanup
+                                del img, edge_array, nodes_ori
+                                del weights, weights_inv1, weights_inv2, weights_inv
+                                torch.cuda.empty_cache()
+
+                                label_progress[l] += 1
+                                current_count += 1
+                                
+                except StopIteration:
+                    finished_labels.add(l)
+                    continue
+
+            # === Check if all labels have collected 10 new samples ===
+            if all(len(res_l[l]) == 10 for l in selected_classes if label_progress[l] < sample_size) or finished_l >= len(selected_classes):
+                save_name = f"{model_full_n}_{metric}_{dataset}_batch{round_id}.pkl"
+                save_path = os.path.join(res_path, save_name)
+
+                with open(save_path, 'wb') as f:
+                    pickle.dump(dict(res_l), f)  # use dict to avoid defaultdict issues
+
+                print(f"[Saved] Batch {round_id}: 10 examples per label saved to {save_name}")
+
+                # Clear all buffers
+                for l in selected_classes:
+                    res_l[l].clear()
+
+                round_id += 1
+                                    
+       

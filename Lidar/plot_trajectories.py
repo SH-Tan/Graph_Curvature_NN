@@ -332,11 +332,11 @@ def main_lidar(args):
         pos_total = len(pos_edges_only)
 
         # Generate uniformly spaced points (including 0 and total) for each list
-        # neg_remove_num = list(np.linspace(0, neg_total, num=200, dtype=int))
-        # pos_remove_num = list(np.linspace(0, pos_total, num=200, dtype=int))
+        neg_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
+        pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
         
-        neg_remove_num = [0, 50, 70, 100, 110, 120, 125, 130, 135, 140, 150, 160, 180, 200, 250, 300, 500, 6000]
-        pos_remove_num = neg_remove_num
+        # neg_remove_num = [0, 50, 70, 100, 110, 120, 125, 130, 135, 140, 150, 160, 180, 200, 250, 300, 500, 6000]
+        # pos_remove_num = neg_remove_num
         # Step 2: Choose thresholds — you can just use them all or downsample if too many
         # neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
         # neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
@@ -366,7 +366,7 @@ def main_lidar(args):
             os.remove(res_path + cur_n + "_neg.pth")
             
             num_unsafe_neg = test(net_neg, device)
-            acc_neg = (100-num_unsafe_neg)/100
+            acc_neg = (1000-num_unsafe_neg)/1000
             neg_acc_clean.append(acc_neg)
             
         for index, rem_f in enumerate(pos_remove_num):
@@ -386,7 +386,7 @@ def main_lidar(args):
             os.remove(res_path + cur_n + "pos.pth")
 
             num_unsafe_pos = test(net_pos, device)
-            acc_pos = (100-num_unsafe_pos)/100
+            acc_pos = (1000-num_unsafe_pos)/1000
             pos_acc_clean.append(acc_pos)
         
         plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, s, res_path)

@@ -88,7 +88,7 @@
 
 ## LiDAR
 
-- python main.py --image 0 --lidar 1 --metric w3 --lidar_res_path res/lidar/w3/ --model_path Lidar/models/ --sample_size 50
+- python main.py --image 0 --lidar 1 --metric w3 --lidar_res_path res/lidar/w3/ --model_path Lidar/models/ --sample_num 50
 
 - python test.py --image 0 --lidar 1 --metric q_inv --lidar_data_path res/lidar/ --lidar_res_path statistics/lidar/ 
 
@@ -125,3 +125,9 @@
 - python removal.py --lidar 0 --metric w3 --model_type cnn --model_name ori --model_path CNN/models/new/ --mnist_data_path res/w3/relu/cifarori/ --mnist_res_path statistics/remove/relu/cifarori/ --edge 1 --node 0 --activation relu --sample_num 10 --dataset cifar
 
 - python removal.py --lidar 1 --image 0 --metric w3 --model_type DDPG --model_name 64 --model_path Lidar/models/ --mnist_data_path res/lidar/w3/ --mnist_res_path statistics/remove/lidar/ddpg64/ --edge 1 --sample_num 10
+
+- python removal.py --lidar 0 --metric w4 --model_type fc --model_name big_wd --model_path pgd/models/new/ --mnist_res_path res/w4/relu/bigwd/ --edge 0 --node 0 --activation relu --community 1 --sample_num 100
+
+- python removal.py --lidar 0 --metric w4 --model_type cnn --model_name ori --model_path CNN/models/new/ --mnist_res_path res/w4/tanh/cnnori/ --edge 0 --node 0 --activation tanh --community 1 --sample_num 100
+
+- python removal.py --lidar 0 --image 1 --cifar small --metric w4 --model_type cnn --model_name ori --model_path CNN/models/new/ --mnist_res_path res/w4/tanh/cifarori/ --dataset cifar --community 1 --activation tanh --sample_num 100

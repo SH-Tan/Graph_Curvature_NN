@@ -217,14 +217,14 @@ def community_check_cifar(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
     val_set = load_dataset_from_disk("./data/CIFAR10_val", batch_size=64, shuffle=False)
-    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=64)
+    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=32)
     
     dims_full = cal_dims(model_dims)
     dims = cal_dims(model_dims_small)
@@ -344,8 +344,20 @@ def community_check_cifar(args):
                                     pre_n=(np.sum(dims_full) - np.sum(dims)),
                                     layers_to_process=[1,2,3]
                                 )
+                            elif metric.lower() == "w4":
+                                weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
+                                weights_inv = weights_inv1.detach()
+                                weights_inv2 = weights_inv2.detach()
+   
+                                ricci_curvature = graph_curvature_main_torch(
+                                    dims, weights_inv, device=device,
+                                    model_dims=model_dims_small,
+                                    probability_w=weights_inv2, alpha=alpha,
+                                    pre_n=(np.sum(dims_full) - np.sum(dims)),
+                                    layers_to_process=[1,2,3]
+                                )
                             else:
-                                raise Exception("Invalid graph metric, should be {w1, w3}!")
+                                raise Exception("Invalid graph metric, should be {w1, w3, w4}!")
 
                             res_l[l].append(ricci_curvature)
 

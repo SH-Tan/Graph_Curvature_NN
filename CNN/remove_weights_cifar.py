@@ -297,6 +297,7 @@ def plot_curve(high_clean_acc, low_clean_acc, remove_num, res_path, name):
     plt.tight_layout()
     plt.savefig(res_path + name + f'_remove_w_curve.png')
     plt.close()
+    
 
 def set_seed(seed):
     random.seed(seed)

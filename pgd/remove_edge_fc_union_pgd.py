@@ -262,95 +262,97 @@ def get_top_c(curvature, b, prefix_dims):
         # i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
         if curr < 0:
             neg_e.add((i, j, curr))
-        elif curr >= 0:
+        elif curr > 0:
             pos_e.add((i, j, curr))
 
     return neg_e, pos_e, noseen
 
 
 
-# def plot_curve(neg_acc_clean, pos_acc_clean, neg_freq_ratios, pos_freq_ratios, neg_freq_thresholds, pos_freq_thresholds, label, save_path):
-#     plt.figure(figsize=(8, 6))
 
-#     plt.plot(neg_freq_ratios, neg_acc_clean, 'r-o', label='Negative Edge Removal')
-#     plt.plot(pos_freq_ratios, pos_acc_clean, 'b-o', label='Positive Edge Removal')
+def plot_curve_all_eps(
+    neg_acc_adv, pos_acc_adv,
+    neg_remove_num, pos_remove_num,
+    neg_end, pos_end,
+    eps_list, label, res_path
+):
+    plt.figure(figsize=(10, 6))
 
-#     for x, y, freq in zip(neg_freq_ratios, neg_acc_clean, neg_freq_thresholds):
-#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, 10),
-#                      ha='center', fontsize=8, color='red')
-
-#     for x, y, freq in zip(pos_freq_ratios, pos_acc_clean, pos_freq_thresholds):
-#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, -15),
-#                      ha='center', fontsize=8, color='blue')
-
-#     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)")
-#     plt.ylabel("Accuracy")
-#     plt.title(f"Accuracy vs Frequency Ratio for Label {label}")
-#     plt.ylim(0.0, 1.0)
-#     plt.xticks(neg_freq_ratios)  # or freq_ratios if shared
-#     plt.gca().invert_xaxis()
-#     plt.grid(True)
-#     plt.legend()
-#     plt.tight_layout()
-#     plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
-#     plt.close()
-    
-    
-def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg_end, pos_end, label, res_path):
-    # CMYK-like colors (manually mapped to RGB approximations)
     # Separate CMYK-safe colors for NEG and POS
     neg_colors = ['#00A3E0', '#6CACE4', '#00AB84', '#9E1B32']  # Cyan, Blue-gray, Greenish cyan, Dark red
     pos_colors = ['#EC008C', '#FF6F61', '#FEDD00', '#000000']  # Magenta, Warm red, Yellow, Black
-    
-    # Plot
-    plt.figure(figsize=(10, 6))  # Slightly wider for spacing
 
-    plt.plot(
-        neg_remove_num, neg_clean_acc,
-        label='Negative Edge Accuracy',
-        marker='o',
-        linestyle='--',
-        linewidth=2,
-        markersize=6,
-        color=neg_colors[0]
-    )
+    # Distinct markers per curve
+    neg_markers = ['o', 's', '^', 'D']
+    pos_markers = ['v', 'x', '*', '+']
 
-    plt.plot(
-        pos_remove_num, pos_clean_acc,
-        label='Positive Edge Accuracy',
-        marker='s',
-        linestyle='-',
-        linewidth=2,
-        markersize=6,
-        color=pos_colors[0]
-    )
+    # Keep handles for separate legends
+    curve_handles = []
+    stop_handles = []
 
-    # Vertical lines for termination points
-    plt.axvline(
-        x=neg_end, color=neg_colors[1], linestyle=':', linewidth=2,
-        label=f'Neg Stop @ {neg_end}'
-    )
-    plt.axvline(
-        x=pos_end, color=pos_colors[1], linestyle=':', linewidth=2,
-        label=f'Pos Stop @ {pos_end}'
-    )
+    for i, eps in enumerate(eps_list):
+        neg_color = neg_colors[i % len(neg_colors)]
+        pos_color = pos_colors[i % len(pos_colors)]
+        neg_mk = neg_markers[i % len(neg_markers)]
+        pos_mk = pos_markers[i % len(pos_markers)]
+        eps_label = f"ε={eps}"
 
-    # Axes and title
-    plt.xlabel('Number of Edges Removed', fontsize=21)
-    plt.ylabel('Clean Accuracy', fontsize=21)
-    plt.title('Clean Accuracy vs. Edge Removal Count', fontsize=22)
+        # Plot negative accuracy
+        h1, = plt.plot(
+            neg_remove_num,
+            neg_acc_adv[eps],
+            label=f'Neg {eps_label}',
+            linestyle='-',
+            marker=neg_mk,
+            color=neg_color,
+            linewidth=2,
+            markersize=7
+        )
+        curve_handles.append(h1)
+
+        # Plot positive accuracy
+        h2, = plt.plot(
+            pos_remove_num,
+            pos_acc_adv[eps],
+            label=f'Pos {eps_label}',
+            linestyle='--',
+            marker=pos_mk,
+            color=pos_color,
+            linewidth=2,
+            markersize=7
+        )
+        curve_handles.append(h2)
+
+    # Vertical lines
+    h3 = plt.axvline(
+        x=neg_end, color='black', linestyle=':', linewidth=1.8,
+        label=f'Neg End @ {neg_end}'
+    )
+    h4 = plt.axvline(
+        x=pos_end, color='gray', linestyle=':', linewidth=1.8,
+        label=f'Pos End @ {pos_end}'
+    )
+    stop_handles.extend([h3, h4])
+
+    # Labels and styles
+    plt.xlabel('Number of Edges Removed', fontsize=20)
+    plt.ylabel('Adversarial Accuracy', fontsize=20)
+    plt.title('Adversarial Accuracy vs. Edge Removal', fontsize=22)
     plt.ylim(0.0, 1.0)
-    plt.xticks(fontsize=20)
-    plt.yticks(fontsize=20)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.grid(True, linestyle='--', alpha=0.5)
 
-    plt.legend(fontsize=18, loc='best')
-    plt.grid(True, linestyle='--', alpha=0.6)
+    # First legend: curves
+    first_legend = plt.legend(handles=curve_handles, fontsize=12, loc='upper right', ncol=2, title='Adversarial Curves')
+    plt.gca().add_artist(first_legend)  # Add it before second
+
+    # Second legend: vertical lines
+    plt.legend(handles=stop_handles, fontsize=12, loc='lower right', title='Edge Removal End')
+
     plt.tight_layout()
-
-    # Save
-    plt.savefig(res_path + f'{label}_curve_all.png', dpi=300)
+    plt.savefig(res_path + f'{label}_curve_all.pdf', dpi=300, format='pdf')  # CMYK-friendly
     plt.close()
-
 
 
 from collections import Counter
@@ -373,43 +375,6 @@ def count_edge_frequency(edge_sets):
     return results
 
 
-def get_all_edges_sorted_by_weight(dims, weights, device='cuda'):
-    """
-    Returns:
-        - edges_weights: List of tuples (edge_pair, weight)
-    """
-    batch_idx = 0
-    weight_idx = 0
-    global_node_offset = 0
-
-    edges_weights = defaultdict(list)
-
-    for i in range(len(dims) - 1):
-        src_size, dst_size = dims[i], dims[i+1]
-        num_edges = src_size * dst_size
-
-        # Extract weights for this layer
-        direct_dist = weights[batch_idx, weight_idx:weight_idx + num_edges].flatten()
-
-        # Global node indices
-        src_nodes = torch.arange(src_size, device=device) + global_node_offset
-        dst_nodes = torch.arange(dst_size, device=device) + global_node_offset + src_size
-        global_node_offset += src_size
-
-        src_grid, dst_grid = torch.meshgrid(src_nodes, dst_nodes, indexing='ij')
-        
-        # Create edge-weight pairs
-        for idx in range(len(direct_dist)):
-            edge = (src_grid.flatten()[idx].item(), dst_grid.flatten()[idx].item())
-            weight = direct_dist[idx].item()
-            edges_weights[edge].append(weight)
-
-        weight_idx += num_edges
-
-    return edges_weights
-
-
-
 
 
 def set_seed(seed):
@@ -425,7 +390,7 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
-def remove_edge_fc_union(args):
+def remove_edge_fc_union_pgd(args):
     set_seed(59)
     
     os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
@@ -436,7 +401,7 @@ def remove_edge_fc_union(args):
 
     # sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
     
-    eps = [0.03]
+    eps = [0.03, 0.07, 0.1]
 
     model_type = args.model_type
     model_pre_name = args.model_name
@@ -508,8 +473,8 @@ def remove_edge_fc_union(args):
             # print(f'Current label {l}: \n')
             # ff.write(f'Current label {l}: \n')
             
-            neg_acc_clean = []
-            pos_acc_clean = []
+            neg_acc_adv = defaultdict(list)
+            pos_acc_adv = defaultdict(list)
             
             neg_summary, pos_summary = process_batches_memory_efficient(
                 data_path,
@@ -559,11 +524,11 @@ def remove_edge_fc_union(args):
                 net_neg.load_state_dict(torch.load(res_path + cur_n + "other_neg.pth"))
                 net_neg = net_neg.to(device)
                 os.remove(res_path + cur_n + "other_neg.pth")
+                
+                for e in eps:
+                    test_advacc = test_adversarial(net_neg, test_loader, eps=e, alpha=2/255, iters=40)
+                    neg_acc_adv[e].append(test_advacc)
 
-                acc_clean_neg_other = test_clean(net_neg, test_loader)
-                neg_acc_clean.append(acc_clean_neg_other)
-
-            
             for index, rem_f in enumerate(pos_remove_num):
                 # ff.write(f'Remove edge number {rem_f}: \n')
                 cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) 
@@ -579,28 +544,13 @@ def remove_edge_fc_union(args):
                 net_pos = net_pos.to(device)
                 os.remove(res_path + cur_n + "pos.pth")
 
-                acc_clean_pos = test_clean(net_pos, test_loader)
-                pos_acc_clean.append(acc_clean_pos)
-
-                # excel_path = res_path + f'accuracies_layer{layer_num}.xlsx'
-                
-                # ## Create DataFrame for this fraction
-                # df = pd.DataFrame({
-                #     'Remove Number': [rem_f],
-                #     'Negative Edge Clean Acc Other': [neg_acc_clean[-1]],
-                #     'Positive Edge Clean Acc': [pos_acc_clean[-1]]
-                # })
-
-                # # If file exists, append to it, otherwise create new
-                # if os.path.exists(excel_path):
-                #     existing_df = pd.read_excel(excel_path)
-                #     df = pd.concat([existing_df, df], ignore_index=True)
-                    
-                # df.to_excel(excel_path, index=False)     
-                
+                for e in eps:
+                    test_advacc = test_adversarial(net_pos, test_loader, eps=e, alpha=2/255, iters=40)
+                    pos_acc_adv[e].append(test_advacc)
+      
             ff.write(f'\n\n')
 
-            plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, sample_size, res_path)
+            plot_curve_all_eps(neg_acc_adv, pos_acc_adv, neg_remove_num, pos_remove_num, neg_total, pos_total, eps, sample_size, res_path)
             # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
 
 

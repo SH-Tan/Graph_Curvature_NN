@@ -12,13 +12,12 @@ import seaborn as sns
 import copy
 import pickle
 import matplotlib.pyplot as plt
-import re
-import gc
 
 import sys
 sys.path.append("..")
 
 import tools.utils as utils
+from tools.graph_curvature import graph_curvature_main_torch
 from tools.edge_remove import Edge_Remove
 
 np.set_printoptions(threshold=np.inf)
@@ -57,90 +56,6 @@ model_zoo = {
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
 
-
-
-def process_batches_memory_efficient(
-    data_path,
-    model_full_n,
-    metric,
-    dataset,
-    sample_size,
-    prefix_dims,
-):
-    prefix = f"{model_full_n}_{metric}_{dataset}_batch"
-    suffix = ".pkl"
-
-    def extract_batch_num(f):
-        match = re.search(r'batch(\d+)', f)
-        return int(match.group(1)) if match else -1
-
-    all_files = sorted([
-        f for f in os.listdir(data_path)
-        if f.startswith(prefix) and f.endswith(suffix)
-    ], key=extract_batch_num)
-
-    print(f"Found files: {all_files}")
-
-    # Tracking how many samples per label we’ve used
-    label_counts = {l: 0 for l in selected_classes}
-
-    # Accumulate edge frequency and curvature directly
-    neg_edge_acc = defaultdict(lambda: defaultdict(list))
-    pos_edge_acc = defaultdict(lambda: defaultdict(list))
-
-    for f in all_files:
-        file_path = os.path.join(data_path, f)
-        with open(file_path, 'rb') as file:
-            batch_data = pickle.load(file)
-
-        for l in selected_classes:
-            if label_counts[l] >= sample_size:
-                continue
-
-            new_data = batch_data.get(l, [])
-            available = sample_size - label_counts[l]
-            use_data = new_data[:available]
-            
-            # print(len(use_data))
-
-            for ricci in use_data:
-                neg_e, pos_e, _ = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
-
-                # Accumulate stats layer-wise
-                for layer, edges in neg_e.items():
-                    for (i, j, curv) in edges:
-                        neg_edge_acc[layer][(i, j)].append(curv)
-                for layer, edges in pos_e.items():
-                    for (i, j, curv) in edges:
-                        pos_edge_acc[layer][(i, j)].append(curv)
-
-                del ricci, neg_e, pos_e
-                
-                # print(f'1: {t3-t2} - {t2-t1} - {t3-t1}')
-
-            label_counts[l] += len(use_data)
-
-        del batch_data
-        gc.collect()
-
-        if all(label_counts[l] >= sample_size for l in selected_classes):
-            break
-
-    print("Finished processing all required batches.")
-
-    # Convert accumulated stats into sorted output
-    def reduce_and_sort(edge_acc, sort_desc=False):
-        # Convert accumulated stats to expected format
-        edge_sets = []
-        for layer in edge_acc:
-            edge_dict = {layer: [(i, j, curv) for (i, j), curvs in edge_acc[layer].items() for curv in curvs]}
-            edge_sets.append(edge_dict)
-        return count_edge_frequency_and_sort(edge_sets, sort_curvature_desc=sort_desc)
-
-    neg_freq_dict = reduce_and_sort(neg_edge_acc, sort_desc=False)
-    pos_freq_dict = reduce_and_sort(pos_edge_acc, sort_desc=True)
-    
-    return neg_freq_dict, pos_freq_dict
 
 
 
@@ -289,7 +204,8 @@ def get_top_c(curvature, b, prefix_dims):
     neg_e = defaultdict(list)  # layer -> list of (i, j, curvature)
     pos_e = defaultdict(list)
     noseen = 0.
-    
+    zero = 0.
+
     # Step 1: Collect existing curvature edges
     for batch in range(b):
         ricci_curv = np.array(curvature[batch])
@@ -330,7 +246,7 @@ def get_top_c(curvature, b, prefix_dims):
         elif curr > 0:
             pos_e[i_layer].append((i, j, curr))
 
-    return neg_e, pos_e, noseen
+    return neg_e, pos_e
 
 
 
@@ -360,7 +276,7 @@ def get_top_c(curvature, b, prefix_dims):
 #     plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
 #     plt.close()
     
-
+    
 
 def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg_end, pos_end, label, res_path):
     plt.figure(figsize=(8, 5))
@@ -380,8 +296,6 @@ def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg
     plt.tight_layout()
     plt.savefig(res_path + f'{label}_curve_all.png')
     plt.close()
-
-
 
 
 
@@ -426,7 +340,6 @@ def count_edge_frequency_and_sort(edge_sets, sort_curvature_desc=False):
 
 
 
-
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -440,10 +353,10 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
-def remove_edge_fc_union_perlayer(args):
+def remove_edge_fc_union_perlayer_old(args):
     set_seed(59)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -480,6 +393,23 @@ def remove_edge_fc_union_perlayer(args):
         layer = [2,4]
 
     for layer_num in layer:
+        if model_type.lower() == "fc":
+            correct_suffix_res = dataset + "_res_correct.pkl"
+            misclassified_suffix_res = dataset + "_res_misclassified.pkl"  
+            res_name = model_full_n + metric + '_' + str(layer_num) + correct_suffix_res
+            misres_name = model_full_n + metric + '_' + str(layer_num) + misclassified_suffix_res                 
+        # cnn model
+        elif model_type.lower() == "cnn" and dataset.lower() == "mnist":
+            correct_suffix_res = dataset + "_res_correct.pkl"
+            misclassified_suffix_res = dataset + "_res_misclassified.pkl"    
+            res_name = model_full_n + metric + '_' + correct_suffix_res
+            misres_name = model_full_n + metric + '_' + misclassified_suffix_res    
+        else:
+            raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
+        
+        with open(data_path + res_name, 'rb') as file:
+            res_dict = pickle.load(file)
+
         # build model
         dims = model_zoo[layer_num]
         
@@ -523,16 +453,23 @@ def remove_edge_fc_union_perlayer(args):
             # print(f'Current label {l}: \n')
             # ff.write(f'Current label {l}: \n')
             
-            neg_freq_dict, pos_freq_dict = process_batches_memory_efficient(
-                data_path,
-                model_full_n,
-                metric,
-                dataset,
-                sample_size,
-                prefix_dims
-            )
-            print(neg_freq_dict.keys())
             
+            neg_edge_sets = []
+            pos_edge_sets = []
+            for l in selected_classes:
+                idx = 0
+                for (ricci, batch, dim, node) in res_dict[l]:
+                    neg_e, pos_e= get_top_c(ricci, 1, prefix_dims)
+                    neg_edge_sets.append(neg_e)
+                    pos_edge_sets.append(pos_e)
+
+                    idx += 1
+                    if idx >= sample_size:
+                        break
+
+            neg_freq_dict = count_edge_frequency_and_sort(neg_edge_sets, sort_curvature_desc=False)
+            pos_freq_dict = count_edge_frequency_and_sort(pos_edge_sets, sort_curvature_desc=True)
+
             for layer in sorted(neg_freq_dict.keys() | pos_freq_dict.keys()):
                 neg_acc_clean = []
                 pos_acc_clean = []
@@ -561,8 +498,8 @@ def remove_edge_fc_union_perlayer(args):
 
                 # start remove
                 for index, rem_f in enumerate(neg_remove_num):
-                    # print(f'Remove edge number {rem_f}:')
-                    cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) 
+                    print(f'Remove edge number {rem_f}:')
+                    cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) + '_' + str(l)
 
                     # remove negative curvature edges
                     net_H.load_state_dict(torch.load(model_path + model_name))
@@ -582,7 +519,7 @@ def remove_edge_fc_union_perlayer(args):
                 
                 for index, rem_f in enumerate(pos_remove_num):
                     # ff.write(f'Remove edge number {rem_f}: \n')
-                    cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f)
+                    cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) + '_' + str(l)
                     # remove positive curvature edges
                     net_H.load_state_dict(torch.load(model_path + model_name))
                     edge_r = Edge_Remove(net_H, dims, min(rem_f, len(pos_edges)), res_path)

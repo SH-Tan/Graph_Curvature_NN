@@ -18,7 +18,6 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -228,7 +227,6 @@ def cal_dims(model_dims):
 
 
 def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg_end, pos_end, label, res_path):
-    # Plot
     plt.figure(figsize=(8, 5))
     plt.plot(neg_remove_num, neg_clean_acc, label='Negative Edge Clean Acc', marker='o', linestyle='--')
     plt.plot(pos_remove_num, pos_clean_acc, label='Positive Edge Clean Acc', marker='x', linestyle='-')
@@ -240,6 +238,7 @@ def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg
     plt.xlabel('Remove Number')
     plt.ylabel('Clean Accuracy')
     plt.title('Clean Accuracy vs Remove Number')
+    plt.ylim(0.0, 1.0)  # Invert y-axis from 1 to 0
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -276,18 +275,41 @@ def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg
 
 
 from collections import Counter
-def count_edge_frequency(edge_sets):
-    # edge_sets: list of dicts, each dict maps layer -> list of (i, j, curvature)
-    freq_dict = defaultdict(lambda: defaultdict(int))  # layer -> (i,j) -> count
-    curv_dict = defaultdict(lambda: defaultdict(list)) # layer -> (i,j) -> list of curvature values
+def count_edge_frequency_and_sort(edge_sets, sort_curvature_desc=False):
+    """
+    edge_sets: list of dicts. Each dict maps layer -> list of (i, j, curvature)
 
-    for edge_dict in edge_sets:  # one sample
+    Returns:
+        sorted_edges_by_layer: dict mapping layer -> list of (i, j, freq, avg_curvature), sorted
+    """
+    freq_dict = defaultdict(lambda: defaultdict(int))      # layer -> (i, j) -> count
+    curv_dict = defaultdict(lambda: defaultdict(list))     # layer -> (i, j) -> list of curvatures
+
+    for edge_dict in edge_sets:
         for layer, edges in edge_dict.items():
             for (i, j, curv) in edges:
-                freq_dict[layer][(i, j)] += 1
-                curv_dict[layer][(i, j)].append(curv)
+                key = (i, j)
+                freq_dict[layer][key] += 1
+                curv_dict[layer][key].append(curv)
 
-    return freq_dict, curv_dict
+    sorted_edges_by_layer = dict()
+
+    for layer in freq_dict:
+        edge_stats = []
+        for (i, j), count in freq_dict[layer].items():
+            curv_list = curv_dict[layer][(i, j)]
+            avg_curv = sum(curv_list) / len(curv_list)
+            edge_stats.append((i, j, count, avg_curv))
+
+        # Sort by freq descending, then avg curvature ascending or descending
+        if sort_curvature_desc:
+            edge_stats.sort(key=lambda x: (-x[2], -x[3]))  # freq ↓, curvature ↓
+        else:
+            edge_stats.sort(key=lambda x: (-x[2], x[3]))   # freq ↓, curvature ↑
+
+        sorted_edges_by_layer[layer] = edge_stats
+
+    return sorted_edges_by_layer
 
 
 
@@ -393,47 +415,31 @@ def remove_edge_cnn_union_perlayer(args):
                 if idx >= sample_size:
                     break
 
-        neg_freq_dict, _ = count_edge_frequency(neg_edge_sets)
-        pos_freq_dict, _ = count_edge_frequency(pos_edge_sets)
-        neg_freq_edges_sorted = {
-            layer: sorted(edges.items(), key=lambda x: x[1], reverse=True)
-            for layer, edges in neg_freq_dict.items()
-        }
-        pos_freq_edges_sorted = {
-            layer: sorted(edges.items(), key=lambda x: x[1], reverse=True)
-            for layer, edges in pos_freq_dict.items()
-        }
-
-        for layer in sorted(neg_freq_edges_sorted.keys() | pos_freq_edges_sorted.keys()):
+        neg_freq_dict = count_edge_frequency_and_sort(neg_edge_sets, sort_curvature_desc=False)
+        pos_freq_dict = count_edge_frequency_and_sort(pos_edge_sets, sort_curvature_desc=True)
+        
+        for layer in sorted(neg_freq_dict.keys() | pos_freq_dict.keys()):
             neg_acc_clean = []
             pos_acc_clean = []
         
-            neg_edges = [(i, j) for (i, j), _ in neg_freq_edges_sorted.get(layer, [])]
-            pos_edges = [(i, j) for (i, j), _ in pos_freq_edges_sorted.get(layer, [])]
-
-            neg_set = set(neg_edges)
-            pos_set = set(pos_edges)
-
-            overlap = neg_set & pos_set
-            overlap_count = len(overlap)
+            neg_edges = [(i, j) for (i, j, _, _) in neg_freq_dict.get(layer, [])]
+            pos_edges = [(i, j) for (i, j, _, _) in pos_freq_dict.get(layer, [])]
 
             neg_total = len(neg_edges)
             pos_total = len(pos_edges)
 
             neg_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
-            pos_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
+            pos_remove_num = list(np.linspace(0, pos_total, num=15, dtype=int))
             
             print(f"\nLayer {layer}:")
             print(f"  Negative edges: {neg_total}")
             print(f"  Positive edges: {pos_total}")
-            print(f"  Overlapping edges: {overlap_count}")
             print(f"  Neg remove nums: {neg_remove_num}")
             print(f"  Pos remove nums: {pos_remove_num}")
 
             ff.write(f"\nLayer {layer}:\n")
             ff.write(f"  Negative edges: {neg_total}\n")
             ff.write(f"  Positive edges: {pos_total}\n")
-            ff.write(f"  Overlapping edges: {overlap_count}\n")
             ff.write(f"  Neg remove nums: {neg_remove_num}\n")
             ff.write(f"  Pos remove nums: {pos_remove_num}\n")
 

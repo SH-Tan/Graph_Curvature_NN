@@ -136,6 +136,25 @@ def get_all_edges_sorted_by_weight(dims, weights, device='cuda'):
     return sorted_edges_high, sorted_edges_low
 
 
+def separate_edges_by_layer_in_order(sorted_edges, prefix_dims):
+    layer_to_edges = defaultdict(list)
+    src_nodes = sorted_edges[0]
+    dst_nodes = sorted_edges[1]
+
+    for i_raw, j_raw in zip(src_nodes, dst_nodes):
+        i = i_raw
+        j = j_raw
+
+        src_layer = np.searchsorted(prefix_dims, i, side='right') - 1
+        dst_layer = np.searchsorted(prefix_dims, j, side='right') - 1
+
+        # Detect layer transition from src_layer → dst_layer
+        if dst_layer == src_layer + 1:
+            layer_to_edges[src_layer].append((i_raw, j_raw))  # keep global indices
+
+    return layer_to_edges
+
+
 
 def plot_curve(high_clean_acc, low_clean_acc, remove_num, res_path, name):
     # Zip, sort, and unzip to reorder all lists by remove_numbers
@@ -257,49 +276,74 @@ def remove_w_fc(args):
         edge_array, nodes_ori, output, all_node = net_full.NN_info_batch(img.unsqueeze(0))
         weights = output.detach().clone().to(device) 
         sorted_edges_high, sorted_edges_low = get_all_edges_sorted_by_weight(dims, weights, device) 
-        sorted_edges_high = sorted_edges_high.cpu().numpy().T
-        sorted_edges_low = sorted_edges_low.cpu().numpy().T
         
-        remove_num = [0, 2000, 5000, (int)(len(sorted_edges_high)*0.05), (int)(len(sorted_edges_high)*0.1), (int)(len(sorted_edges_high)*0.2), (int)(len(sorted_edges_high)*0.3), (int)(len(sorted_edges_high)*0.5), (int)(len(sorted_edges_high)*0.7), (int)(len(sorted_edges_high))]
-        high_acc_clean = []
-        low_acc_clean = []
+        # Step 1: Convert tensors to numpy BEFORE separating by layer
+        sorted_edges_high_np = sorted_edges_high.cpu().numpy()
+        sorted_edges_low_np = sorted_edges_low.cpu().numpy()
+
+        # Step 2: Separate edges by layer
+        sorted_edges_high_by_layer = separate_edges_by_layer_in_order(sorted_edges_high_np, prefix_dims)
+        sorted_edges_low_by_layer = separate_edges_by_layer_in_order(sorted_edges_low_np, prefix_dims)
+        print(sorted_edges_low_by_layer.keys())
         
-        # start remove
-        for index, rem_f in enumerate(remove_num):
-            cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f)
-
-            # remove high weight edges
-            net_H.load_state_dict(torch.load(model_path + model_name))
-            edge_r = Edge_Remove(net_H, dims, min(rem_f, len(sorted_edges_high)), res_path)
-            edge_r.e_remove(sorted_edges_high, cur_n + "other_neg.pth")
+        # Step 3: Per-layer analysis
+        for layer in sorted(sorted_edges_low_by_layer.keys() | sorted_edges_high_by_layer.keys()):
+            high_acc_clean = []
+            low_acc_clean = []
             
-            # test acc
-            net_neg = FC_MD(dims, layer_num)
+            # These are just lists of (i, j), not 4-tuples
+            neg_edges = sorted_edges_low_by_layer.get(layer, [])
+            pos_edges = sorted_edges_high_by_layer.get(layer, [])
 
-            net_neg.load_state_dict(torch.load(res_path + cur_n + "other_neg.pth"))
-            net_neg = net_neg.to(device)
-            os.remove(res_path + cur_n + "other_neg.pth")
+            neg_total = len(neg_edges)
+            pos_total = len(pos_edges)
 
-            acc_high = test_clean(net_neg, test_loader)
-            high_acc_clean.append(acc_high)
+            low_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
+            high_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
             
-            # remove low weight edges
-            net_H.load_state_dict(torch.load(model_path + model_name))
-            edge_r = Edge_Remove(net_H, dims, min(rem_f, len(sorted_edges_low)), res_path)
-            edge_r.e_remove(sorted_edges_low, cur_n + "pos.pth")
+            print(f"Layer {layer}:")
+            print(f"  low total = {neg_total}, high total = {pos_total}")
             
-            # test acc
-            net_pos = FC_MD(dims, layer_num)
+            print(f"  Low remove nums: {low_remove_num}")
+            print(f"  High remove nums: {high_remove_num}")
+            
+            # start remove
+            for index, rem_f in enumerate(high_remove_num):
+                cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f)
 
-            net_pos.load_state_dict(torch.load(res_path + cur_n + "pos.pth"))
-            net_pos = net_pos.to(device)
-            os.remove(res_path + cur_n + "pos.pth")
-
-            acc_low = test_clean(net_pos, test_loader)
-            low_acc_clean.append(acc_low)
+                # remove high weight edges
+                net_H.load_state_dict(torch.load(model_path + model_name))
+                edge_r = Edge_Remove(net_H, dims, min(rem_f, len(sorted_edges_high)), res_path)
+                edge_r.e_remove(sorted_edges_high, cur_n + "other_neg.pth")
                 
-        plot_curve(high_acc_clean, low_acc_clean, remove_num, res_path, model_full_n+activation)                
-                          
+                # test acc
+                net_neg = FC_MD(dims, layer_num)
+
+                net_neg.load_state_dict(torch.load(res_path + cur_n + "other_neg.pth"))
+                net_neg = net_neg.to(device)
+                os.remove(res_path + cur_n + "other_neg.pth")
+
+                acc_high = test_clean(net_neg, test_loader)
+                high_acc_clean.append(acc_high)
+                
+            for index, rem_f in enumerate(low_remove_num):
+                # remove low weight edges
+                net_H.load_state_dict(torch.load(model_path + model_name))
+                edge_r = Edge_Remove(net_H, dims, min(rem_f, len(sorted_edges_low)), res_path)
+                edge_r.e_remove(sorted_edges_low, cur_n + "pos.pth")
+                
+                # test acc
+                net_pos = FC_MD(dims, layer_num)
+
+                net_pos.load_state_dict(torch.load(res_path + cur_n + "pos.pth"))
+                net_pos = net_pos.to(device)
+                os.remove(res_path + cur_n + "pos.pth")
+
+                acc_low = test_clean(net_pos, test_loader)
+                low_acc_clean.append(acc_low)
+                    
+            plot_curve(high_acc_clean, low_acc_clean, remove_num, res_path, model_full_n+activation)                
+                            
   
    
             
