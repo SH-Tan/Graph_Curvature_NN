@@ -460,7 +460,7 @@ class FC_MD(nn.Module):
         return weights_inv1, weights_inv2
 
 
-        # weights regularization 
+    # weights regularization 
     def normalization_weight_w4(self, nodes, weights, dims):
         """
         Compute two regularization terms using inverse of absolute weights and node-weight products.
