@@ -502,3 +502,89 @@ class VGG16_CIFAR10(nn.Module):
                 n += 1
         
         return weights_inv1, weights_inv2
+    
+    
+    # weights regularization 
+    def normalization_weight_w4(self, nodes, weights, dims, model_dims):
+        nodes_num = nodes.shape[1]
+        prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
+        prefix_dims = torch.cat([torch.tensor([0]), prefix_dims]).to(nodes.device)
+
+        current_l = 1
+        start_col = 0
+        end_col = 0
+        
+        weights_inv1 = torch.zeros_like(weights)
+        weights_inv2 = torch.zeros_like(weights)
+        
+        n = dims[0]  # Start from the first node of the second layer
+
+        while n < nodes_num:
+            if n >= prefix_dims[current_l]:
+                current_l += 1
+                start_col = end_col
+                
+                end_col += (dims[current_l-2] * dims[current_l-1])
+                neighbors = torch.arange(prefix_dims[current_l-2], prefix_dims[current_l-1])
+                step = dims[current_l-1]
+            
+            layer = model_dims[current_l]
+            prev_layer = model_dims[current_l - 1]
+            
+            # Extract layer details
+            cur_name = layer["name"]
+            cur_dim = layer["dim"]
+            pre_dim = prev_layer["dim"]
+            
+            # Determine channels and dimensions
+            cur_channel = 1 if cur_name == "fc" else cur_dim['channel']
+            pre_channel = 1 if prev_layer["name"] == "fc" else pre_dim['channel']
+            pre_nodes_num = dims[current_l - 2]
+            
+            if cur_name in ["cnn", "pooling"]:
+                k = cur_dim['kernel']
+                s = cur_dim['stride']
+                in_size = pre_dim['out_size']
+                
+                # Generate indices for previous layer's nodes
+                tensor_2d = torch.arange(pre_nodes_num, device=nodes.device).reshape(1, pre_channel, in_size, in_size).float()
+                indices = F.unfold(tensor_2d, (k, k), stride=s).transpose(1, 2).int()
+                step = k ** 2
+                end_col = start_col + step * pre_channel
+                
+                # Process all channels and positions at once
+                for c in range(cur_channel):
+                    for l in range(indices.shape[1]):
+                        neighbors = indices[0,l] + prefix_dims[current_l-2] 
+                        in_edges = torch.arange(start_col, end_col, device=nodes.device)
+                        
+                        # Compute weights and normalization
+                        w = nodes[:, neighbors] * weights[:, in_edges]
+                        
+                        # Shape: (batch_size, fan-in)
+                        node_slice = nodes[:, neighbors]
+                        weight_slice = weights[:, in_edges]
+                        
+                        # Prevent divide-by-zero
+                        weights_inv1[:, in_edges] = 1.0 / (torch.abs(weight_slice))
+                        weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
+                        
+                        n += 1
+                        start_col = end_col
+                        end_col = start_col + step*pre_channel
+                end_col = start_col
+            
+            elif cur_name == "fc":
+                in_edges = torch.arange(start_col + (n - prefix_dims[current_l-1]), end_col, step)
+            
+                # Shape: (batch_size, fan-in)
+                node_slice = nodes[:, neighbors]
+                weight_slice = weights[:, in_edges]
+
+                # Prevent divide-by-zero
+                weights_inv1[:, in_edges] = 1.0 / (torch.abs(weight_slice))
+                weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
+            
+                n += 1
+        
+        return weights_inv1, weights_inv2

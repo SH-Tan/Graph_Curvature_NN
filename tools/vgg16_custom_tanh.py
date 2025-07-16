@@ -533,7 +533,7 @@ class VGG16_CIFAR10(nn.Module):
         return weights_inv1, weights_inv2
     
     
-        # weights regularization 
+    # weights regularization 
     def normalization_weight_w4(self, nodes, weights, dims, model_dims):
         nodes_num = nodes.shape[1]
         prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
