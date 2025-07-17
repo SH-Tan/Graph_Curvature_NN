@@ -38,50 +38,138 @@ model_zoo = {
 series = [1,2,3]
 
 
-# def plot_curve(neg_acc_clean, pos_acc_clean, neg_freq_ratios, pos_freq_ratios, neg_freq_thresholds, pos_freq_thresholds, label, save_path):
-#     plt.figure(figsize=(8, 6))
+def plot_curve(
+    neg_acc_clean, pos_acc_clean,
+    neg_freq_ratios, pos_freq_ratios,
+    neg_freq_thresholds, pos_freq_thresholds,
+    label, save_path
+):
+    # CMYK-like colors (safe RGB approximations)
+    neg_colors = ['#00A3E0', '#6CACE4']  # Cyan, Blue-gray
+    pos_colors = ['#EC008C', '#FF6F61']  # Magenta, Warm red
 
-#     plt.plot(neg_freq_ratios, neg_acc_clean, 'r-o', label='Negative Edge Removal')
-#     plt.plot(pos_freq_ratios, pos_acc_clean, 'b-o', label='Positive Edge Removal')
+    plt.figure(figsize=(10, 6))
 
-#     for x, y, freq in zip(neg_freq_ratios, neg_acc_clean, neg_freq_thresholds):
-#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, 10),
-#                      ha='center', fontsize=8, color='red')
+    # Negative Edge Plot
+    plt.plot(
+        neg_freq_ratios, neg_acc_clean,
+        label='Negative Edge Removal',
+        marker='o',
+        linestyle='--',
+        linewidth=2,
+        markersize=6,
+        color=neg_colors[0]
+    )
 
-#     for x, y, freq in zip(pos_freq_ratios, pos_acc_clean, pos_freq_thresholds):
-#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, -15),
-#                      ha='center', fontsize=8, color='blue')
+    # Positive Edge Plot
+    plt.plot(
+        pos_freq_ratios, pos_acc_clean,
+        label='Positive Edge Removal',
+        marker='s',
+        linestyle='-',
+        linewidth=2,
+        markersize=6,
+        color=pos_colors[0]
+    )
 
-#     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)")
-#     plt.ylabel("Accuracy")
-#     plt.title(f"Accuracy vs Frequency Ratio for Label {label}")
-#     plt.xticks(neg_freq_ratios)  # or freq_ratios if shared
-#     plt.gca().invert_xaxis()
-#     plt.grid(True)
-#     plt.legend()
-#     plt.tight_layout()
-#     plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
-#     plt.close()
-    
-    
-def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg_end, pos_end, label, res_path):
-    # Plot
-    plt.figure(figsize=(8, 5))
-    plt.plot(neg_remove_num, neg_clean_acc, label='Negative Edge Clean Acc', marker='o', linestyle='--')
-    plt.plot(pos_remove_num, pos_clean_acc, label='Positive Edge Clean Acc', marker='x', linestyle='-')
+    # Annotate frequencies
+    for x, y, freq in zip(neg_freq_ratios, neg_acc_clean, neg_freq_thresholds):
+        plt.annotate(
+            f"{freq}",
+            (x, y),
+            textcoords="offset points",
+            xytext=(0, 10),
+            ha='center',
+            fontsize=9,
+            color=neg_colors[1]
+        )
 
-    # Vertical lines
-    plt.axvline(x=neg_end, color='red', linestyle=':', label=f'Neg End ({neg_end})')
-    plt.axvline(x=pos_end, color='green', linestyle=':', label=f'Pos End ({pos_end})')
+    for x, y, freq in zip(pos_freq_ratios, pos_acc_clean, pos_freq_thresholds):
+        plt.annotate(
+            f"{freq}",
+            (x, y),
+            textcoords="offset points",
+            xytext=(0, -15),
+            ha='center',
+            fontsize=9,
+            color=pos_colors[1]
+        )
 
-    plt.xlabel('Remove Number')
-    plt.ylabel('Controller Safety')
-    plt.title('Clean Accuracy vs Remove Number')
-    plt.legend()
-    plt.grid(True)
+    # Axes and title
+    plt.xlabel("Edge Frequency Threshold (ratio × max frequency)", fontsize=22)
+    plt.ylabel("Clean Accuracy", fontsize=22)
+    plt.title(f"Clean Accuracy vs. Frequency Ratio (Label {label})", fontsize=22)
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
+    plt.ylim(0.0, 1.0)
+    plt.gca().invert_xaxis()
+
+    # Legend and grid
+    plt.legend(fontsize=20, loc='best')
+    plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
-    plt.savefig(res_path + f'{label}_curve_all.png')
+
+    # Save
+    filename = os.path.join(save_path, f'{label}_freq_curve.png')
+    plt.savefig(filename, dpi=300)
     plt.close()
+    
+    
+    
+# def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg_end, pos_end, label, res_path):
+#     # CMYK-like colors (manually mapped to RGB approximations)
+#     # Separate CMYK-safe colors for NEG and POS
+#     neg_colors = ['#00A3E0', '#6CACE4', '#00AB84', '#9E1B32']  # Cyan, Blue-gray, Greenish cyan, Dark red
+#     pos_colors = ['#EC008C', '#FF6F61', '#FEDD00', '#000000']  # Magenta, Warm red, Yellow, Black
+    
+#     # Plot
+#     plt.figure(figsize=(10, 6))  # Slightly wider for spacing
+
+#     plt.plot(
+#         neg_remove_num, neg_clean_acc,
+#         label='Negative Edge Accuracy',
+#         marker='o',
+#         linestyle='--',
+#         linewidth=2,
+#         markersize=6,
+#         color=neg_colors[0]
+#     )
+
+#     plt.plot(
+#         pos_remove_num, pos_clean_acc,
+#         label='Positive Edge Accuracy',
+#         marker='s',
+#         linestyle='-',
+#         linewidth=2,
+#         markersize=6,
+#         color=pos_colors[0]
+#     )
+
+#     # Vertical lines for termination points
+#     plt.axvline(
+#         x=neg_end, color=neg_colors[1], linestyle=':', linewidth=2,
+#         label=f'Neg Stop @ {neg_end}'
+#     )
+#     plt.axvline(
+#         x=pos_end, color=pos_colors[1], linestyle=':', linewidth=2,
+#         label=f'Pos Stop @ {pos_end}'
+#     )
+
+#     # Axes and title
+#     plt.xlabel('Number of Edges Removed', fontsize=23)
+#     plt.ylabel('Clean Accuracy', fontsize=23)
+#     plt.title('Clean Accuracy vs. Edge Removal Count', fontsize=23)
+#     plt.ylim(0.0, 1.0)
+#     plt.xticks(fontsize=22)
+#     plt.yticks(fontsize=22)
+
+#     plt.legend(fontsize=22, loc='best')
+#     plt.grid(True, linestyle='--', alpha=0.6)
+#     plt.tight_layout()
+
+#     # Save
+#     plt.savefig(res_path + f'{label}_curve_all.png', dpi=300)
+#     plt.close()
   
     
 def load_yaml_weights_to_model(model, yaml_path: str):
@@ -122,52 +210,25 @@ def normalize(s):
 
 
 def get_top_c(curvature, b, prefix_dims):
-    c = []
-    seen_edges = set()
     neg_e = set()
     pos_e = set()
-    noseen = 0
-    zero = 0.
-
-    # Step 1: Collect existing curvature edges
+    
     for batch in range(b):
-        ricci_curv = np.array(curvature[batch])
-        for (i, j, curr) in ricci_curv:
-            i1, j1 = int(i), int(j)
-            if curr > 1:
-                continue
-            c.append((i1, j1, curr))
-            seen_edges.add((i1, j1))
-            
-    # print(len(c))
+        ricci_curv = np.array(curvature[batch])  # shape (N, 3)
 
-    # Step 2: Generate all edges between adjacent layers
-    all_edges = set()
-    for l in range(len(prefix_dims) - 2):  # skip last layer
-        start_i, end_i = prefix_dims[l], prefix_dims[l+1]
-        start_j, end_j = prefix_dims[l+1], prefix_dims[l+2]
-        for i in range(start_i, end_i):
-            for j in range(start_j, end_j):
-                all_edges.add((i, j))
+        # Filter values with valid curvature (<= 1)
+        valid = ricci_curv[ricci_curv[:, 2] <= 1]
 
-    # Step 3: Add missing edges with default curvature = 1
-    for (i, j) in all_edges:
-        if (i, j) not in seen_edges:
-            c.append((i, j, 1))
-            noseen += 1
-            
-    # print(len(c))
+        # Convert to int for indexing
+        valid[:, 0:2] = valid[:, 0:2].astype(int)
 
-    # Step 4: Sort and classify edges
-    c.sort(key=lambda x: x[2])
-    for (i, j, curr) in c:
-        # i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-        if curr < 0:
-            neg_e.add((i, j, curr))
-        elif curr >= 0:
-            pos_e.add((i, j, curr))
-            if curr == 0:
-                zero += 1
+        for i, j, curr in valid:
+            i, j = int(i), int(j)
+            if curr < 0:
+                neg_e.add((i, j, curr))
+            elif curr > 0:
+                pos_e.add((i, j, curr))
+
     return neg_e, pos_e
 
 
@@ -235,14 +296,16 @@ def count_edge_frequency(edge_sets):
 
     for edge_set in edge_sets:
         for i, j, c in edge_set:
-            key = tuple(sorted((i, j)))  # normalize direction for undirected edges
+            # Normalize undirected edge direction efficiently
+            key = (min(i, j), max(i, j))
             freq[key] += 1
             curvature_sum[key] += c
 
-    results = []
-    for key in freq:
-        avg_curv = curvature_sum[key] / freq[key]
-        results.append((key[0], key[1], freq[key], avg_curv))
+    # Use list comprehension for speed and clarity
+    results = [
+        (i, j, count, curvature_sum[(i, j)] / count)
+        for (i, j), count in freq.items()
+    ]
 
     return results
 
@@ -277,6 +340,7 @@ def main_lidar(args):
     dims = model_zoo[sz]
     prefix_dims = np.cumsum([0] + dims).tolist()
     
+    freq_ratios = [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0]
     
     for s in series:
         print(f'Now is for {model_type}-{sz} - {s}')
@@ -332,21 +396,22 @@ def main_lidar(args):
         pos_total = len(pos_edges_only)
 
         # Generate uniformly spaced points (including 0 and total) for each list
-        neg_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
-        pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
+        # neg_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
+        # pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
         
         # neg_remove_num = [0, 50, 70, 100, 110, 120, 125, 130, 135, 140, 150, 160, 180, 200, 250, 300, 500, 6000]
         # pos_remove_num = neg_remove_num
-        # Step 2: Choose thresholds — you can just use them all or downsample if too many
-        # neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
-        # neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
-
-        # pos_max_freq = max(freq for (_, _, freq, _) in pos_freq_edges_sorted)
-        # pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
         
-        # # Step 3: For each threshold, count how many edges would be removed
-        # neg_remove_num = [sum(1 for (_, _, freq, _) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
-        # pos_remove_num = [sum(1 for (_, _, freq, _) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
+        # Step 2: Choose thresholds — you can just use them all or downsample if too many
+        neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
+        neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
+
+        pos_max_freq = max(freq for (_, _, freq, _) in pos_freq_edges_sorted)
+        pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
+        
+        # Step 3: For each threshold, count how many edges would be removed
+        neg_remove_num = [sum(1 for (_, _, freq, _) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
+        pos_remove_num = [sum(1 for (_, _, freq, _) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
         
         # start remove
         for index, rem_f in enumerate(neg_remove_num):
@@ -389,8 +454,8 @@ def main_lidar(args):
             acc_pos = (1000-num_unsafe_pos)/1000
             pos_acc_clean.append(acc_pos)
         
-        plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, s, res_path)
-        # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
+        # plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, s, res_path)
+        plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, str(sample_size) + '_' + str(s), res_path)
     
         
         
