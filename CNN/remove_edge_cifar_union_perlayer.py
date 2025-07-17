@@ -123,7 +123,7 @@ def process_batches_memory_efficient(
 
             for ricci in use_data:
                 t1 = time.time()
-                neg_e, pos_e, _ = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
+                neg_e, pos_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
                 t2 = time.time()
 
                 # Accumulate stats layer-wise
@@ -255,62 +255,37 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 def get_top_c(curvature, b, prefix_dims):
-    c = []
-    neg_e = defaultdict(list)  # layer -> list of (i, j, curvature)
+    neg_e = defaultdict(list)  # i_layer -> list of (i, j, curvature)
     pos_e = defaultdict(list)
     seen_edges = set()
-    noseen = 0
-    zero = 0.
 
-    t1 = time.time()
-    # Step 1: Collect existing curvature edges
+    # Optional: cache for searchsorted results
+    layer_cache = {}
+
+    def get_layer(node_idx):
+        if node_idx not in layer_cache:
+            layer_cache[node_idx] = np.searchsorted(prefix_dims, node_idx, side='right') - 1
+        return layer_cache[node_idx]
+
+    # Step 1: Collect valid curvature edges
     for batch in range(b):
-        ricci_curv = np.array(curvature[batch])
-        for (i, j, curr) in ricci_curv:
+        for i, j, curr in curvature[batch]:
             if curr > 1:
                 continue
-            i1, j1 = int(i), int(j)
-            seen_edges.add((i1, j1))
 
-            i_layer = np.searchsorted(prefix_dims, i1, side='right') - 1
-            j_layer = np.searchsorted(prefix_dims, j1, side='right') - 1
+            i, j = int(i), int(j)
+            seen_edges.add((i, j))  # optional: use (min(i, j), max(i, j)) for undirected
 
-            # Only consider FC layers between adjacent layers
+            i_layer = get_layer(i)
+            j_layer = get_layer(j)
+
             if i_layer >= 7 and j_layer == i_layer + 1:
                 if curr < 0:
-                    neg_e[i_layer].append((i1, j1, curr))
+                    neg_e[i_layer].append((i, j, curr))
                 elif curr > 0:
-                    pos_e[i_layer].append((i1, j1, curr))
-                    if curr == 0:
-                        zero += 1
-    
-    # t3 = time.time()
+                    pos_e[i_layer].append((i, j, curr))
 
-    # # Step 3: Add missing FC edges with default curvature = 1
-    # fc_layers = [i for i in sorted(model_dims.keys()) if model_dims[i]["name"] == "fc"]
-    # fc_indices = [list(model_dims.keys()).index(i) for i in fc_layers]
-    
-
-    # # Generate all possible FC edges
-    # all_fc_edges = set()
-    # for l in range(fc_indices[0]-1, fc_indices[-1]):
-    #     i_layer = l
-    #     j_layer = l + 1
-    #     start_i, end_i = prefix_dims[i_layer], prefix_dims[i_layer + 1]
-    #     start_j, end_j = prefix_dims[j_layer], prefix_dims[j_layer + 1]
-
-    #     for i in range(start_i, end_i):
-    #         for j in range(start_j, end_j):
-    #             all_fc_edges.add((i, j))
-    #             if (i, j) not in seen_edges:
-    #                 pos_e[i_layer].append((i, j, 1.0))  # default curvature
-    #                 noseen += 1
-                    
-    # t4 = time.time()
-    
-    # print(f'2: {t4-t3} - {t3-t1} - {t4-t1}')
-
-    return neg_e, pos_e, noseen
+    return neg_e, pos_e
 
 
 

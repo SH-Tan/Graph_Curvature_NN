@@ -237,29 +237,81 @@ def cal_edges(model_dims):
     return edges
 
 
-# def plot_curve(neg_acc_clean, pos_acc_clean, neg_freq_ratios, pos_freq_ratios, neg_freq_thresholds, pos_freq_thresholds, label, save_path):
-#     plt.figure(figsize=(8, 6))
 
-#     plt.plot(neg_freq_ratios, neg_acc_clean, 'r-o', label='Negative Edge Removal')
-#     plt.plot(pos_freq_ratios, pos_acc_clean, 'b-o', label='Positive Edge Removal')
+# def plot_curve(
+#     neg_acc_clean, pos_acc_clean,
+#     neg_freq_ratios, pos_freq_ratios,
+#     neg_freq_thresholds, pos_freq_thresholds,
+#     label, save_path
+# ):
+#     # CMYK-like colors (safe RGB approximations)
+#     neg_colors = ['#00A3E0', '#6CACE4']  # Cyan, Blue-gray
+#     pos_colors = ['#EC008C', '#FF6F61']  # Magenta, Warm red
 
+#     plt.figure(figsize=(10, 6))
+
+#     # Negative Edge Plot
+#     plt.plot(
+#         neg_freq_ratios, neg_acc_clean,
+#         label='Negative Edge Removal',
+#         marker='o',
+#         linestyle='--',
+#         linewidth=2,
+#         markersize=6,
+#         color=neg_colors[0]
+#     )
+
+#     # Positive Edge Plot
+#     plt.plot(
+#         pos_freq_ratios, pos_acc_clean,
+#         label='Positive Edge Removal',
+#         marker='s',
+#         linestyle='-',
+#         linewidth=2,
+#         markersize=6,
+#         color=pos_colors[0]
+#     )
+
+#     # Annotate frequencies
 #     for x, y, freq in zip(neg_freq_ratios, neg_acc_clean, neg_freq_thresholds):
-#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, 10),
-#                      ha='center', fontsize=8, color='red')
+#         plt.annotate(
+#             f"{freq}",
+#             (x, y),
+#             textcoords="offset points",
+#             xytext=(0, 10),
+#             ha='center',
+#             fontsize=9,
+#             color=neg_colors[1]
+#         )
 
 #     for x, y, freq in zip(pos_freq_ratios, pos_acc_clean, pos_freq_thresholds):
-#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, -15),
-#                      ha='center', fontsize=8, color='blue')
+#         plt.annotate(
+#             f"{freq}",
+#             (x, y),
+#             textcoords="offset points",
+#             xytext=(0, -15),
+#             ha='center',
+#             fontsize=9,
+#             color=pos_colors[1]
+#         )
 
-#     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)")
-#     plt.ylabel("Accuracy")
-#     plt.title(f"Accuracy vs Frequency Ratio for Label {label}")
-#     plt.xticks(neg_freq_ratios)  # or freq_ratios if shared
+#     # Axes and title
+#     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)", fontsize=22)
+#     plt.ylabel("Clean Accuracy", fontsize=22)
+#     plt.title(f"Clean Accuracy vs. Frequency Ratio (Label {label})", fontsize=22)
+#     plt.xticks(fontsize=20)
+#     plt.yticks(fontsize=20)
+#     plt.ylim(0.0, 1.0)
 #     plt.gca().invert_xaxis()
-#     plt.grid(True)
-#     plt.legend()
+
+#     # Legend and grid
+#     plt.legend(fontsize=20, loc='best')
+#     plt.grid(True, linestyle='--', alpha=0.6)
 #     plt.tight_layout()
-#     plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
+
+#     # Save
+#     filename = os.path.join(save_path, f'{label}_freq_curve.png')
+#     plt.savefig(filename, dpi=300)
 #     plt.close()
     
     
@@ -370,6 +422,8 @@ def process_batches_memory_efficient(
 
     for f in all_files:
         file_path = os.path.join(data_path, f)
+        print(f'file_path: {file_path}')
+        
         with open(file_path, 'rb') as file:
             batch_data = pickle.load(file)
 
@@ -416,7 +470,7 @@ def remove_edge_cifar_union(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -476,7 +530,7 @@ def remove_edge_cifar_union(args):
     
     print(f'Finish Test..')
 
-    freq_ratios = [1, 0.9, 0.8, 0.7, 0.5, 0.3, 0.2, 0.1, 0]
+    freq_ratios = [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0]
     
     print(f'Start removal..')
 
@@ -503,14 +557,6 @@ def remove_edge_cifar_union(args):
             
         neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
         pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]
-
-        # Compute overlap
-        # Convert to sets for fast overlap calculation
-        neg_set = set(neg_edges_only)
-        pos_set = set(pos_edges_only)
-        overlap = neg_set & pos_set
-        overlap_count = len(overlap)
-        ff.write(f"\nNumber of overlapping edges: {overlap_count}\n")
 
         neg_total = len(neg_edges_only)
         pos_total = len(pos_edges_only)
@@ -555,12 +601,8 @@ def remove_edge_cifar_union(args):
         ff.write(f'\n\n')
         
         data_to_save = {
-            'neg_acc_clean': neg_acc_clean,
-            'pos_acc_clean': pos_acc_clean,
-            'neg_remove_num': neg_remove_num,
-            'pos_remove_num': pos_remove_num,
-            'neg_total': neg_total,
-            'pos_total': pos_total
+            'neg': neg_freq_edges_sorted,
+            'pos': pos_freq_edges_sorted
         }
         
         save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}.pkl"
