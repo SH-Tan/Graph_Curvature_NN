@@ -164,48 +164,27 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 def get_top_c(curvature, b, prefix_dims):
-    c = []
     neg_e = set()
     pos_e = set()
-    seen_edges = set()
-    # print(prefix_dims)
-    noseen = 0
-
+    
     for batch in range(b):
-        ricci_curv = np.array(curvature[batch])
-        for (i, j, curr) in ricci_curv:
-            if curr > 1:
-                continue
-            i1, j1 = int(i), int(j)
-            c.append((i1, j1, curr))
-            seen_edges.add((i1, j1))
-            
-    c.sort(key=lambda x: x[2])
-    for (i, j, curr) in c:
-        i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-        if i_layer >= 7: 
+        ricci_curv = np.array(curvature[batch])  # shape (N, 3)
+
+        # Filter values with valid curvature (<= 1)
+        valid = ricci_curv[ricci_curv[:, 2] <= 1]
+
+        # Convert to int for indexing
+        valid[:, 0:2] = valid[:, 0:2].astype(int)
+
+        for i, j, curr in valid:
+            i, j = int(i), int(j)
             if curr < 0:
                 neg_e.add((i, j, curr))
             elif curr > 0:
                 pos_e.add((i, j, curr))
- 
-    # # Get indices of FC layers only
-    # fc_layers = [i for i in sorted(model_dims.keys()) if model_dims[i]["name"] == "fc"]
-    # fc_indices = [list(model_dims.keys()).index(i) for i in fc_layers]  # 0-based index
-
-    # # Generate all possible FC edges
-    # all_fc_edges = set()
-    # for l in range(fc_indices[0]-1, fc_indices[-1]):
-    #     start_i, end_i = prefix_dims[l], prefix_dims[l + 1]
-    #     start_j, end_j = prefix_dims[l + 1], prefix_dims[l + 2]
-    #     for i in range(start_i, end_i):
-    #         for j in range(start_j, end_j):
-    #             all_fc_edges.add((i, j))
-    #             if (i, j) not in seen_edges:
-    #                 pos_e.add((i, j, 1.0))  # default curvature
-    #                 noseen += 1
 
     return neg_e, pos_e
+
 
 
 def cal_dims(model_dims):
@@ -340,23 +319,25 @@ def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg
     plt.close()
     
     
+    
 def count_edge_frequency(edge_sets):
     freq = Counter()
     curvature_sum = defaultdict(float)
 
     for edge_set in edge_sets:
         for i, j, c in edge_set:
-            key = tuple(sorted((i, j)))  # normalize direction for undirected edges
+            # Normalize undirected edge direction efficiently
+            key = (min(i, j), max(i, j))
             freq[key] += 1
             curvature_sum[key] += c
 
-    results = []
-    for key in freq:
-        avg_curv = curvature_sum[key] / freq[key]
-        results.append((key[0], key[1], freq[key], avg_curv))
+    # Use list comprehension for speed and clarity
+    results = [
+        (i, j, count, curvature_sum[(i, j)] / count)
+        for (i, j), count in freq.items()
+    ]
 
     return results
-
 
 
 
@@ -435,7 +416,7 @@ def remove_edge_cifar_union(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
