@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 import re
 import gc
 
+from collections import Counter
+
 import sys
 sys.path.append("..")
 
@@ -100,7 +102,7 @@ def process_batches_memory_efficient(
             use_data = new_data[:available]
 
             for ricci in use_data:
-                neg_e, pos_e, _ = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
+                neg_e, pos_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
                 neg_edges_all.extend(neg_e)
                 pos_edges_all.extend(pos_e)
                 label_counts[l] += 1
@@ -223,76 +225,103 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 def get_top_c(curvature, b, prefix_dims):
-    c = []
-    seen_edges = set()
     neg_e = set()
     pos_e = set()
-    noseen = 0
 
     # Step 1: Collect existing curvature edges
     for batch in range(b):
-        ricci_curv = np.array(curvature[batch])
-        for (i, j, curr) in ricci_curv:
-            i1, j1 = int(i), int(j)
-            if curr > 1:
-                continue
-            c.append((i1, j1, curr))
-            seen_edges.add((i1, j1))
+        ricci_curv = np.array(curvature[batch])  # shape (N, 3)
 
-    # Step 2: Generate all edges between adjacent layers
-    # all_edges = set()
-    # for l in range(len(prefix_dims) - 2):  # skip last layer
-    #     start_i, end_i = prefix_dims[l], prefix_dims[l+1]
-    #     start_j, end_j = prefix_dims[l+1], prefix_dims[l+2]
-    #     for i in range(start_i, end_i):
-    #         for j in range(start_j, end_j):
-    #             all_edges.add((i, j))
+        # Filter values with valid curvature (<= 1)
+        valid = ricci_curv[ricci_curv[:, 2] <= 1]
 
-    # # Step 3: Add missing edges with default curvature = 1
-    # for (i, j) in all_edges:
-    #     if (i, j) not in seen_edges:
-    #         c.append((i, j, 1))
-    #         noseen += 1
-            
-    # print(len(c))
+        # Convert to int for indexing
+        valid[:, 0:2] = valid[:, 0:2].astype(int)
+        for i, j, curr in valid:
+            i, j = int(i), int(j)
+            if curr < 0:
+                neg_e.add((i, j, curr))
+            elif curr > 0:
+                pos_e.add((i, j, curr))
 
-    # Step 4: Sort and classify edges
-    c.sort(key=lambda x: x[2])
-    for (i, j, curr) in c:
-        # i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-        if curr < 0:
-            neg_e.add((i, j, curr))
-        elif curr >= 0:
-            pos_e.add((i, j, curr))
-
-    return neg_e, pos_e, noseen
+    return neg_e, pos_e
 
 
 
-# def plot_curve(neg_acc_clean, pos_acc_clean, neg_freq_ratios, pos_freq_ratios, neg_freq_thresholds, pos_freq_thresholds, label, save_path):
-#     plt.figure(figsize=(8, 6))
+# def plot_curve(
+#     neg_acc_clean, pos_acc_clean,
+#     neg_freq_ratios, pos_freq_ratios,
+#     neg_freq_thresholds, pos_freq_thresholds,
+#     label, save_path
+# ):
+#     # CMYK-like colors (safe RGB approximations)
+#     neg_colors = ['#00A3E0', '#6CACE4']  # Cyan, Blue-gray
+#     pos_colors = ['#EC008C', '#FF6F61']  # Magenta, Warm red
 
-#     plt.plot(neg_freq_ratios, neg_acc_clean, 'r-o', label='Negative Edge Removal')
-#     plt.plot(pos_freq_ratios, pos_acc_clean, 'b-o', label='Positive Edge Removal')
+#     plt.figure(figsize=(10, 6))
 
+#     # Negative Edge Plot
+#     plt.plot(
+#         neg_freq_ratios, neg_acc_clean,
+#         label='Negative Edge Removal',
+#         marker='o',
+#         linestyle='--',
+#         linewidth=2,
+#         markersize=6,
+#         color=neg_colors[0]
+#     )
+
+#     # Positive Edge Plot
+#     plt.plot(
+#         pos_freq_ratios, pos_acc_clean,
+#         label='Positive Edge Removal',
+#         marker='s',
+#         linestyle='-',
+#         linewidth=2,
+#         markersize=6,
+#         color=pos_colors[0]
+#     )
+
+#     # Annotate frequencies
 #     for x, y, freq in zip(neg_freq_ratios, neg_acc_clean, neg_freq_thresholds):
-#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, 10),
-#                      ha='center', fontsize=8, color='red')
+#         plt.annotate(
+#             f"{freq}",
+#             (x, y),
+#             textcoords="offset points",
+#             xytext=(0, 10),
+#             ha='center',
+#             fontsize=9,
+#             color=neg_colors[1]
+#         )
 
 #     for x, y, freq in zip(pos_freq_ratios, pos_acc_clean, pos_freq_thresholds):
-#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, -15),
-#                      ha='center', fontsize=8, color='blue')
+#         plt.annotate(
+#             f"{freq}",
+#             (x, y),
+#             textcoords="offset points",
+#             xytext=(0, -15),
+#             ha='center',
+#             fontsize=9,
+#             color=pos_colors[1]
+#         )
 
-#     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)")
-#     plt.ylabel("Accuracy")
-#     plt.title(f"Accuracy vs Frequency Ratio for Label {label}")
+#     # Axes and title
+#     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)", fontsize=22)
+#     plt.ylabel("Clean Accuracy", fontsize=22)
+#     plt.title(f"Clean Accuracy vs. Frequency Ratio (Label {label})", fontsize=22)
+#     plt.xticks(fontsize=20)
+#     plt.yticks(fontsize=20)
 #     plt.ylim(0.0, 1.0)
-#     plt.xticks(neg_freq_ratios)  # or freq_ratios if shared
 #     plt.gca().invert_xaxis()
-#     plt.grid(True)
-#     plt.legend()
+
+#     # Legend and grid
+#     plt.legend(fontsize=20, loc='best')
+#     plt.grid(True, linestyle='--', alpha=0.6)
 #     plt.tight_layout()
-#     plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
+
+#     # Save
+#     filename = os.path.join(save_path, f'{label}_freq_curve.png')
+#     plt.savefig(filename, dpi=300)
 #     plt.close()
     
     
@@ -336,79 +365,20 @@ def plot_curve(neg_clean_acc, pos_clean_acc, neg_remove_num, pos_remove_num, neg
     )
 
     # Axes and title
-    plt.xlabel('Number of Edges Removed', fontsize=21)
-    plt.ylabel('Clean Accuracy', fontsize=21)
-    plt.title('Clean Accuracy vs. Edge Removal Count', fontsize=22)
+    plt.xlabel('Number of Edges Removed', fontsize=23)
+    plt.ylabel('Clean Accuracy', fontsize=23)
+    plt.title('Clean Accuracy vs. Edge Removal Count', fontsize=23)
     plt.ylim(0.0, 1.0)
-    plt.xticks(fontsize=20)
-    plt.yticks(fontsize=20)
+    plt.xticks(fontsize=22)
+    plt.yticks(fontsize=22)
 
-    plt.legend(fontsize=18, loc='best')
+    plt.legend(fontsize=22, loc='best')
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
 
     # Save
     plt.savefig(res_path + f'{label}_curve_all.png', dpi=300)
     plt.close()
-
-
-
-from collections import Counter
-
-def count_edge_frequency(edge_sets):
-    freq = Counter()
-    curvature_sum = defaultdict(float)
-
-    for edge_set in edge_sets:
-        for i, j, c in edge_set:
-            key = tuple(sorted((i, j)))  # normalize direction for undirected edges
-            freq[key] += 1
-            curvature_sum[key] += c
-
-    results = []
-    for key in freq:
-        avg_curv = curvature_sum[key] / freq[key]
-        results.append((key[0], key[1], freq[key], avg_curv))
-
-    return results
-
-
-def get_all_edges_sorted_by_weight(dims, weights, device='cuda'):
-    """
-    Returns:
-        - edges_weights: List of tuples (edge_pair, weight)
-    """
-    batch_idx = 0
-    weight_idx = 0
-    global_node_offset = 0
-
-    edges_weights = defaultdict(list)
-
-    for i in range(len(dims) - 1):
-        src_size, dst_size = dims[i], dims[i+1]
-        num_edges = src_size * dst_size
-
-        # Extract weights for this layer
-        direct_dist = weights[batch_idx, weight_idx:weight_idx + num_edges].flatten()
-
-        # Global node indices
-        src_nodes = torch.arange(src_size, device=device) + global_node_offset
-        dst_nodes = torch.arange(dst_size, device=device) + global_node_offset + src_size
-        global_node_offset += src_size
-
-        src_grid, dst_grid = torch.meshgrid(src_nodes, dst_nodes, indexing='ij')
-        
-        # Create edge-weight pairs
-        for idx in range(len(direct_dist)):
-            edge = (src_grid.flatten()[idx].item(), dst_grid.flatten()[idx].item())
-            weight = direct_dist[idx].item()
-            edges_weights[edge].append(weight)
-
-        weight_idx += num_edges
-
-    return edges_weights
-
-
 
 
 
@@ -428,7 +398,7 @@ def set_seed(seed):
 def remove_edge_fc_union(args):
     set_seed(59)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -529,8 +499,8 @@ def remove_edge_fc_union(args):
             neg_total = len(neg_edges_only)
             pos_total = len(pos_edges_only)
 
-            neg_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
-            pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
+            neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
+            pos_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
 
             # Step 2: Choose thresholds — you can just use them all or downsample if too many
             # neg_max_freq = max(freq for (_, _, freq, _) in neg_summary)
@@ -580,25 +550,20 @@ def remove_edge_fc_union(args):
                 os.remove(res_path + cur_n + "pos.pth")
 
                 acc_clean_pos = test_clean(net_pos, test_loader)
-                pos_acc_clean.append(acc_clean_pos)
-
-                # excel_path = res_path + f'accuracies_layer{layer_num}.xlsx'
-                
-                # ## Create DataFrame for this fraction
-                # df = pd.DataFrame({
-                #     'Remove Number': [rem_f],
-                #     'Negative Edge Clean Acc Other': [neg_acc_clean[-1]],
-                #     'Positive Edge Clean Acc': [pos_acc_clean[-1]]
-                # })
-
-                # # If file exists, append to it, otherwise create new
-                # if os.path.exists(excel_path):
-                #     existing_df = pd.read_excel(excel_path)
-                #     df = pd.concat([existing_df, df], ignore_index=True)
-                    
-                # df.to_excel(excel_path, index=False)     
+                pos_acc_clean.append(acc_clean_pos) 
                 
             ff.write(f'\n\n')
+            
+            data_to_save = {
+                'neg': neg_summary,
+                'pos': pos_summary
+            }
+            
+            save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}.pkl"
+            save_path = os.path.join(res_path, save_name)
+
+            with open(save_path, 'wb') as f:
+                pickle.dump(data_to_save, f)  # use dict to avoid defaultdict issues
 
             plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, sample_size, res_path)
             # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
