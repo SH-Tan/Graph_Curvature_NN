@@ -400,7 +400,7 @@ def set_seed(seed):
 def remove_edge_fc_union(args):
     set_seed(59)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 

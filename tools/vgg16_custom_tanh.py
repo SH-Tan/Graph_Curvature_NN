@@ -193,20 +193,6 @@ class VGG16_CIFAR10(nn.Module):
         y = fc_layer(x)
         
         return y
-    
-    
-    # def forward(self, x):
-    #     x = self.normalize(x)
-    #     x = self.features(x)
-    #     x = self.activation(self.bn5_1(self.conv5_1(x)))
-    #     x = self.activation(self.bn5_2(self.conv5_2(x)))
-    #     x = self.pool5(x)
-    #     x = self.activation(self.bn5_3(self.conv5_3(x)))
-    #     x = x.view(x.size(0), -1)  # flatten
-    #     x = self.fc1(x)
-    #     x = self.fc2(x)
-    #     x = self.fc3(x)
-    #     return x
 
 
     def forward(self, x):
