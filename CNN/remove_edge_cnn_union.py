@@ -564,6 +564,16 @@ def remove_edge_cnn_union(args):
         with open(save_path, 'wb') as f:
             pickle.dump(data_to_save, f)  # use dict to avoid defaultdict issues
 
-        # plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, sample_size, res_path)
-        plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
+        # Plot
+        plot_curve(
+            neg_clean_acc=neg_acc_clean,
+            pos_clean_acc=pos_acc_clean,
+            neg_remove_num=neg_remove_num,
+            pos_remove_num=pos_remove_num,
+            label=sample_size,
+            res_path=res_path,
+            neg_freq_labels=neg_freq_labels,
+            pos_freq_labels=pos_freq_labels
+        )
+        # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
                 
