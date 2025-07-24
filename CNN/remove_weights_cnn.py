@@ -364,7 +364,7 @@ def remove_w_cnn(args):
         acc_low = test_clean(net_pos, test_loader)
         low_acc_clean.append(acc_low)
         
-    plot_curve(high_acc_clean, low_acc_clean, remove_num, res_path, model_full_n+activation)   
+    plot_curve(high_acc_clean, low_acc_clean, low_remove_num, res_path, model_full_n+activation)   
         
     
     
