@@ -254,17 +254,17 @@ def get_top_c(curvature, b, prefix_dims):
 
 
 
-def plot_curve(
-    neg_acc_clean, pos_acc_clean,
-    neg_freq_ratios, pos_freq_ratios,
-    neg_freq_thresholds, pos_freq_thresholds,
-    label, save_path
-):
-    # CMYK-like colors (safe RGB approximations)
-    neg_colors = ['#00A3E0', '#6CACE4']  # Cyan, Blue-gray
-    pos_colors = ['#EC008C', '#FF6F61']  # Magenta, Warm red
+# def plot_curve(
+#     neg_acc_clean, pos_acc_clean,
+#     neg_freq_ratios, pos_freq_ratios,
+#     neg_freq_thresholds, pos_freq_thresholds,
+#     label, save_path
+# ):
+#     # CMYK-like colors (safe RGB approximations)
+#     neg_colors = ['#00A3E0', '#6CACE4']  # Cyan, Blue-gray
+#     pos_colors = ['#EC008C', '#FF6F61']  # Magenta, Warm red
 
-    plt.figure(figsize=(10, 6))
+#     plt.figure(figsize=(10, 6))
 
 #     # Negative Edge Plot
 #     plt.plot(
@@ -556,15 +556,15 @@ def remove_edge_fc_union(args):
             pos_freq_labels = match_frequencies(pos_remove_num, pos_freq_map)
 
             # Step 2: Choose thresholds — you can just use them all or downsample if too many
-            neg_max_freq = max(freq for (_, _, freq, _) in neg_summary)
-            neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
+            # neg_max_freq = max(freq for (_, _, freq, _) in neg_summary)
+            # neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
 
-            pos_max_freq = max(freq for (_, _, freq, _) in pos_summary)
-            pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
+            # pos_max_freq = max(freq for (_, _, freq, _) in pos_summary)
+            # pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
 
-            # Step 3: For each threshold, count how many edges would be removed
-            neg_remove_num = [sum(1 for (_, _, freq, _) in neg_summary if freq >= t) for t in neg_freq_thresholds]
-            pos_remove_num = [sum(1 for (_, _, freq, _) in pos_summary if freq >= t) for t in pos_freq_thresholds]
+            # # Step 3: For each threshold, count how many edges would be removed
+            # neg_remove_num = [sum(1 for (_, _, freq, _) in neg_summary if freq >= t) for t in neg_freq_thresholds]
+            # pos_remove_num = [sum(1 for (_, _, freq, _) in pos_summary if freq >= t) for t in pos_freq_thresholds]
 
             # start remove
             for index, rem_f in enumerate(neg_remove_num):

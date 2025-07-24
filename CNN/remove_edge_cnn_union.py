@@ -151,6 +151,7 @@ def test(n, loader, eps, alpha, iters, device):
 def get_top_c(curvature, b, prefix_dims):
     neg_e = set()
     pos_e = set()
+    mini_c = 0.
     
     for batch in range(b):
         ricci_curv = np.array(curvature[batch])  # shape (N, 3)
@@ -166,11 +167,12 @@ def get_top_c(curvature, b, prefix_dims):
             i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
             if i_layer >= 2: 
                 if curr < 0:
+                    mini_c = min(mini_c, curr)
                     neg_e.add((i, j, curr))
                 elif curr > 0:
                     pos_e.add((i, j, curr))
 
-    return neg_e, pos_e
+    return neg_e, pos_e, mini_c
 
 
 
@@ -398,7 +400,7 @@ def remove_edge_cnn_union(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -475,12 +477,14 @@ def remove_edge_cnn_union(args):
         pos_acc_clean = []
         neg_edge_sets = []
         pos_edge_sets = []
+        mini_c_list = []
         for l in selected_classes:
             idx = 0
             for (ricci, batch, dim, node) in res_dict[l]:
-                neg_e_other, pos_e = get_top_c(ricci, 1, prefix_dims)
+                neg_e_other, pos_e, mini_c = get_top_c(ricci, 1, prefix_dims)
                 neg_edge_sets.append(neg_e_other)
                 pos_edge_sets.append(pos_e)
+                mini_c_list.append(mini_c)
                 idx += 1
                 if idx >= sample_size:
                     break
@@ -489,10 +493,13 @@ def remove_edge_cnn_union(args):
         pos_freq_dict = count_edge_frequency(pos_edge_sets)
         neg_freq_edges_sorted = sorted(neg_freq_dict, key=lambda x: (-x[2], x[3]))
         pos_freq_edges_sorted = sorted(pos_freq_dict, key=lambda x: (-x[2], -x[3]))
+        
+        mini_c_list = np.array(mini_c_list)
 
         print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
         ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
-            
+        ff.write(f'The average minimum c is {np.mean(mini_c_list)}, mean = {np.mean(mini_c_list)}\n\n')
+        
         neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
         pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]
 
