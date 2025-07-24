@@ -87,6 +87,7 @@ def process_batches_memory_efficient(
     label_counts = {l: 0 for l in selected_classes}
     neg_edges_all = []  # list of (i, j, curvature)
     pos_edges_all = []
+    mini_c_list = []
 
     for filename in all_files:
         file_path = os.path.join(data_path, filename)
@@ -104,9 +105,10 @@ def process_batches_memory_efficient(
             use_data = new_data[:available]
 
             for ricci in use_data:
-                neg_e, pos_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
+                neg_e, pos_e, mini_c = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
                 neg_edges_all.extend(neg_e)
                 pos_edges_all.extend(pos_e)
+                mini_c_list.append(mini_c)
                 label_counts[l] += 1
 
             del new_data, use_data
@@ -137,7 +139,7 @@ def process_batches_memory_efficient(
     neg_summary = sorted(count_edge_frequency(neg_edges_all), key=lambda x: x[3])      # sort by avg curvature ↑
     pos_summary = sorted(count_edge_frequency(pos_edges_all), key=lambda x: -x[3])     # sort by avg curvature ↓
 
-    return neg_summary, pos_summary
+    return neg_summary, pos_summary, mini_c_list
 
 
 def standard_PGD(model, images, labels, device, eps=11/255, alpha=2/255, iters=40):
@@ -229,6 +231,7 @@ def test(n, loader, eps, alpha, iters, device):
 def get_top_c(curvature, b, prefix_dims):
     neg_e = set()
     pos_e = set()
+    mini_c = 0.
 
     # Step 1: Collect existing curvature edges
     for batch in range(b):
@@ -242,11 +245,12 @@ def get_top_c(curvature, b, prefix_dims):
         for i, j, curr in valid:
             i, j = int(i), int(j)
             if curr < 0:
+                mini_c = min(mini_c, curr)
                 neg_e.add((i, j, curr))
             elif curr > 0:
                 pos_e.add((i, j, curr))
 
-    return neg_e, pos_e
+    return neg_e, pos_e, mini_c
 
 
 
@@ -517,7 +521,7 @@ def remove_edge_fc_union(args):
             neg_acc_clean = []
             pos_acc_clean = []
             
-            neg_summary, pos_summary = process_batches_memory_efficient(
+            neg_summary, pos_summary, mini_c_list = process_batches_memory_efficient(
                 data_path,
                 model_full_n,
                 metric,
@@ -525,10 +529,14 @@ def remove_edge_fc_union(args):
                 sample_size,
                 prefix_dims
             )
+            
+            mini_c_list = np.array(mini_c_list)
 
             print(f'It has {len(neg_summary)} negative curvature edges, {len(pos_summary)} positive curvature edges .. \n')
             ff.write(f'\nIt has {len(neg_summary)} negative curvature edges, {len(pos_summary)} positive curvature edges .. \n')
-
+            ff.write(f'The average minimum c is {np.mean(mini_c_list)}, mean = {np.mean(mini_c_list)}\n\n')
+            
+            
             neg_edges_only = [(i, j) for (i, j, _, _) in neg_summary]
             pos_edges_only = [(i, j) for (i, j, _, _) in pos_summary]
 
