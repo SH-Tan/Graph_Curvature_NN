@@ -199,24 +199,51 @@ def test_clean(n, loader, device = 'cuda'):
     return acc
 
 
+
 def plot_curve(high_clean_acc, low_clean_acc, remove_num, res_path, name):
-    # Zip, sort, and unzip to reorder all lists by remove_numbers
+    # Colors
+    high_color = '#00A3E0'  # blue
+    low_color = '#EC008C'   # pink
+
+    # Sort by remove_num
     combined = sorted(zip(remove_num, high_clean_acc, low_clean_acc), key=lambda x: x[0])
     remove_sorted, high_sorted, low_sorted = zip(*combined)
 
-    # Plot
-    plt.figure(figsize=(8, 5))
-    plt.plot(remove_sorted, high_sorted, label='High Weight Edge Clean Acc', marker='o', linestyle='--')
-    plt.plot(remove_sorted, low_sorted, label='Low Weight Edge Clean Acc', marker='x', linestyle='-')
+    plt.figure(figsize=(10, 6))
 
-    plt.xlabel('Remove Number')
-    plt.ylabel('Clean Accuracy')
-    plt.title('Clean Accuracy vs Remove Number')
-    plt.legend()
-    plt.grid(True)
+    # Plot lines
+    plt.plot(remove_sorted, high_sorted, label='High weight removed first',
+             marker='o', linestyle='--', linewidth=3., markersize=13, color=high_color)
+
+    plt.plot(remove_sorted, low_sorted, label='Low weight removed first',
+             marker='x', linestyle='-', linewidth=3., markersize=13, color=low_color)
+
+    # Labels and title
+    plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
+    plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
+    plt.ylim(0.0, 1.0)
+
+    # Scientific x-axis
+    ax = plt.gca()
+    ax.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    ax.xaxis.get_offset_text().set_fontsize(20)
+    ax.xaxis.get_offset_text().set_fontweight('semibold')
+
+    # Ticks
+    plt.xticks(fontsize=22, fontweight='semibold')
+    plt.yticks(fontsize=22, fontweight='semibold')
+
+    # Grid and legend
+    plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
+    legend = plt.legend(fontsize=22, loc='best')
+    for text in legend.get_texts():
+        text.set_fontweight('semibold')
+
     plt.tight_layout()
-    plt.savefig(res_path + name + f'_remove_w_curve.png')
+    plt.savefig(os.path.join(res_path, f'{name}_remove_w_curve.pdf'), dpi=300)
     plt.close()
+    
+    
 
 def set_seed(seed):
     random.seed(seed)
@@ -311,19 +338,25 @@ def remove_w_cnn(args):
     sorted_edges_high = sorted_edges_high.cpu().numpy().T
     sorted_edges_low = sorted_edges_low.cpu().numpy().T
     
-    remove_num = [0, 1000, 3000, (int)(len(sorted_edges_high)*0.05), (int)(len(sorted_edges_high)*0.1), (int)(len(sorted_edges_high)*0.2), (int)(len(sorted_edges_high)*0.3), (int)(len(sorted_edges_high)*0.5), (int)(len(sorted_edges_high)*0.7), (int)(len(sorted_edges_high))]
+    # Step 2: Define total number of edges and removal schedule
+    neg_total = len(sorted_edges_low)
+    pos_total = len(sorted_edges_high)
+
+    low_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
+    high_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
     high_acc_clean = []
     low_acc_clean = []
     
     # start remove
-    for index, rem_f in enumerate(remove_num):
+    for index, rem_f in enumerate(high_remove_num):
         # remove second layer negative curvature edges
         net_neg = copy.deepcopy(net_H)
         net_neg.__build_remove_mask__(sorted_edges_high, rem_f)
         # test acc
         acc = test_clean(net_neg, test_loader)
         high_acc_clean.append(acc)
-
+        
+    for index, rem_f in enumerate(low_remove_num):
         # remove positive curvature edges
         net_pos = copy.deepcopy(net_H)
         net_pos.__build_remove_mask__(sorted_edges_low, rem_f)

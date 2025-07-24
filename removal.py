@@ -84,16 +84,17 @@ if __name__=='__main__':
     if args.image:
         if model_type.lower() == "fc":
             if args.edge:
-                remove_edge_fc_union(args)
+                remove_w_fc(args)
             if args.community:
                 community_check_fc(args)
         elif model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
-                remove_edge_cnn_union(args)
+                remove_w_cnn(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
                 remove_edge_cifar_union(args)
+                remove_w_cifar(args)
             if args.community and args.dataset.lower() == "cifar":
                 community_check_cifar(args)
         else:
