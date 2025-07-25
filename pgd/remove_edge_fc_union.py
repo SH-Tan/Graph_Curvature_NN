@@ -534,7 +534,7 @@ def remove_edge_fc_union(args):
 
             print(f'It has {len(neg_summary)} negative curvature edges, {len(pos_summary)} positive curvature edges .. \n')
             ff.write(f'\nIt has {len(neg_summary)} negative curvature edges, {len(pos_summary)} positive curvature edges .. \n')
-            ff.write(f'The average minimum c is {np.mean(mini_c_list)}, mean = {np.mean(mini_c_list)}\n\n')
+            ff.write(f'The average minimum c is {np.mean(mini_c_list)}, median = {np.median(mini_c_list)}\n\n')
             
             
             neg_edges_only = [(i, j) for (i, j, _, _) in neg_summary]

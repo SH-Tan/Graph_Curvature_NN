@@ -158,8 +158,8 @@ def separate_edges_by_layer_in_order(sorted_edges, prefix_dims):
 
 def plot_curve(high_clean_acc, low_clean_acc, remove_num, res_path, name):
     # Colors
-    high_color = '#00A3E0'  # blue
-    low_color = '#EC008C'   # pink
+    high_color = "#29E000" 
+    low_color = "#1F00EC"   
 
     # Sort by remove_num
     combined = sorted(zip(remove_num, high_clean_acc, low_clean_acc), key=lambda x: x[0])

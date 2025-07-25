@@ -498,7 +498,7 @@ def remove_edge_cnn_union(args):
 
         print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
         ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
-        ff.write(f'The average minimum c is {np.mean(mini_c_list)}, mean = {np.mean(mini_c_list)}\n\n')
+        ff.write(f'The average minimum c is {np.mean(mini_c_list)}, median = {np.median(mini_c_list)}\n\n')
         
         neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
         pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]

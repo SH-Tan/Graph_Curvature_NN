@@ -171,7 +171,7 @@ def plot_curve(
     if neg_freq_labels:
         for x, y, r in zip(neg_remove_num, neg_clean_acc, neg_freq_labels):
             plt.annotate(r, (x, y), textcoords='offset points',
-                         xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
+                         xytext=(-10, 5), ha='left', fontsize=18, color='#000000')
 
     if pos_freq_labels:
         for x, y, r in zip(pos_remove_num, pos_clean_acc, pos_freq_labels):
@@ -180,10 +180,11 @@ def plot_curve(
 
     # Labels and title
     plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
-    plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
+    plt.ylabel('Controller Safety', fontsize=33, fontweight='semibold')
     
     # plt.title('Accuracy vs. Edge Removal Count', fontsize=28, fontweight='semibold')
-    plt.ylim(0.0, 1.0)
+    plt.ylim(-0.1, 1.2)  # Actual data limits
+    plt.yticks(np.linspace(0.0, 1.0, num=6))  # Only show ticks from 0 to 1
 
     # Set scientific notation on x-axis
     ax = plt.gca()
@@ -197,7 +198,7 @@ def plot_curve(
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
-    legend = plt.legend(fontsize=22, loc='best')  # create the legend
+    legend = plt.legend(fontsize=22, loc='center right')  # create the legend
     for text in legend.get_texts():
         text.set_fontweight('semibold')  # or 'bold'
 
@@ -511,7 +512,7 @@ def main_lidar(args):
             pos_clean_acc=pos_acc_clean,
             neg_remove_num=neg_remove_num,
             pos_remove_num=pos_remove_num,
-            label=sample_size,
+            label=str(sample_size) + '_' + str(s),
             res_path=res_path,
             neg_freq_labels=neg_freq_labels,
             pos_freq_labels=pos_freq_labels
