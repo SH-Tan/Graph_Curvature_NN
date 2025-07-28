@@ -84,7 +84,7 @@ if __name__=='__main__':
     if args.image:
         if model_type.lower() == "fc":
             if args.edge:
-                remove_w_fc(args)
+                remove_edge_fc_union_perlayer(args)
             if args.community:
                 community_check_fc(args)
         elif model_type.lower() == "cnn":
@@ -93,14 +93,14 @@ if __name__=='__main__':
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                # remove_edge_cifar_union(args)
-                remove_w_cifar(args)
+                remove_edge_cifar_union_perlayer(args)
+                # remove_w_cifar(args)
             if args.community and args.dataset.lower() == "cifar":
                 community_check_cifar(args)
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
     
     if args.lidar:
-        main_lidar(args)
+        remove_w_lidar(args)
     
         

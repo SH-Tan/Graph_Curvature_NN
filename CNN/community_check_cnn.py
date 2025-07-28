@@ -254,7 +254,7 @@ def community_check_cnn(args):
                 if (idx >= sample_size):
                     print(f'Finish {idx} examples....')
                     break
-                    
+                
                 img = images[idx].to(device)
                 edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
 

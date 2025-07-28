@@ -134,16 +134,26 @@ def get_all_edges_sorted_by_weight(dims, weights, device='cuda'):
     # Combine all
     all_edges = torch.cat(all_edges, dim=1)      # [2, total_edges]
     all_weights = torch.cat(all_weights, dim=0)  # [total_edges]
-
-    # Sort by descending weight
-    sorted_indices = torch.argsort(all_weights, descending=True)
-    sorted_edges_high = all_edges[:, sorted_indices]
-    # sorted_weights = all_weights[sorted_indices]
     
-    # Sort by ascending weight
-    sorted_indices = torch.argsort(all_weights, descending=False)
-    sorted_edges_low = all_edges[:, sorted_indices]
-    # sorted_weights = all_weights[sorted_indices]
+    abs_weights = torch.abs(all_weights)
+
+    # Sort by descending |weight|
+    sorted_indices_high = torch.argsort(abs_weights, descending=True)
+    sorted_edges_high = all_edges[:, sorted_indices_high]
+
+    # Sort by ascending |weight|
+    sorted_indices_low = torch.argsort(abs_weights, descending=False)
+    sorted_edges_low = all_edges[:, sorted_indices_low]
+
+    # # Sort by descending weight
+    # sorted_indices = torch.argsort(all_weights, descending=True)
+    # sorted_edges_high = all_edges[:, sorted_indices]
+    # # sorted_weights = all_weights[sorted_indices]
+    
+    # # Sort by ascending weight
+    # sorted_indices = torch.argsort(all_weights, descending=False)
+    # sorted_edges_low = all_edges[:, sorted_indices]
+    # # sorted_weights = all_weights[sorted_indices]
 
     return sorted_edges_high, sorted_edges_low
 
@@ -170,22 +180,47 @@ def separate_edges_by_layer_in_order(sorted_edges, prefix_dims):
 
 
 def plot_curve(high_clean_acc, low_clean_acc, remove_num, res_path, name):
-    # Zip, sort, and unzip to reorder all lists by remove_numbers
+    # Colors
+    high_color = "#29E000" 
+    low_color = "#1F00EC"   
+
+    # Sort by remove_num
     combined = sorted(zip(remove_num, high_clean_acc, low_clean_acc), key=lambda x: x[0])
     remove_sorted, high_sorted, low_sorted = zip(*combined)
 
-    # Plot
-    plt.figure(figsize=(8, 5))
-    plt.plot(remove_sorted, high_sorted, label='High Weight Edge Clean Acc', marker='o', linestyle='--')
-    plt.plot(remove_sorted, low_sorted, label='Low Weight Edge Clean Acc', marker='x', linestyle='-')
+    plt.figure(figsize=(10, 6))
 
-    plt.xlabel('Remove Number')
-    plt.ylabel('Controller Safety')
-    plt.title('Controller Safety vs Remove Number')
-    plt.legend()
-    plt.grid(True)
+    # Plot lines
+    plt.plot(remove_sorted, high_sorted, label='Large weight removed first',
+             marker='o', linestyle='--', linewidth=3., markersize=13, color=high_color)
+
+    plt.plot(remove_sorted, low_sorted, label='Small weight removed first',
+             marker='x', linestyle='-', linewidth=3., markersize=13, color=low_color)
+
+    # Labels and title
+    plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
+    plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
+    plt.ylim(-0.1, 1.2)  # Actual data limits
+    plt.yticks(np.linspace(0.0, 1.0, num=6))  # Only show ticks from 0 to 1
+
+    # Scientific x-axis
+    ax = plt.gca()
+    ax.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    ax.xaxis.get_offset_text().set_fontsize(20)
+    ax.xaxis.get_offset_text().set_fontweight('semibold')
+
+    # Ticks
+    plt.xticks(fontsize=22, fontweight='semibold')
+    plt.yticks(fontsize=22, fontweight='semibold')
+
+    # Grid and legend
+    plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
+    legend = plt.legend(fontsize=22, loc='best')
+    for text in legend.get_texts():
+        text.set_fontweight('semibold')
+
     plt.tight_layout()
-    plt.savefig(res_path + name + f'_remove_w_curve.png')
+    plt.savefig(os.path.join(res_path, f'{name}_remove_w_curve.pdf'), dpi=300)
     plt.close()
 
 
@@ -216,12 +251,8 @@ def remove_w_lidar(args):
     sz = args.model_name
     res_path = args.mnist_res_path
     model_path = args.model_path
-    metric = args.metric
-    sample_size = args.sample_num
-    data_path = args.mnist_data_path
     
     dims = model_zoo[sz]
-    prefix_dims = np.cumsum([0] + dims).tolist()
 
     if not os.path.exists(res_path):
         os.makedirs(res_path)
@@ -240,6 +271,8 @@ def remove_w_lidar(args):
         model = model.to(device)
         model_name = model_type + "_" + sz + "_C" + str(s) + ".pth"
         model.load_state_dict(torch.load(model_path + model_name))
+        
+        prefix_dims = np.cumsum([0] + dims).tolist()
 
         net_full = copy.deepcopy(model)
         model = model.to(device)
@@ -259,6 +292,55 @@ def remove_w_lidar(args):
         # Step 1: Convert tensors to numpy BEFORE separating by layer
         sorted_edges_high_np = sorted_edges_high.cpu().numpy()
         sorted_edges_low_np = sorted_edges_low.cpu().numpy()
+        
+        # # Step 2: Define total number of edges and removal schedule
+        # neg_total = len(sorted_edges_low_np)
+        # pos_total = len(sorted_edges_high_np)
+
+        # low_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
+        # high_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
+        
+        # high_acc_clean = []
+        # low_acc_clean = []
+        
+        # for index, rem_f in enumerate(high_remove_num):
+        #     cur_n = model_type + '_' + str(s) + '_' + str(rem_f)
+
+        #     # remove high weight edges
+        #     model.load_state_dict(torch.load(model_path + model_name))
+        #     edge_r = Edge_Remove(model, dims, min(rem_f, len(sorted_edges_high_np)), res_path)
+        #     edge_r.e_remove(sorted_edges_high_np, cur_n + "other_neg.pth")
+            
+        #     # test acc
+        #     net_high = Controller(dims, 2)
+        #     net_high = net_high.double()
+        #     net_high.load_state_dict(torch.load(res_path + cur_n + "other_neg.pth"))
+        #     net_high = net_high.to(device)
+        #     os.remove(res_path + cur_n + "other_neg.pth")
+
+        #     num_high = test(net_high, device)
+        #     acc_high= (1000-num_high)/1000
+        #     high_acc_clean.append(acc_high)
+        
+        # for index, rem_f in enumerate(low_remove_num):
+        #     # remove low weight edges
+        #     model.load_state_dict(torch.load(model_path + model_name))
+        #     edge_r = Edge_Remove(model, dims, min(rem_f, len(sorted_edges_low_np)), res_path)
+        #     edge_r.e_remove(sorted_edges_low_np, cur_n + "pos.pth")
+            
+        #     # test acc
+        #     net_low = Controller(dims, 2)
+        #     net_low = net_low.double()
+        #     net_low.load_state_dict(torch.load(res_path + cur_n + "pos.pth"))
+        #     net_low = net_low.to(device)
+        #     os.remove(res_path + cur_n + "pos.pth")
+
+        #     num_low = test(net_low, device)
+        #     acc_lows = (1000-num_low)/1000
+        #     low_acc_clean.append(acc_lows)
+            
+        # plot_curve(high_acc_clean, low_acc_clean, low_remove_num, res_path, name)                
+
 
         # Step 2: Separate edges by layer
         sorted_edges_high_by_layer = separate_edges_by_layer_in_order(sorted_edges_high_np, prefix_dims)
@@ -277,8 +359,8 @@ def remove_w_lidar(args):
             neg_total = len(neg_edges)
             pos_total = len(pos_edges)
             
-            low_remove_num = list(np.linspace(0, neg_total, num=20, dtype=int))
-            high_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
+            low_remove_num = list(np.linspace(0, neg_total, num=3, dtype=int))
+            high_remove_num = list(np.linspace(0, pos_total, num=6, dtype=int))
 
             print(f"Layer {layer}:")
             print(f"  Low remove nums: {low_remove_num}")

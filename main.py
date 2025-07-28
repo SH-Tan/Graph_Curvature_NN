@@ -11,11 +11,11 @@ import argparse
 import sys
 sys.path.append("..")
 
-from pgd.single_ex_test import fc_main
-from pgd.single_test_linear import fc_linear_main
-from CNN.single_ex_test_small import cnn_main
-from CNN.single_test_cifar_small import cifar_small_main
-from CNN.single_test_cifar_big import cifar_big_main
+# from pgd.single_ex_test import fc_main
+# from pgd.single_test_linear import fc_linear_main
+# from CNN.single_ex_test_small import cnn_main
+# from CNN.single_test_cifar_small import cifar_small_main
+# from CNN.single_test_cifar_big import cifar_big_main
 
 from Lidar.LoadSampleScript import start_lidar
 
@@ -60,22 +60,22 @@ if __name__=='__main__':
     
     model_type = args.model_type
     
-    if args.image:
-        if model_type.lower() == "fc":
-            fc_main(args)
-        elif model_type.lower() == "fc_linear":
-            fc_linear_main(args)
-        elif model_type.lower() == "cnn" and args.dataset == 'mnist':
-            cnn_main(args)
-        elif model_type.lower() == "cnn" and args.dataset == 'cifar':
-            if args.cifar.lower() == 'small':
-                cifar_small_main(args)
-            elif args.cifar.lower() == 'big':
-                cifar_big_main(args)
-            else:
-                raise Exception("Invalid CIFAR model type, model type should be {small, big}!")
-        else:
-            raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
+    # if args.image:
+    #     if model_type.lower() == "fc":
+    #         fc_main(args)
+    #     elif model_type.lower() == "fc_linear":
+    #         fc_linear_main(args)
+    #     elif model_type.lower() == "cnn" and args.dataset == 'mnist':
+    #         cnn_main(args)
+    #     elif model_type.lower() == "cnn" and args.dataset == 'cifar':
+    #         if args.cifar.lower() == 'small':
+    #             cifar_small_main(args)
+    #         elif args.cifar.lower() == 'big':
+    #             cifar_big_main(args)
+    #         else:
+    #             raise Exception("Invalid CIFAR model type, model type should be {small, big}!")
+    #     else:
+    #         raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
     
     if args.lidar:
         start_lidar(args)
