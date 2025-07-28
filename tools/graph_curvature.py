@@ -351,6 +351,10 @@ def process_edge(b, edge):
         return (b,i, j, 2.0)
     
     m = ot.emd2(mu, nu, d_np)
+    
+    # if (i == 12 or i == 9):
+    #     print(f'{edge} : {d_np}, {mu}, {nu}, {m}')
+    #     print(in_neigh, out_neigh)
 
     return (b, i, j, 1.0 - m/sp)
 
@@ -386,10 +390,12 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     if model_dims:
         sp_dict = cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='cuda')
         if probability_w != None:
+            probability_w = probability_w.to(device)
             sp1 = cnn_adjacent_layer(model_dims, probability_w, prefix_dims, device='cuda')
     else:
         sp_dict = layerwise_shortest_path_torch(dims, weights, device)
         if probability_w != None:
+            probability_w = probability_w.to(device)
             sp1 = fc_adjacent_layer(dims, probability_w, device)
             
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
@@ -398,6 +404,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
         dis_w = sp1
     else:
         dis_w = sp_dict
+        
+    # print(dis_w)
         
     # Precompute distributions using dictionary
     distribution_in, distribution_out = {}, {}
@@ -474,7 +482,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
 
 
 if __name__ == '__main__':
-    # dims = [2, 3, 1]
+    dims = [4, 3, 3, 2]
     # weights = torch.tensor([
     #     [1, 0, 0.5, 1.5, 1, 2, 0.5, 0.2, 0.3],
     #     [1.2, 2, 0.5, 1.58, 1, 1.8, 0.5, 0.7, 0.8]
@@ -499,17 +507,30 @@ if __name__ == '__main__':
         4: {"name": "fc", "dim": {"out_size": 1}}
     }
     
-    dims = [9, 8, 2, 1]
+    # dims = [9, 8, 2, 1]
     
-    edge_num = 32 + 8*2 + 2
+    # edge_num = 32 + 8*2 + 2
+    edge_num = 27
     weights = torch.rand(1, edge_num)
-    weights[0,0] = float('inf')
+    # weights[0,0] = float('inf')
+    node = torch.rand(1, edge_num)
     
     print(weights)
+    print(1./weights)
+    w = 1./weights
+    
+    # for i in range(4,7):
+    #     print(f'Edge {i} - {7}: {w[0,(i-4)*3]}')
+    #     print(f'Edge {i} - {8}: {w[0,(i-4)*3+1]}')
+    #     print(f'Edge {i} - {9}: {w[0,(i-4)*3+2]}')
+    
+    # print(node)
+    # print(1./node)
 
-    ricci_curvature = graph_curvature_main_torch(dims, weights, model_dims=model_dims, layers_to_process=[1])
+    ricci_curvature = graph_curvature_main_torch(dims, weights,probability_w=node.to())
 
     print("Ricci Curvature Results:")
     for b in range(weights.shape[0]):
         print(f"\nBatch {b}:")
-        print(ricci_curvature[b])
+        for (x,y,c) in ricci_curvature[b]:
+            print(x,y,c)

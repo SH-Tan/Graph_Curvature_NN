@@ -341,6 +341,30 @@ def get_top_c(curvature, b, prefix_dims):
 #     plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
 #     plt.close()
     
+    
+def plot_frequency_distribution(summary, res_path, mark):
+    """
+    Plot the distribution of edge frequencies from the summary.
+    Each entry in summary is a tuple (_, _, freq, _)
+    """
+    freqs = [freq for (_, _, freq, _) in summary]
+    freq_counter = Counter(freqs)
+    
+    # Sort by frequency
+    sorted_freqs = sorted(freq_counter.items(), key=lambda x: x[0])
+    x = [f for f, _ in sorted_freqs]
+    y = [c for _, c in sorted_freqs]
+
+    plt.figure(figsize=(8, 5))
+    plt.bar(x, y, color='skyblue', edgecolor='black')
+    plt.xlabel("Frequency")
+    plt.ylabel("Number of Edges")
+    plt.title("Edge Frequency Distribution")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(os.path.join(res_path, f'{mark}_hist_perlayer.pdf'), dpi=300)
+    plt.close()
+    
 
 
 def compute_removal_mapping(summary, total_edges):
@@ -494,7 +518,7 @@ def set_seed(seed):
 def remove_edge_fc_union_perlayer(args):
     set_seed(59)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -612,67 +636,70 @@ def remove_edge_fc_union_perlayer(args):
                 ff.write(f"  Neg remove nums: {neg_remove_num}\n")
                 ff.write(f"  Pos remove nums: {pos_remove_num}\n")
                 
-                total = sample_size * len(selected_classes)
+                plot_frequency_distribution(neg_summary,res_path, str(sample_size) + '_' + str(layer) + "_neg" )
+                plot_frequency_distribution(pos_summary,res_path, str(sample_size) + '_' + str(layer) + "_pos" )
                 
-                # Build frequency mappings
-                neg_freq_map = compute_removal_mapping(neg_summary, total_edges=total)
-                pos_freq_map = compute_removal_mapping(pos_summary, total_edges=total)
+                # total = sample_size * len(selected_classes)
+                
+                # # Build frequency mappings
+                # neg_freq_map = compute_removal_mapping(neg_summary, total_edges=total)
+                # pos_freq_map = compute_removal_mapping(pos_summary, total_edges=total)
 
-                neg_freq_labels = match_frequencies(neg_remove_num, neg_freq_map)
-                pos_freq_labels = match_frequencies(pos_remove_num, pos_freq_map)
+                # neg_freq_labels = match_frequencies(neg_remove_num, neg_freq_map)
+                # pos_freq_labels = match_frequencies(pos_remove_num, pos_freq_map)
 
-                # start remove
-                for index, rem_f in enumerate(neg_remove_num):
-                    # print(f'Remove edge number {rem_f}:')
-                    cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) 
+                # # start remove
+                # for index, rem_f in enumerate(neg_remove_num):
+                #     # print(f'Remove edge number {rem_f}:')
+                #     cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f) 
 
-                    # remove negative curvature edges
-                    net_H.load_state_dict(torch.load(model_path + model_name))
-                    edge_r = Edge_Remove(net_H, dims, min(rem_f, len(neg_edges)), res_path)
-                    edge_r.e_remove(neg_edges, cur_n + "other_neg.pth")
+                #     # remove negative curvature edges
+                #     net_H.load_state_dict(torch.load(model_path + model_name))
+                #     edge_r = Edge_Remove(net_H, dims, min(rem_f, len(neg_edges)), res_path)
+                #     edge_r.e_remove(neg_edges, cur_n + "other_neg.pth")
                     
-                    # test acc
-                    net_neg = FC_MD(dims, layer_num)
+                #     # test acc
+                #     net_neg = FC_MD(dims, layer_num)
 
-                    net_neg.load_state_dict(torch.load(res_path + cur_n + "other_neg.pth"))
-                    net_neg = net_neg.to(device)
-                    os.remove(res_path + cur_n + "other_neg.pth")
+                #     net_neg.load_state_dict(torch.load(res_path + cur_n + "other_neg.pth"))
+                #     net_neg = net_neg.to(device)
+                #     os.remove(res_path + cur_n + "other_neg.pth")
 
-                    acc_clean_neg_other = test_clean(net_neg, test_loader)
-                    neg_acc_clean.append(acc_clean_neg_other)
+                #     acc_clean_neg_other = test_clean(net_neg, test_loader)
+                #     neg_acc_clean.append(acc_clean_neg_other)
 
                 
-                for index, rem_f in enumerate(pos_remove_num):
-                    # ff.write(f'Remove edge number {rem_f}: \n')
-                    cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f)
-                    # remove positive curvature edges
-                    net_H.load_state_dict(torch.load(model_path + model_name))
-                    edge_r = Edge_Remove(net_H, dims, min(rem_f, len(pos_edges)), res_path)
-                    edge_r.e_remove(pos_edges, cur_n + "pos.pth")
+                # for index, rem_f in enumerate(pos_remove_num):
+                #     # ff.write(f'Remove edge number {rem_f}: \n')
+                #     cur_n = model_full_n + '_' + str(layer_num) + '_' + str(rem_f)
+                #     # remove positive curvature edges
+                #     net_H.load_state_dict(torch.load(model_path + model_name))
+                #     edge_r = Edge_Remove(net_H, dims, min(rem_f, len(pos_edges)), res_path)
+                #     edge_r.e_remove(pos_edges, cur_n + "pos.pth")
                     
-                    # test acc
-                    net_pos = FC_MD(dims, layer_num)
+                #     # test acc
+                #     net_pos = FC_MD(dims, layer_num)
 
-                    net_pos.load_state_dict(torch.load(res_path + cur_n + "pos.pth"))
-                    net_pos = net_pos.to(device)
-                    os.remove(res_path + cur_n + "pos.pth")
+                #     net_pos.load_state_dict(torch.load(res_path + cur_n + "pos.pth"))
+                #     net_pos = net_pos.to(device)
+                #     os.remove(res_path + cur_n + "pos.pth")
 
-                    acc_clean_pos = test_clean(net_pos, test_loader)
-                    pos_acc_clean.append(acc_clean_pos)
+                #     acc_clean_pos = test_clean(net_pos, test_loader)
+                #     pos_acc_clean.append(acc_clean_pos)
                     
-                ff.write(f'\n\n')
+                # ff.write(f'\n\n')
                 
-                # Plot
-                plot_curve(
-                    neg_clean_acc=neg_acc_clean,
-                    pos_clean_acc=pos_acc_clean,
-                    neg_remove_num=neg_remove_num,
-                    pos_remove_num=pos_remove_num,
-                    label=str(sample_size) + '_' + str(layer),
-                    res_path=res_path,
-                    neg_freq_labels=neg_freq_labels,
-                    pos_freq_labels=pos_freq_labels
-                )
+                # # Plot
+                # plot_curve(
+                #     neg_clean_acc=neg_acc_clean,
+                #     pos_clean_acc=pos_acc_clean,
+                #     neg_remove_num=neg_remove_num,
+                #     pos_remove_num=pos_remove_num,
+                #     label=str(sample_size) + '_' + str(layer),
+                #     res_path=res_path,
+                #     neg_freq_labels=neg_freq_labels,
+                #     pos_freq_labels=pos_freq_labels
+                # )
 
                 # plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, layer, res_path)
                 # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)

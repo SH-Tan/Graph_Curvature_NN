@@ -292,7 +292,7 @@ def remove_w_cnn(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
     
@@ -310,11 +310,6 @@ def remove_w_cnn(args):
     model_pre_name = args.model_name
     res_path = args.mnist_res_path
     model_path = args.model_path
-    metric = args.metric
-    dataset = args.dataset
-    alpha = args.alpha
-    sample_size = args.sample_num
-    data_path = args.mnist_data_path
     activation = args.activation
     
     if activation.lower() == "relu":
@@ -360,79 +355,81 @@ def remove_w_cnn(args):
     edge_array, nodes_ori, output = net_full.NN_info_batch(img)
     weights = output.detach().clone().to(device)  
     sorted_edges_high, sorted_edges_low = get_last_three_layer_edges_sorted_cnn(model_dims, weights, prefix_dims, device) 
-    sorted_edges_high_np = sorted_edges_high.cpu().numpy()
-    sorted_edges_low_np = sorted_edges_low.cpu().numpy()
+    sorted_edges_high = sorted_edges_high.cpu().numpy().T
+    sorted_edges_low = sorted_edges_low.cpu().numpy().T
     
     # Step 2: Define total number of edges and removal schedule
-    # neg_total = len(sorted_edges_low)
-    # pos_total = len(sorted_edges_high)
+    neg_total = len(sorted_edges_low)
+    pos_total = len(sorted_edges_high)
 
-    # low_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
-    # high_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
-    # high_acc_clean = []
-    # low_acc_clean = []
+    low_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
+    high_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
+    high_acc_clean = []
+    low_acc_clean = []
     
-    # # start remove
-    # for index, rem_f in enumerate(high_remove_num):
-    #     # remove second layer negative curvature edges
-    #     net_neg = copy.deepcopy(net_H)
-    #     net_neg.__build_remove_mask__(sorted_edges_high, rem_f)
-    #     # test acc
-    #     acc = test_clean(net_neg, test_loader)
-    #     high_acc_clean.append(acc)
+    # start remove
+    for index, rem_f in enumerate(high_remove_num):
+        # remove second layer negative curvature edges
+        net_neg = copy.deepcopy(net_H)
+        net_neg.__build_remove_mask__(sorted_edges_high, rem_f)
+        # test acc
+        acc = test_clean(net_neg, test_loader)
+        high_acc_clean.append(acc)
         
-    # for index, rem_f in enumerate(low_remove_num):
-    #     # remove positive curvature edges
-    #     net_pos = copy.deepcopy(net_H)
-    #     net_pos.__build_remove_mask__(sorted_edges_low, rem_f)
-    #     # test acc
-    #     acc_low = test_clean(net_pos, test_loader)
-    #     low_acc_clean.append(acc_low)
+    for index, rem_f in enumerate(low_remove_num):
+        # remove positive curvature edges
+        net_pos = copy.deepcopy(net_H)
+        net_pos.__build_remove_mask__(sorted_edges_low, rem_f)
+        # test acc
+        acc_low = test_clean(net_pos, test_loader)
+        low_acc_clean.append(acc_low)
+        
+    plot_curve(high_acc_clean, low_acc_clean, low_remove_num, res_path, model_full_n+activation)   
     
     # Step 2: Separate edges by layer
-    sorted_edges_high_by_layer = separate_edges_by_layer_in_order(sorted_edges_high_np, prefix_dims)
-    sorted_edges_low_by_layer = separate_edges_by_layer_in_order(sorted_edges_low_np, prefix_dims)
-    print(sorted_edges_low_by_layer.keys())
+    # sorted_edges_high_by_layer = separate_edges_by_layer_in_order(sorted_edges_high_np, prefix_dims)
+    # sorted_edges_low_by_layer = separate_edges_by_layer_in_order(sorted_edges_low_np, prefix_dims)
+    # print(sorted_edges_low_by_layer.keys())
     
-    # Step 3: Per-layer analysis
-    for layer in sorted(sorted_edges_low_by_layer.keys() | sorted_edges_high_by_layer.keys()):
-        high_acc_clean = []
-        low_acc_clean = []
+    # # Step 3: Per-layer analysis
+    # for layer in sorted(sorted_edges_low_by_layer.keys() | sorted_edges_high_by_layer.keys()):
+    #     high_acc_clean = []
+    #     low_acc_clean = []
         
-        # These are just lists of (i, j), not 4-tuples
-        neg_edges = sorted_edges_low_by_layer.get(layer, [])
-        pos_edges = sorted_edges_high_by_layer.get(layer, [])
+    #     # These are just lists of (i, j), not 4-tuples
+    #     neg_edges = sorted_edges_low_by_layer.get(layer, [])
+    #     pos_edges = sorted_edges_high_by_layer.get(layer, [])
 
-        neg_total = len(neg_edges)
-        pos_total = len(pos_edges)
+    #     neg_total = len(neg_edges)
+    #     pos_total = len(pos_edges)
 
-        low_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
-        high_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
+    #     low_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
+    #     high_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
 
-        print(f"Layer {layer}:")
-        # print(f"  low total = {neg_total}, high total = {pos_total}, overlap = {overlap_count}")
+    #     print(f"Layer {layer}:")
+    #     # print(f"  low total = {neg_total}, high total = {pos_total}, overlap = {overlap_count}")
         
-        print(f"  Low remove nums: {low_remove_num}")
-        print(f"  High remove nums: {high_remove_num}")
+    #     print(f"  Low remove nums: {low_remove_num}")
+    #     print(f"  High remove nums: {high_remove_num}")
         
-        # start remove
-        for index, rem_f in enumerate(high_remove_num):
-            # remove second layer negative curvature edges
-            net_neg = copy.deepcopy(net_H)
-            net_neg.__build_remove_mask__(pos_edges, rem_f)
-            # test acc
-            acc = test_clean(net_neg, test_loader)
-            high_acc_clean.append(acc)
+    #     # start remove
+    #     for index, rem_f in enumerate(high_remove_num):
+    #         # remove second layer negative curvature edges
+    #         net_neg = copy.deepcopy(net_H)
+    #         net_neg.__build_remove_mask__(pos_edges, rem_f)
+    #         # test acc
+    #         acc = test_clean(net_neg, test_loader)
+    #         high_acc_clean.append(acc)
             
-        for index, rem_f in enumerate(low_remove_num):
-            # remove positive curvature edges
-            net_pos = copy.deepcopy(net_H)
-            net_pos.__build_remove_mask__(neg_edges, rem_f)
-            # test acc
-            acc_low = test_clean(net_pos, test_loader)
-            low_acc_clean.append(acc_low)
+    #     for index, rem_f in enumerate(low_remove_num):
+    #         # remove positive curvature edges
+    #         net_pos = copy.deepcopy(net_H)
+    #         net_pos.__build_remove_mask__(neg_edges, rem_f)
+    #         # test acc
+    #         acc_low = test_clean(net_pos, test_loader)
+    #         low_acc_clean.append(acc_low)
         
-        plot_curve(high_acc_clean, low_acc_clean, low_remove_num, res_path, model_full_n+activation+str(layer))   
+    #     plot_curve(high_acc_clean, low_acc_clean, low_remove_num, res_path, model_full_n+activation+str(layer))   
         
     
     

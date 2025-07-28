@@ -120,7 +120,7 @@
 
 - python removal.py --lidar 0 --metric w3 --model_type fc --model_name big_ori --model_path pgd/models/new/ --mnist_res_path statistics/w3/tanh/bigori/ --edge 0 --node 0 --activation tanh --community 1 --sample_num 100
 
-- python removal.py --lidar 0 --metric w4 --model_type fc --model_name big_ori --model_path pgd/models/new/ --mnist_data_path res/w4/relu/bigori/ --mnist_res_path statistics/remove/relu/bigori/ --edge 1 --node 0 --activation relu --sample_num 100
+- python removal.py --lidar 0 --metric w4 --model_type fc --model_name big_ori --model_path pgd/models/new/ --mnist_data_path res/w4/relu/bigori/ --mnist_res_path statistics/aaai/relu/bigori/ --edge 1 --node 0 --activation relu --sample_num 100
 
 - python removal.py --lidar 0 --metric w4 --model_type cnn --model_name ori --model_path CNN/models/new/ --mnist_data_path res/w4/relu/cifarori/ --mnist_res_path statistics/remove/relu/cifarori/ --edge 1 --node 0 --activation relu --sample_num 10 --dataset cifar
 
