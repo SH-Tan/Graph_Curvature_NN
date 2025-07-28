@@ -164,10 +164,10 @@ def get_top_c(curvature, b, prefix_dims):
 
         for i, j, curr in valid:
             i, j = int(i), int(j)
-            mini_c = min(mini_c, curr)
             i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
             if i_layer >= 2: 
                 if curr < 0:
+                    mini_c = min(mini_c, curr)
                     neg_e.add((i, j, curr))
                 elif curr > 0:
                     pos_e.add((i, j, curr))
