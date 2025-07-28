@@ -89,7 +89,7 @@ if __name__=='__main__':
                 community_check_fc(args)
         elif model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
-                remove_w_cnn(args)
+                remove_edge_cnn_union_perlayer(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
