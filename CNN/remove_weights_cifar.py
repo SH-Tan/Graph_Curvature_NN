@@ -333,6 +333,35 @@ def plot_curve(high_clean_acc, low_clean_acc, remove_num, res_path, name):
     plt.savefig(os.path.join(res_path, f'{name}_remove_w_curve.pdf'), dpi=300)
     plt.close()
     
+    
+def plot_tensor_hist(tensor, bins=1000, title="Histogram", log=False, save_path=None):
+    """
+    Plot a histogram of a PyTorch tensor.
+    - tensor: torch.Tensor (can be on CPU or GPU)
+    - bins: number of histogram bins
+    - log: set True for a log-scaled y-axis
+    - save_path: if provided, save the figure to this path
+    """
+    # Detach, move to CPU, flatten, and filter finite values
+    t = tensor.detach().float().flatten().cpu()
+    finite_mask = torch.isfinite(t)
+    t = t[finite_mask]
+    if t.numel() == 0:
+        print("No finite values to plot.")
+        return
+
+    # Convert to numpy for matplotlib
+    arr = t.numpy()
+
+    plt.figure(figsize=(7,4))
+    plt.hist(arr, bins=bins, log=log)
+    plt.xlabel("Value")
+    plt.ylabel("Count")
+    plt.title(title)
+    plt.grid(True, alpha=0.3)
+    plt.savefig(os.path.join(save_path, f'Histogram_remove_w_curve.pdf'), dpi=300)
+    plt.close()
+    
 
 def set_seed(seed):
     random.seed(seed)
@@ -391,7 +420,7 @@ def remove_w_cifar(args):
     net_H = VGG16_CIFAR10(model_dims, None, device)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
-
+    
     # acc_clean = test_clean(net_H, test_loader)
     # print(acc_clean)
     
@@ -407,7 +436,11 @@ def remove_w_cifar(args):
     edge_array, nodes_ori, output = net_full.NN_info_batch(img)
     del img, edge_array, nodes_ori
     
-    weights = output.detach().to(device)  
+    weights = output[0].detach().to(device).unsqueeze(0)
+    print(weights.shape)
+    plot_tensor_hist(torch.abs(weights), bins=100, title="Output Weights Histogram", save_path=res_path) 
+    print(f'Finish Histgrom..')
+    
     sorted_edges_high, sorted_edges_low = get_last_three_layer_edges_sorted_cnn(model_dims_small, weights, prefix_dims, device, pre_n=pre_n) 
 
     # Step 1: Convert tensors to numpy BEFORE separating by layer
@@ -418,8 +451,8 @@ def remove_w_cifar(args):
     neg_total = len(sorted_edges_low_np)
     pos_total = len(sorted_edges_high_np)
     
-    low_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
-    high_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
+    low_remove_num = list(np.linspace(0, neg_total, num=15, dtype=int))
+    high_remove_num = list(np.linspace(0, pos_total, num=15, dtype=int))
     
     high_acc_clean = []
     low_acc_clean = []

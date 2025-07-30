@@ -352,6 +352,7 @@ def process_edge(b, edge):
         return (b,i, j, 2.0)
     
     m = ot.emd2(mu, nu, d_np)
+    print(f'{i} - {j}: {len(mu)} - {len(nu)} - W = {m}')
 
     return (b, i, j, 1.0 - m/sp)
 
@@ -603,23 +604,30 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     
     
     # middle layer
-    for layer in layers:
-        if 1 < layer < len(dims) - 2:
-            sp_array = sp_dict[(layer, layer + 1)]
-            layer_W = _W.get(layer, None)
+    # count = 0
+    # for layer in layers:
+    #     if count > 10:
+    #         break
+    #     if 1 < layer < len(dims) - 2:
+    #         sp_array = sp_dict[(layer, layer + 1)]
+    #         layer_W = _W.get(layer, None)
 
-            for b in range(batch_size):
-                non_inf = torch.nonzero(torch.isfinite(sp_array[b]), as_tuple=False).cpu().numpy()
-                for src, dst in non_inf:
-                    i_global = prefix_dims[layer] + int(src)
-                    j_global = prefix_dims[layer + 1] + int(dst)
+    #         for b in range(batch_size):
+    #             non_inf = torch.nonzero(torch.isfinite(sp_array[b]), as_tuple=False).cpu().numpy()
+    #             for src, dst in non_inf:
+    #                 i_global = prefix_dims[layer] + int(src)
+    #                 j_global = prefix_dims[layer + 1] + int(dst)
 
-                    if layer_W is None:
-                        layer_W = getW(b, i_global, j_global, layer, layer + 1)
-                        _W[layer] = layer_W  # cache for rest of this (and future) layers
+    #                 if layer_W is None:
+    #                     layer_W = getW(b, i_global, j_global, layer, layer + 1)
+    #                     _W[layer] = layer_W  # cache for rest of this (and future) layers
 
-                    sp = sp_array[b, src, dst].item()
-                    ricci_results[b].append((i_global + _pre_n, j_global + _pre_n, 1.0 - layer_W / sp))
+    #                 sp = sp_array[b, src, dst].item()
+    #                 ricci_results[b].append((i_global + _pre_n, j_global + _pre_n, 1.0 - layer_W / sp))
+    #                 count += 1
+    #                 print(f'W = {layer_W}')
+    #                 if count > 10:
+    #                     break
                     
     # print(f'Finish middle layer')
         
@@ -629,17 +637,19 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     # layer = layers[-1]
 
     for layer in layers:
-        if layer <= 1 or layer == len(dims) - 2:
-            sp_array = sp_dict[(layer, layer+1)]
-            
-            for b in range(batch_size):
-                non_inf = torch.nonzero(torch.isfinite(sp_array[b]), as_tuple=False).cpu().numpy()
-                for src, dst in non_inf:
-                    global_src = prefix_dims[layer] + src
-                    global_dst = prefix_dims[layer+1] + dst
-            
-                    # print(f'{src} - {dst}: {sp_array[b][src][dst]} {_sp_dict[(layer, layer+1)][b][src][dst]} - {global_src}:{global_dst}')
-                    edges.append((b, (global_src, global_dst)))
+        # if layer <= 1 or layer == len(dims) - 2:
+        sp_array = sp_dict[(layer, layer+1)]
+        
+        for b in range(batch_size):
+            non_inf = torch.nonzero(torch.isfinite(sp_array[b]), as_tuple=False).cpu().numpy()
+            for src, dst in non_inf:
+                global_src = prefix_dims[layer] + src
+                global_dst = prefix_dims[layer+1] + dst
+        
+                # print(f'{src} - {dst}: {sp_array[b][src][dst]} {_sp_dict[(layer, layer+1)][b][src][dst]} - {global_src}:{global_dst}')
+                edges.append((b, (global_src, global_dst)))
+                if (len(edges) > 10):
+                    break
 
     args = [(b, edge) for b, edge in edges]
     
