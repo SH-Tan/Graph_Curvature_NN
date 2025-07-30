@@ -225,7 +225,7 @@ def community_check_cifar100(args):
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
     val_set = load_dataset_from_disk("./data/CIFAR100_val", batch_size=64, shuffle=False)
-    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=128)
+    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=2)
     
     dims_full = cal_dims(model_dims)
     dims = cal_dims(model_dims_small)
@@ -354,7 +354,7 @@ def community_check_cifar100(args):
                                     model_dims=model_dims_small,
                                     probability_w=weights_inv2, alpha=alpha,
                                     pre_n=(np.sum(dims_full) - np.sum(dims)),
-                                    layers_to_process=[2]
+                                    layers_to_process=[1,2,3]
                                 )
                             else:
                                 raise Exception("Invalid graph metric, should be {w1, w3, w4}!")
