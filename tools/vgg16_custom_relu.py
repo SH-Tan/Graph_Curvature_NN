@@ -266,7 +266,7 @@ class VGG16_CIFAR10(nn.Module):
 
     
 
-        # calculate edge weights
+    # calculate edge weights
     def NN_info_batch(self, x):
         x = self.normalize(x)
         x = self.features(x)  # First 11 conv layers (conv1_1 to conv4_3)

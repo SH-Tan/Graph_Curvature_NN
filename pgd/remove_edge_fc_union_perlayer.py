@@ -354,6 +354,8 @@ def plot_frequency_distribution(summary, res_path, mark):
     sorted_freqs = sorted(freq_counter.items(), key=lambda x: x[0])
     x = [f for f, _ in sorted_freqs]
     y = [c for _, c in sorted_freqs]
+    
+    # print(x,y)
 
     plt.figure(figsize=(8, 5))
     plt.bar(x, y, color='skyblue', edgecolor='black')

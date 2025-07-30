@@ -106,10 +106,10 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
                                               min_plus_mult(shortest_paths[(i, k)], 
                                                           shortest_paths[(k, j)]))
             
-            if (i, j-1) in shortest_paths and (j-1, j) in shortest_paths:
-                current_min = torch.minimum(current_min,
-                                          min_plus_mult(shortest_paths[(i, j-1)],
-                                                      shortest_paths[(j-1, j)]))
+            # if (i, j-1) in shortest_paths and (j-1, j) in shortest_paths:
+            #     current_min = torch.minimum(current_min,
+            #                               min_plus_mult(shortest_paths[(i, j-1)],
+            #                                           shortest_paths[(j-1, j)]))
             
             shortest_paths[(i, j)] = current_min
             

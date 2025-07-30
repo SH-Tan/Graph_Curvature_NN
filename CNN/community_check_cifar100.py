@@ -46,7 +46,7 @@ model_dims = {
 
     9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
     10: {"name": "fc", "dim": {"out_size": 512}},
-    11: {"name": "fc", "dim": {"out_size": 10}}
+    11: {"name": "fc", "dim": {"out_size": 100}}
 }
 
 
@@ -57,10 +57,10 @@ model_dims_small = {
 
     3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
     4: {"name": "fc", "dim": {"out_size": 512}},
-    5: {"name": "fc", "dim": {"out_size": 10}}
+    5: {"name": "fc", "dim": {"out_size": 100}}
 }
 
-selected_classes = [0,1,2,3,4,5,6,7,8,9]
+selected_classes = list(range(100))
 
 
 def load_dataset_from_disk(path, batch_size=128, shuffle=True):
@@ -205,7 +205,7 @@ def cal_edges(model_dims):
 
 
 
-def community_check_cifar(args):
+def community_check_cifar100(args):
     seed = 29
     
     # set random seed
@@ -217,14 +217,14 @@ def community_check_cifar(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
-    val_set = load_dataset_from_disk("./data/CIFAR10_val", batch_size=64, shuffle=False)
-    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=32)
+    val_set = load_dataset_from_disk("./data/CIFAR100_val", batch_size=64, shuffle=False)
+    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=2)
     
     dims_full = cal_dims(model_dims)
     dims = cal_dims(model_dims_small)
@@ -257,7 +257,7 @@ def community_check_cifar(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg16_ori_"
+        model_name = "vgg16_100_ori_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
@@ -265,7 +265,7 @@ def community_check_cifar(args):
         
     model_name = model_name + activation + ".pth"
     
-    net_H = VGG16_CIFAR10(model_dims, None, device)
+    net_H = VGG16_CIFAR10(model_dims, None, device, num_classes=100)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
@@ -294,7 +294,7 @@ def community_check_cifar(args):
                 finished_labels.add(l)
                 continue
 
-            num_needed = min(10, sample_size - label_progress[l])  # Process up to 10 per round
+            num_needed = min(1, sample_size - label_progress[l])  # Process up to 10 per round
             current_count = 0
 
             try:
@@ -368,14 +368,13 @@ def community_check_cifar(args):
 
                             label_progress[l] += 1
                             current_count += 1
-                            # print("Finish one..")
 
             except StopIteration:
                 finished_labels.add(l)
                 continue
 
         # === Check if all labels have collected 10 new samples ===
-        if all(len(res_l[l]) == 10 for l in selected_classes if label_progress[l] < sample_size) or finished_l >= len(selected_classes):
+        if all(len(res_l[l]) >= 1 for l in selected_classes if label_progress[l] < sample_size) or finished_l >= len(selected_classes):
             save_name = f"{model_full_n}_{metric}_{dataset}_batch{round_id}.pkl"
             save_path = os.path.join(res_path, save_name)
 
