@@ -262,4 +262,6 @@ models_diff_10l/
 # editor, os cache directory
 .vscode/
 .idea/
-__MACOSX/
+__MACOSX/*.pth
+*.pt
+*.ckpt
