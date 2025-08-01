@@ -314,12 +314,33 @@ def plot_curve(high_clean_acc, low_clean_acc, remove_num, res_path, name):
 
     # Scientific x-axis
     ax = plt.gca()
-    ax.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
-    ax.xaxis.get_offset_text().set_fontsize(20)
-    ax.xaxis.get_offset_text().set_fontweight('semibold')
+    
+    # Compute exponent (e.g., 1e+3, 1e+4) based on the max value
+    exponent = int(np.floor(np.log10(max(remove_num))))
+    scale = 10 ** exponent
 
-    # Ticks
-    plt.xticks(fontsize=22, fontweight='semibold')
+    # Scale values and format tick labels as mantissas only
+    scaled_ticks = [x / scale for x in remove_num]
+    mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
+
+    # Set the ticks and the scaled mantissa labels
+    plt.xticks(ticks=remove_num, labels=mantissa_labels, fontsize=22, fontweight='semibold')
+
+    # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
+    ax.annotate(
+            f"×1e{exponent}",
+            xy=(1.0, 0.0), xycoords='axes fraction',  # Right end of x-axis
+            xytext=(10, -35), textcoords='offset points',  # Just below and slightly to the left
+            ha='right', va='top',
+            fontsize=18, fontweight='semibold'
+        )
+    
+    # ax.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    # ax.xaxis.get_offset_text().set_fontsize(20)
+    # ax.xaxis.get_offset_text().set_fontweight('semibold')
+
+    # # Ticks
+    # plt.xticks(fontsize=22, fontweight='semibold')
     plt.yticks(fontsize=22, fontweight='semibold')
 
     # Grid and legend
@@ -354,7 +375,7 @@ def plot_tensor_hist(tensor, bins=1000, title="Histogram", log=False, save_path=
     arr = t.numpy()
 
     plt.figure(figsize=(7,4))
-    plt.hist(arr[:100000], bins=bins, log=False)
+    plt.hist(arr, bins=bins, log=False)
     plt.xlabel("Value")
     plt.ylabel("Count")
     plt.title(title)
@@ -381,7 +402,7 @@ def remove_w_cifar100(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
     
@@ -437,15 +458,15 @@ def remove_w_cifar100(args):
     edge_array, nodes_ori, output = net_full.NN_info_batch(img)
     del img, edge_array, nodes_ori
     
-    weights = output[0].detach().to(device).unsqueeze(0)
+    weights = output.detach().to(device)
     
     print(weights.shape)
     
-    weights_abs = torch.abs(weights)
-    print(len(weights_abs[weights_abs<1]))
-    print(weights_abs.shape)
-    plot_tensor_hist(weights_abs[weights_abs<1], bins=100, title="Output Weights Histogram", save_path=res_path) 
-    print(f'Finish Histgram..')
+    # weights_abs = torch.abs(weights)
+    # print(len(weights_abs[0][weights_abs[0]<1]))
+    # print(weights_abs.shape)
+    # plot_tensor_hist(weights_abs[0], bins=100, title="Output Weights Histogram", save_path=res_path) 
+    # print(f'Finish Histgram..')
     sorted_edges_high, sorted_edges_low = get_last_three_layer_edges_sorted_cnn(model_dims_small, weights, prefix_dims, device, pre_n=pre_n) 
 
     # Step 1: Convert tensors to numpy BEFORE separating by layer
@@ -456,8 +477,8 @@ def remove_w_cifar100(args):
     neg_total = len(sorted_edges_low_np)
     pos_total = len(sorted_edges_high_np)
     
-    low_remove_num = list(np.linspace(0, neg_total, num=20, dtype=int))
-    high_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
+    low_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
+    high_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
     
     high_acc_clean = []
     low_acc_clean = []

@@ -27,6 +27,7 @@ from CNN.remove_edge_cnn_union_perlayer import remove_edge_cnn_union_perlayer
 from CNN.remove_edge_cifar_union import remove_edge_cifar_union
 from CNN.remove_edge_cifar100_union import remove_edge_cifar100_union
 from CNN.remove_edge_cifar_union_perlayer import remove_edge_cifar_union_perlayer
+from CNN.remove_edge_cifar100_union_perlayer import remove_edge_cifar100_union_perlayer
 from CNN.remove_weights_cifar import remove_w_cifar
 from CNN.remove_weights_cifar100 import remove_w_cifar100
 from pgd.community_check_fc import community_check_fc
@@ -93,16 +94,16 @@ if __name__=='__main__':
                 community_check_fc(args)
         elif model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
-                remove_edge_cnn_union(args)
+                remove_edge_cnn_union_perlayer(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                remove_edge_cifar_union_perlayer(args)
-                # remove_w_cifar(args)
-                remove_edge_cifar100_union(args)
+                # remove_edge_cifar100_union(args)
+                remove_w_cifar100(args)
+                # remove_edge_cifar100_union_perlayer(args)
             if args.community and args.dataset.lower() == "cifar":
                 # community_check_cifar(args)
-                community_check_cifar(args)
+                community_check_cifar100(args)
             if args.community and args.dataset.lower() == "imagenet":
                 community_check_imagenet(args)
         else:

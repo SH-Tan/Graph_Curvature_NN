@@ -330,7 +330,7 @@ def compute_removal_mapping(summary, total_edges):
     for freq_threshold in freqs:
         count = sum(1 for (_, _, freq, _) in summary if freq >= freq_threshold)
         ratio = freq_threshold / total_edges
-        mapping.append((count, freq_threshold, str(count), f"{ratio:.1f}"))
+        mapping.append((count, freq_threshold, str(count), f"{ratio:.2f}"))
     return mapping
 
 # 2. Match removal counts to closest frequency thresholds
@@ -354,7 +354,7 @@ def plot_curve(
     neg_clean_acc, pos_clean_acc,
     neg_remove_num, pos_remove_num,
     label, res_path,
-    neg_freq_labels=None, pos_freq_labels=None
+    neg_freq_labels=None, pos_freq_labels=None, x_axis=None
 ):
     # Colors
     neg_color = '#00A3E0'
@@ -389,9 +389,33 @@ def plot_curve(
 
     # Set scientific notation on x-axis
     ax = plt.gca()
-    ax.ticklabel_format(style='sci', axis='x', scilimits=(0,0)) 
-    ax.xaxis.get_offset_text().set_fontsize(20)
-    ax.xaxis.get_offset_text().set_fontweight('semibold')
+    
+    # Override the x-axis ticks/labels if `x_axis` is given
+    if x_axis is not None:
+        # Compute exponent (e.g., 1e+3, 1e+4) based on the max value
+        exponent = int(np.floor(np.log10(max(x_axis))))
+        scale = 10 ** exponent
+
+        # Scale values and format tick labels as mantissas only
+        scaled_ticks = [x / scale for x in x_axis]
+        mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
+
+        # Set the ticks and the scaled mantissa labels
+        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=22, fontweight='semibold')
+
+        # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
+        ax.annotate(
+            f"×1e{exponent}",
+            xy=(1.0, 0.0), xycoords='axes fraction',  # Right end of x-axis
+            xytext=(10, -35), textcoords='offset points',  # Just below and slightly to the left
+            ha='right', va='top',
+            fontsize=18, fontweight='semibold'
+        )
+    else:
+        plt.xticks(fontsize=22, fontweight='semibold')
+        ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
+        ax.xaxis.get_offset_text().set_fontsize(20)
+        ax.xaxis.get_offset_text().set_fontweight('semibold')
 
     # Ticks
     plt.xticks(fontsize=22, fontweight='semibold')
@@ -399,7 +423,7 @@ def plot_curve(
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
-    legend = plt.legend(fontsize=22, loc='best')  # create the legend
+    legend = plt.legend(fontsize=22, loc=0)  # create the legend
     for text in legend.get_texts():
         text.set_fontweight('semibold')  # or 'bold'
 
@@ -508,7 +532,7 @@ def remove_edge_cifar_union(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -610,9 +634,10 @@ def remove_edge_cifar_union(args):
             with open(save_path, 'wb') as f:
                 pickle.dump(data_to_save, f)  # use dict to avoid defaultdict issues
 
-            print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
             ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
             ff.write(f'The average minimum c is {np.mean(mini_c_list)}, median = {np.median(mini_c_list)}\n\n')
+    
+    print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
     
     neg_acc_clean = []
     pos_acc_clean = []
@@ -624,11 +649,9 @@ def remove_edge_cifar_union(args):
     pos_total = len(pos_edges_only)
 
     # Generate uniformly spaced points (including 0 and total) for each list
-    # neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
-    # pos_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
-    remove_num = list(np.linspace(0, total_edge, num=15, dtype=int))
-    neg_remove_num = []
-    pos_remove_num = []
+    neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
+    pos_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
+    remove_num = list(np.linspace(0, total_edge, num=10, dtype=int))
     
     total = sample_size * len(selected_classes)
         
@@ -636,8 +659,8 @@ def remove_edge_cifar_union(args):
     neg_freq_map = compute_removal_mapping(neg_freq_edges_sorted, total_edges=total)
     pos_freq_map = compute_removal_mapping(pos_freq_edges_sorted, total_edges=total)
 
-    neg_freq_labels = match_frequencies(remove_num, neg_freq_map)
-    pos_freq_labels = match_frequencies(remove_num, pos_freq_map)
+    neg_freq_labels = match_frequencies(neg_remove_num, neg_freq_map)
+    pos_freq_labels = match_frequencies(pos_remove_num, pos_freq_map)
 
     # Step 2: Choose thresholds — you can just use them all or downsample if too many
     # neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
@@ -651,7 +674,7 @@ def remove_edge_cifar_union(args):
     # pos_remove_num = [sum(1 for (_, _, freq, _) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
         
     # start remove
-    for index, rem_f in enumerate(remove_num):
+    for index, rem_f in enumerate(neg_remove_num):
         # ff.write(f'Remove edge number {rem_f}: \n')
 
         # remove second layer negative curvature edges
@@ -661,13 +684,9 @@ def remove_edge_cifar_union(args):
         acc_clean_neg = test_clean(net_neg, test_loader)
         neg_acc_clean.append(acc_clean_neg)
         
-        neg_remove_num.append(rem_f)
-        if (rem_f > neg_total):
-            break
-        
         # ff.write(f'After remove {rem_f} negative edges, the acc is {acc_clean_neg}\n')
 
-    for index, rem_f in enumerate(remove_num):
+    for index, rem_f in enumerate(pos_remove_num):
         # remove positive curvature edges
         net_pos = copy.deepcopy(net_H)
         net_pos.__build_remove_mask__(pos_edges_only, rem_f)
@@ -675,10 +694,6 @@ def remove_edge_cifar_union(args):
         acc_clean_pos = test_clean(net_pos, test_loader)
         pos_acc_clean.append(acc_clean_pos)
         # ff.write(f'After remove {rem_f} negative edges, the acc is {acc_clean_pos}\n')
-
-        pos_remove_num.append(rem_f)
-        if (rem_f > pos_total):
-            break
     
     # Plot
     plot_curve(
@@ -689,7 +704,8 @@ def remove_edge_cifar_union(args):
         label=sample_size,
         res_path=res_path,
         neg_freq_labels=neg_freq_labels,
-        pos_freq_labels=pos_freq_labels
+        pos_freq_labels=pos_freq_labels,
+        x_axis = remove_num
     )
         # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
 

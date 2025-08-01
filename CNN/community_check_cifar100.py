@@ -60,8 +60,8 @@ model_dims_small = {
     5: {"name": "fc", "dim": {"out_size": 100}}
 }
 
-# selected_classes = list(range(100))
-selected_classes = [0]
+selected_classes = list(range(100))
+# selected_classes = [0]
 
 
 def load_dataset_from_disk(path, batch_size=128, shuffle=True):
@@ -218,14 +218,14 @@ def community_check_cifar100(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
     val_set = load_dataset_from_disk("./data/CIFAR100_val", batch_size=64, shuffle=False)
-    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=128)
+    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=2)
     
     dims_full = cal_dims(model_dims)
     dims = cal_dims(model_dims_small)
@@ -286,6 +286,8 @@ def community_check_cifar100(args):
     data_iterators = {l: iter(robust_pair[l]) for l in selected_classes}
     finished_labels = set()
     round_id = 1  # Track how many full batches have been saved
+    
+    print(len(robust_pair[0]))
 
     while len(finished_labels) < len(selected_classes):
         finished_l = 0
@@ -354,7 +356,7 @@ def community_check_cifar100(args):
                                     model_dims=model_dims_small,
                                     probability_w=weights_inv2, alpha=alpha,
                                     pre_n=(np.sum(dims_full) - np.sum(dims)),
-                                    layers_to_process=[2]
+                                    layers_to_process=[1,2,3]
                                 )
                             else:
                                 raise Exception("Invalid graph metric, should be {w1, w3, w4}!")
