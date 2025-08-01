@@ -313,7 +313,7 @@ def plot_curve(
     neg_clean_acc, pos_clean_acc,
     neg_remove_num, pos_remove_num,
     label, res_path,
-    neg_freq_labels=None, pos_freq_labels=None
+    neg_freq_labels=None, pos_freq_labels=None, x_axis=None
 ):
     # Colors
     neg_color = '#00A3E0'
@@ -348,23 +348,48 @@ def plot_curve(
 
     # Set scientific notation on x-axis
     ax = plt.gca()
-    ax.ticklabel_format(style='sci', axis='x', scilimits=(0,0)) 
-    ax.xaxis.get_offset_text().set_fontsize(20)
-    ax.xaxis.get_offset_text().set_fontweight('semibold')
+    
+    # Override the x-axis ticks/labels if `x_axis` is given
+    if x_axis is not None:
+        # Compute exponent (e.g., 1e+3, 1e+4) based on the max value
+        exponent = int(np.floor(np.log10(max(x_axis))))
+        scale = 10 ** exponent
 
+        # Scale values and format tick labels as mantissas only
+        scaled_ticks = [x / scale for x in x_axis]
+        mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
+
+        # Set the ticks and the scaled mantissa labels
+        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=22, fontweight='semibold')
+
+        # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
+        ax.annotate(
+            f"×1e{exponent}",
+            xy=(1.0, 0.0), xycoords='axes fraction',  # Right end of x-axis
+            xytext=(10, -35), textcoords='offset points',  # Just below and slightly to the left
+            ha='right', va='top',
+            fontsize=18, fontweight='semibold'
+        )
+    else:
+        plt.xticks(fontsize=22, fontweight='semibold')
+        ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
+        ax.xaxis.get_offset_text().set_fontsize(20)
+        ax.xaxis.get_offset_text().set_fontweight('semibold')
+        
     # Ticks
     plt.xticks(fontsize=22, fontweight='semibold')
     plt.yticks(fontsize=22, fontweight='semibold')
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
-    legend = plt.legend(fontsize=22, loc='best')  # create the legend
+    legend = plt.legend(fontsize=22, loc=0)  # create the legend
     for text in legend.get_texts():
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
     plt.savefig(os.path.join(res_path, f'{label}_curve_all.pdf'), dpi=300)
     plt.close()
+    
 
 
 from collections import Counter
@@ -384,6 +409,37 @@ def count_edge_frequency(edge_sets):
         results.append((key[0], key[1], freq[key], avg_curv))
 
     return results
+
+
+
+def cal_edges(model_dims):
+    edges = []
+    layer_num = len(model_dims)
+    
+    for i in range(2, layer_num + 1):
+        cur_name = model_dims[i]["name"]
+        cur_dim = model_dims[i]["dim"]
+        cur_size = cur_dim['out_size']
+
+        pre_name = model_dims[i-1]["name"]
+        pre_dim = model_dims[i-1]["dim"]
+        pre_size = pre_dim['out_size']
+
+        if cur_name == "cnn":
+            k = cur_dim['kernel']
+            pool = cur_dim.get('pool', False)
+            if pool:
+                cur_size *= 2
+            pre_channel = 1 if (pre_name == "fc") else pre_dim['channel']
+            cur_edges = pre_channel * k**2 * cur_size**2 * cur_dim['channel']
+        else:
+            pre_nodes = pre_size if (pre_name == "fc") else pre_dim['channel']*(pre_size**2)
+            cur_edges = cur_size * pre_nodes
+            
+        edges.append(cur_edges)
+    
+    return edges
+
 
 
 
@@ -408,10 +464,7 @@ def remove_edge_cnn_union(args):
     train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
     # sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
-    
-    eps = [0.03]
-    dims = cal_dims(model_dims)
-    
+
     model_type = args.model_type
     model_pre_name = args.model_name
     res_path = args.mnist_res_path
@@ -432,6 +485,13 @@ def remove_edge_cnn_union(args):
 
     dims = cal_dims(model_dims)
     prefix_dims = np.cumsum([0] + dims).tolist()
+    
+    edge_dims = cal_edges(model_dims)
+    
+    total_edge = sum(edge_dims) - edge_dims[0] - edge_dims[1]
+    
+    print(edge_dims)
+    print(total_edge)
     
     if not os.path.exists(res_path):
         os.makedirs(res_path)
@@ -457,130 +517,142 @@ def remove_edge_cnn_union(args):
     remove_num = []
   
     test_cleanacc = test_clean(net_full, test_loader)
-    # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
+    # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)   
 
-    correct_suffix_res = dataset + "_res_correct.pkl" 
-    res_name = model_full_n + metric + '_' + correct_suffix_res
-
-    with open(data_path + res_name, 'rb') as file:
-        res_dict = pickle.load(file)    
-
-    freq_ratios = [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0]
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}.pkl"
+    save_path = os.path.join(res_path, save_name)
     
-    with open(res_path + "edge_cnn_" + ".txt", "a+") as ff:
-        ff.write(f'For model {model_name}: \n')
-        ff.write(f'The clean accuracy for original model is {test_cleanacc}\n')
-        # print(f'Current label {l}: \n')
-        # ff.write(f'Current label {l}: \n')
-
-        neg_acc_clean = []
-        pos_acc_clean = []
-        neg_edge_sets = []
-        pos_edge_sets = []
-        mini_c_list = []
-        for l in selected_classes:
-            idx = 0
-            for (ricci, batch, dim, node) in res_dict[l]:
-                neg_e_other, pos_e, mini_c = get_top_c(ricci, 1, prefix_dims)
-                neg_edge_sets.append(neg_e_other)
-                pos_edge_sets.append(pos_e)
-                mini_c_list.append(mini_c)
-                idx += 1
-                if idx >= sample_size:
-                    break
-
-        neg_freq_dict = count_edge_frequency(neg_edge_sets)
-        pos_freq_dict = count_edge_frequency(pos_edge_sets)
-        neg_freq_edges_sorted = sorted(neg_freq_dict, key=lambda x: (-x[2], x[3]))
-        pos_freq_edges_sorted = sorted(pos_freq_dict, key=lambda x: (-x[2], -x[3]))
-        
-        mini_c_list = np.array(mini_c_list)
-
-        print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
-        ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
-        ff.write(f'The average minimum c is {np.mean(mini_c_list)}, median = {np.median(mini_c_list)}\n\n')
-        
-        neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
-        pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]
-
-        # Compute overlap
-        # Convert to sets for fast overlap calculation
-        neg_set = set(neg_edges_only)
-        pos_set = set(pos_edges_only)
-        overlap = neg_set & pos_set
-        overlap_count = len(overlap)
-        ff.write(f"\nNumber of overlapping edges: {overlap_count}\n")
-        
-        neg_total = len(neg_edges_only)
-        pos_total = len(pos_edges_only)
-
-        # remove_num = [0, 5000, (int)(len(neg_edges_only)*0.3), (int)(len(neg_edges_only)*0.5), (int)(len(neg_edges_only)*0.7), len(neg_edges_only), (int)(len(pos_edges_only)*0.7), (int)(len(pos_edges_only)*0.9), (int)(len(pos_edges_only))]
-        # Generate uniformly spaced points (including 0 and total) for each list
-        neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
-        pos_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
-        
-        total = sample_size * len(selected_classes)
-        
-        # Build frequency mappings
-        neg_freq_map = compute_removal_mapping(neg_freq_edges_sorted, total_edges=total)
-        pos_freq_map = compute_removal_mapping(pos_freq_edges_sorted, total_edges=total)
-
-        neg_freq_labels = match_frequencies(neg_remove_num, neg_freq_map)
-        pos_freq_labels = match_frequencies(pos_remove_num, pos_freq_map)
-        
-        # # Step 2: Choose thresholds — you can just use them all or downsample if too many
-        # neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
-        # neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
-
-        # pos_max_freq = max(freq for (_, _, freq, _) in pos_freq_edges_sorted)
-        # pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
-        
-        # # Step 3: For each threshold, count how many edges would be removed
-        # neg_remove_num = [sum(1 for (_, _, freq, _) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
-        # pos_remove_num = [sum(1 for (_, _, freq, _) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
+    print(save_path)
+    
+    if os.path.exists(save_path):
+        with open(save_path, 'rb') as f:
+            data_loaded = pickle.load(f)
+            # Access the contents
+            neg_freq_edges_sorted = data_loaded.get('neg', [])
+            pos_freq_edges_sorted = data_loaded.get('pos', [])
+        print("File loaded successfully!")
+    else:
+    
+        with open(res_path + "edge_cnn_" + ".txt", "a+") as ff:
+            ff.write(f'For model {model_name}: \n')
+            ff.write(f'The clean accuracy for original model is {test_cleanacc}\n')
+            # print(f'Current label {l}: \n')
+            # ff.write(f'Current label {l}: \n')
             
+            correct_suffix_res = dataset + "_res_correct.pkl" 
+            res_name = model_full_n + metric + '_' + correct_suffix_res
+
+            with open(data_path + res_name, 'rb') as file:
+                res_dict = pickle.load(file) 
+
+            neg_acc_clean = []
+            pos_acc_clean = []
+            neg_edge_sets = []
+            pos_edge_sets = []
+            mini_c_list = []
+            for l in selected_classes:
+                idx = 0
+                for (ricci, batch, dim, node) in res_dict[l]:
+                    neg_e_other, pos_e, mini_c = get_top_c(ricci, 1, prefix_dims)
+                    neg_edge_sets.append(neg_e_other)
+                    pos_edge_sets.append(pos_e)
+                    mini_c_list.append(mini_c)
+                    idx += 1
+                    if idx >= sample_size:
+                        break
+
+            neg_freq_dict = count_edge_frequency(neg_edge_sets)
+            pos_freq_dict = count_edge_frequency(pos_edge_sets)
+            neg_freq_edges_sorted = sorted(neg_freq_dict, key=lambda x: (-x[2], x[3]))
+            pos_freq_edges_sorted = sorted(pos_freq_dict, key=lambda x: (-x[2], -x[3]))
             
-        # start remove
-        for index, rem_f in enumerate(neg_remove_num):
-            ff.write(f'Remove edge number {rem_f}: \n')
-
-            # remove second layer negative curvature edges
-            net_neg = copy.deepcopy(net_H)
-            net_neg.__build_remove_mask__(neg_edges_only, rem_f)
-            # test acc
-            acc_clean_neg = test_clean(net_neg, test_loader)
-            neg_acc_clean.append(acc_clean_neg)
-
-        for index, rem_f in enumerate(pos_remove_num):
-            # remove positive curvature edges
-            net_pos = copy.deepcopy(net_H)
-            net_pos.__build_remove_mask__(pos_edges_only, rem_f)
-            # test acc
-            acc_clean_pos = test_clean(net_pos, test_loader)
-            pos_acc_clean.append(acc_clean_pos)
+            save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}.pkl"
+            save_path = os.path.join(res_path, save_name)
             
-        
-        data_to_save = {
-            'neg': neg_freq_edges_sorted,
-            'pos': pos_freq_edges_sorted
-        }
-        
-        save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}.pkl"
-        save_path = os.path.join(res_path, save_name)
+            data_to_save = {
+                'neg': neg_freq_edges_sorted,
+                'pos': pos_freq_edges_sorted
+            }
 
-        with open(save_path, 'wb') as f:
-            pickle.dump(data_to_save, f)  # use dict to avoid defaultdict issues
+            with open(save_path, 'wb') as f:
+                pickle.dump(data_to_save, f)  # use dict to avoid defaultdict issues
+            
+            mini_c_list = np.array(mini_c_list)
+            
+            ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
+            ff.write(f'The average minimum c is {np.mean(mini_c_list)}, median = {np.median(mini_c_list)}\n\n')
+    
+    print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
+        
+    neg_acc_clean = []
+    pos_acc_clean = []
 
-        # Plot
-        plot_curve(
-            neg_clean_acc=neg_acc_clean,
-            pos_clean_acc=pos_acc_clean,
-            neg_remove_num=neg_remove_num,
-            pos_remove_num=pos_remove_num,
-            label=sample_size,
-            res_path=res_path,
-            neg_freq_labels=neg_freq_labels,
-            pos_freq_labels=pos_freq_labels
-        )
+    neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
+    pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]
+
+    
+    neg_total = len(neg_edges_only)
+    pos_total = len(pos_edges_only)
+
+    # remove_num = [0, 5000, (int)(len(neg_edges_only)*0.3), (int)(len(neg_edges_only)*0.5), (int)(len(neg_edges_only)*0.7), len(neg_edges_only), (int)(len(pos_edges_only)*0.7), (int)(len(pos_edges_only)*0.9), (int)(len(pos_edges_only))]
+    # Generate uniformly spaced points (including 0 and total) for each list
+    neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
+    pos_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
+    
+    remove_num = list(np.linspace(0, total_edge, num=10, dtype=int))
+    
+    total = sample_size * len(selected_classes)
+    
+    # Build frequency mappings
+    neg_freq_map = compute_removal_mapping(neg_freq_edges_sorted, total_edges=total)
+    pos_freq_map = compute_removal_mapping(pos_freq_edges_sorted, total_edges=total)
+
+    neg_freq_labels = match_frequencies(neg_remove_num, neg_freq_map)
+    pos_freq_labels = match_frequencies(pos_remove_num, pos_freq_map)
+    
+    # # Step 2: Choose thresholds — you can just use them all or downsample if too many
+    # neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
+    # neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
+
+    # pos_max_freq = max(freq for (_, _, freq, _) in pos_freq_edges_sorted)
+    # pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
+    
+    # # Step 3: For each threshold, count how many edges would be removed
+    # neg_remove_num = [sum(1 for (_, _, freq, _) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
+    # pos_remove_num = [sum(1 for (_, _, freq, _) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
+        
+        
+    # start remove
+    for index, rem_f in enumerate(neg_remove_num):
+        # ff.write(f'Remove edge number {rem_f}: \n')
+
+        # remove second layer negative curvature edges
+        net_neg = copy.deepcopy(net_H)
+        net_neg.__build_remove_mask__(neg_edges_only, rem_f)
+        # test acc
+        acc_clean_neg = test_clean(net_neg, test_loader)
+        neg_acc_clean.append(acc_clean_neg)
+
+    for index, rem_f in enumerate(pos_remove_num):
+        # remove positive curvature edges
+        net_pos = copy.deepcopy(net_H)
+        net_pos.__build_remove_mask__(pos_edges_only, rem_f)
+        # test acc
+        acc_clean_pos = test_clean(net_pos, test_loader)
+        pos_acc_clean.append(acc_clean_pos)
+        
+
+    # Plot
+    plot_curve(
+        neg_clean_acc=neg_acc_clean,
+        pos_clean_acc=pos_acc_clean,
+        neg_remove_num=neg_remove_num,
+        pos_remove_num=pos_remove_num,
+        label=sample_size,
+        res_path=res_path,
+        neg_freq_labels=neg_freq_labels,
+        pos_freq_labels=pos_freq_labels,
+        x_axis = remove_num
+    )
         # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
                 

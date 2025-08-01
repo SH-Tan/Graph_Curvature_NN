@@ -351,7 +351,7 @@ def plot_curve(
     neg_clean_acc, pos_clean_acc,
     neg_remove_num, pos_remove_num,
     label, res_path,
-    neg_freq_labels=None, pos_freq_labels=None
+    neg_freq_labels=None, pos_freq_labels=None, x_axis=None
 ):
     # Colors
     neg_color = '#00A3E0'
@@ -386,9 +386,33 @@ def plot_curve(
 
     # Set scientific notation on x-axis
     ax = plt.gca()
-    ax.ticklabel_format(style='sci', axis='x', scilimits=(0,0)) 
-    ax.xaxis.get_offset_text().set_fontsize(20)
-    ax.xaxis.get_offset_text().set_fontweight('semibold')
+    
+    # Override the x-axis ticks/labels if `x_axis` is given
+    if x_axis is not None:
+        # Compute exponent (e.g., 1e+3, 1e+4) based on the max value
+        exponent = int(np.floor(np.log10(max(x_axis))))
+        scale = 10 ** exponent
+
+        # Scale values and format tick labels as mantissas only
+        scaled_ticks = [x / scale for x in x_axis]
+        mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
+
+        # Set the ticks and the scaled mantissa labels
+        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=22, fontweight='semibold')
+
+        # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
+        ax.annotate(
+            f"×1e{exponent}",
+            xy=(1.0, 0.0), xycoords='axes fraction',  # Right end of x-axis
+            xytext=(10, -35), textcoords='offset points',  # Just below and slightly to the left
+            ha='right', va='top',
+            fontsize=18, fontweight='semibold'
+        )
+    else:
+        plt.xticks(fontsize=22, fontweight='semibold')
+        ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
+        ax.xaxis.get_offset_text().set_fontsize(20)
+        ax.xaxis.get_offset_text().set_fontweight('semibold')
 
     # Ticks
     plt.xticks(fontsize=22, fontweight='semibold')
@@ -505,7 +529,7 @@ def remove_edge_cifar100_union(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -563,14 +587,10 @@ def remove_edge_cifar100_union(args):
     print(total_edge)
 
     print(model_name)
-    # remove_frac = [0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.8, 1]
-    remove_num = []
       
     test_cleanacc = test_clean(net_full, test_loader)
     
     print(f'Finish Test..')
-
-    freq_ratios = [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0]
     
     print(f'Start removal..')
     
@@ -630,7 +650,8 @@ def remove_edge_cifar100_union(args):
 
     # Generate uniformly spaced points (including 0 and total) for each list
     neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
-    pos_remove_num = list(np.linspace(0, pos_total, num=2, dtype=int))
+    pos_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
+    remove_num = list(np.linspace(0, total_edge, num=10, dtype=int))
     # remove_num = list(np.linspace(0, total_edge, num=20, dtype=int))
     # neg_remove_num = []
     # pos_remove_num = []
@@ -694,7 +715,8 @@ def remove_edge_cifar100_union(args):
         label=sample_size,
         res_path=res_path,
         neg_freq_labels=neg_freq_labels,
-        pos_freq_labels=pos_freq_labels
+        pos_freq_labels=pos_freq_labels,
+        x_axis = remove_num
     )
         # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
 

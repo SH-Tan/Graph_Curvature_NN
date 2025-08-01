@@ -1,5 +1,5 @@
 import torch
-from torchvision.datasets.cifar import CIFAR10
+from torchvision.datasets.cifar import CIFAR100
 from torch.utils.data import TensorDataset, DataLoader
 import torchvision.transforms as transforms
 import torchvision
@@ -19,7 +19,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature import graph_curvature_main_torch
+from tools.graph_curvature_new import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -60,8 +60,8 @@ model_dims_small = {
     5: {"name": "fc", "dim": {"out_size": 100}}
 }
 
-# selected_classes = list(range(100))
-selected_classes = [0]
+selected_classes = list(range(100))
+# selected_classes = [0]
 
 
 def load_dataset_from_disk(path, batch_size=128, shuffle=True):
