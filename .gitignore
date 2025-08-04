@@ -167,6 +167,7 @@ res/
 res_adv/
 res_decay/
 img/
+statistics/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
