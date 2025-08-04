@@ -355,32 +355,37 @@ def plot_curve(high_clean_acc, low_clean_acc, remove_num, res_path, name):
     plt.close()
     
     
-def plot_tensor_hist(tensor, bins=1000, title="Histogram", log=False, save_path=None):
-    """
-    Plot a histogram of a PyTorch tensor.
-    - tensor: torch.Tensor (can be on CPU or GPU)
-    - bins: number of histogram bins
-    - log: set True for a log-scaled y-axis
-    - save_path: if provided, save the figure to this path
-    """
+def plot_tensor_hist(tensor, bins=100, title="Histogram of Weights", log=False, save_path=None):
     # Detach, move to CPU, flatten, and filter finite values
     t = tensor.detach().float().flatten().cpu()
     finite_mask = torch.isfinite(t)
     t = t[finite_mask]
+
     if t.numel() == 0:
         print("No finite values to plot.")
         return
 
-    # Convert to numpy for matplotlib
+    # Convert to numpy
     arr = t.numpy()
 
-    plt.figure(figsize=(7,4))
-    plt.hist(arr, bins=bins, log=log)
-    plt.xlabel("Value")
-    plt.ylabel("Count")
-    plt.title(title)
-    plt.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(save_path, f'Histogram_remove_w_curve.pdf'), dpi=300)
+    # Plot
+    plt.figure(figsize=(10, 6))
+    plt.hist(arr, bins=bins, color="#1F00EC", alpha=0.85, log=log)
+
+    # Axis labels and title
+    plt.xlabel("Weight Value", fontsize=30, fontweight='semibold')
+    plt.ylabel("Count", fontsize=30, fontweight='semibold')
+    plt.title(title, fontsize=26, fontweight='semibold')
+
+    # Ticks and grid
+    plt.xticks(fontsize=22, fontweight='semibold')
+    plt.yticks(fontsize=22, fontweight='semibold')
+    plt.grid(True, linestyle='--', linewidth=2.0, alpha=0.7, color='gray')
+
+    # Tight layout and save
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(os.path.join(save_path, f'Histogram_remove_w_curve.pdf'), dpi=300)
     plt.close()
     
 
@@ -458,9 +463,8 @@ def remove_w_cifar(args):
     del img, edge_array, nodes_ori
     
     weights = output.detach().to(device)
-    # print(weights.shape)
-    # plot_tensor_hist(torch.abs(weights), bins=100, title="Output Weights Histogram", save_path=res_path) 
-    # print(f'Finish Histgrom..')
+    plot_tensor_hist(torch.abs(weights[0]), bins=100, title="Output Weights Histogram", save_path=res_path) 
+    print(f'Finish Histgrom..')
     
     sorted_edges_high, sorted_edges_low = get_last_three_layer_edges_sorted_cnn(model_dims_small, weights, prefix_dims, device, pre_n=pre_n) 
 

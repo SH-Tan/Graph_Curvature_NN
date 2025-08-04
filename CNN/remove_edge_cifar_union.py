@@ -350,106 +350,6 @@ def match_frequencies(remove_counts, freq_map):
 
     
     
-# def plot_curve(
-#     neg_clean_acc, pos_clean_acc,
-#     neg_remove_num, pos_remove_num,
-#     label, res_path,
-#     neg_freq_labels=None, pos_freq_labels=None, x_axis=None
-# ):
-#     # Colors
-#     neg_color = '#00A3E0'
-#     pos_color = '#EC008C'
-
-#     plt.figure(figsize=(10, 6))
-
-#     # Plot lines
-#     plt.plot(neg_remove_num, neg_clean_acc, label='Negative edges removed first',
-#              marker='o', linestyle='--', linewidth=3., markersize=13, color=neg_color)
-
-#     plt.plot(pos_remove_num, pos_clean_acc, label='Positive edges removed first',
-#              marker='x', linestyle='-', linewidth=3., markersize=13, color=pos_color)
-
-#     # Annotate frequencies BELOW points
-#     if neg_freq_labels:
-#         for x, y, r in zip(neg_remove_num, neg_clean_acc, neg_freq_labels):
-#             plt.annotate(r, (x, y), textcoords='offset points',
-#                          xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
-
-#     if pos_freq_labels:
-#         for x, y, r in zip(pos_remove_num[:8], pos_clean_acc[:8], pos_freq_labels):
-#             plt.annotate(r, (x, y), textcoords='offset points',
-#                          xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
-            
-#     # Labels and title
-#     plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
-#     plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
-    
-#     # plt.title('Accuracy vs. Edge Removal Count', fontsize=28, fontweight='semibold')
-#     plt.ylim(0.0, 1.0)
-
-#     # Set scientific notation on x-axis
-#     ax = plt.gca()
-    
-#     # Override the x-axis ticks/labels if `x_axis` is given
-#     if x_axis is not None:
-#         # Compute exponent (e.g., 1e+3, 1e+4) based on the max value
-#         exponent = int(np.floor(np.log10(max(x_axis))))
-#         scale = 10 ** exponent
-
-#         # Scale values and format tick labels as mantissas only
-#         scaled_ticks = [x / scale for x in x_axis]
-#         mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
-
-#         # Set the ticks and the scaled mantissa labels
-#         plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=22, fontweight='semibold')
-
-#         # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
-#         ax.annotate(
-#             f"×1e{exponent}",
-#             xy=(1.0, 0.0), xycoords='axes fraction',  # Right end of x-axis
-#             xytext=(10, -35), textcoords='offset points',  # Just below and slightly to the left
-#             ha='right', va='top',
-#             fontsize=18, fontweight='semibold'
-#         )
-#     else:
-#         plt.xticks(fontsize=22, fontweight='semibold')
-#         ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
-#         ax.xaxis.get_offset_text().set_fontsize(20)
-#         ax.xaxis.get_offset_text().set_fontweight('semibold')
-
-#     # Ticks
-#     plt.xticks(fontsize=22, fontweight='semibold')
-#     plt.yticks(fontsize=22, fontweight='semibold')
-
-#     # Grid and legend
-#     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
-#     legend = plt.legend(fontsize=22, loc=5)  # create the legend
-#     for text in legend.get_texts():
-#         text.set_fontweight('semibold')  # or 'bold'
-        
-#     # Draw vertical line at second-to-last pos_remove_num
-#     if pos_remove_num and len(pos_remove_num) >= 2:
-#         highlight_x = pos_remove_num[-2]
-#         plt.axvline(x=highlight_x, color=pos_color, linestyle='--', linewidth=2.5)
-
-#         # Label the line slightly above the top
-#         y_min, y_max = plt.ylim()
-#         plt.text(
-#             highlight_x, y_max - 0.1,  # Adjust Y position as needed
-#             f'{highlight_x:,}',
-#             rotation=0,
-#             color=pos_color,
-#             fontsize=18,
-#             ha='center',
-#             va='bottom',
-#             fontweight='semibold'
-#         )
-
-#     plt.tight_layout()
-#     plt.savefig(os.path.join(res_path, f'{label}_curve_all.pdf'), dpi=300)
-#     plt.close()
-    
-    
 def plot_curve(
     neg_clean_acc, pos_clean_acc,
     neg_remove_num, pos_remove_num,
@@ -476,10 +376,10 @@ def plot_curve(
                          xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
 
     if pos_freq_labels:
-        for x, y, r in zip(pos_remove_num, pos_clean_acc, pos_freq_labels):
+        for x, y, r in zip(pos_remove_num[:8], pos_clean_acc[:8], pos_freq_labels):
             plt.annotate(r, (x, y), textcoords='offset points',
                          xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
-
+            
     # Labels and title
     plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
     plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
@@ -523,13 +423,113 @@ def plot_curve(
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
-    legend = plt.legend(fontsize=22, loc=0)  # create the legend
+    legend = plt.legend(fontsize=22, loc=4)  # create the legend
     for text in legend.get_texts():
         text.set_fontweight('semibold')  # or 'bold'
+        
+    # Draw vertical line at second-to-last pos_remove_num
+    if pos_remove_num and len(pos_remove_num) >= 2:
+        highlight_x = pos_remove_num[-2]
+        plt.axvline(x=highlight_x, color=pos_color, linestyle='--', linewidth=2.5)
+
+        # Label the line slightly above the top
+        y_min, y_max = plt.ylim()
+        plt.text(
+            highlight_x, y_max - 0.1,  # Adjust Y position as needed
+            f'{highlight_x:,}',
+            rotation=0,
+            color=pos_color,
+            fontsize=18,
+            ha='center',
+            va='bottom',
+            fontweight='semibold'
+        )
 
     plt.tight_layout()
     plt.savefig(os.path.join(res_path, f'{label}_curve_all.pdf'), dpi=300)
     plt.close()
+    
+    
+# def plot_curve(
+#     neg_clean_acc, pos_clean_acc,
+#     neg_remove_num, pos_remove_num,
+#     label, res_path,
+#     neg_freq_labels=None, pos_freq_labels=None, x_axis=None
+# ):
+#     # Colors
+#     neg_color = '#00A3E0'
+#     pos_color = '#EC008C'
+
+#     plt.figure(figsize=(10, 6))
+
+#     # Plot lines
+#     plt.plot(neg_remove_num, neg_clean_acc, label='Negative edges removed first',
+#              marker='o', linestyle='--', linewidth=3., markersize=13, color=neg_color)
+
+#     plt.plot(pos_remove_num, pos_clean_acc, label='Positive edges removed first',
+#              marker='x', linestyle='-', linewidth=3., markersize=13, color=pos_color)
+
+#     # Annotate frequencies BELOW points
+#     if neg_freq_labels:
+#         for x, y, r in zip(neg_remove_num, neg_clean_acc, neg_freq_labels):
+#             plt.annotate(r, (x, y), textcoords='offset points',
+#                          xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
+
+#     if pos_freq_labels:
+#         for x, y, r in zip(pos_remove_num, pos_clean_acc, pos_freq_labels):
+#             plt.annotate(r, (x, y), textcoords='offset points',
+#                          xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+
+#     # Labels and title
+#     plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
+#     plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
+    
+#     # plt.title('Accuracy vs. Edge Removal Count', fontsize=28, fontweight='semibold')
+#     plt.ylim(0.0, 1.0)
+
+#     # Set scientific notation on x-axis
+#     ax = plt.gca()
+    
+#     # Override the x-axis ticks/labels if `x_axis` is given
+#     if x_axis is not None:
+#         # Compute exponent (e.g., 1e+3, 1e+4) based on the max value
+#         exponent = int(np.floor(np.log10(max(x_axis))))
+#         scale = 10 ** exponent
+
+#         # Scale values and format tick labels as mantissas only
+#         scaled_ticks = [x / scale for x in x_axis]
+#         mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
+
+#         # Set the ticks and the scaled mantissa labels
+#         plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=22, fontweight='semibold')
+
+#         # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
+#         ax.annotate(
+#             f"×1e{exponent}",
+#             xy=(1.0, 0.0), xycoords='axes fraction',  # Right end of x-axis
+#             xytext=(10, -35), textcoords='offset points',  # Just below and slightly to the left
+#             ha='right', va='top',
+#             fontsize=18, fontweight='semibold'
+#         )
+#     else:
+#         plt.xticks(fontsize=22, fontweight='semibold')
+#         ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
+#         ax.xaxis.get_offset_text().set_fontsize(20)
+#         ax.xaxis.get_offset_text().set_fontweight('semibold')
+
+#     # Ticks
+#     plt.xticks(fontsize=22, fontweight='semibold')
+#     plt.yticks(fontsize=22, fontweight='semibold')
+
+#     # Grid and legend
+#     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
+#     legend = plt.legend(fontsize=22, loc=0)  # create the legend
+#     for text in legend.get_texts():
+#         text.set_fontweight('semibold')  # or 'bold'
+
+#     plt.tight_layout()
+#     plt.savefig(os.path.join(res_path, f'{label}_curve_all.pdf'), dpi=300)
+#     plt.close()
     
     
 def count_edge_frequency(edge_sets):
@@ -620,8 +620,8 @@ def process_batches_memory_efficient(
 
 
 def generate_pos_remove_steps(pos_total, num_uniform=8, manual_tail=[5000, 10000, 14999]):
-    cutoff = pos_total - 976573
-    uniform_part = list(np.linspace(0, 976573, num=num_uniform, dtype=int))
+    cutoff = pos_total - 981272
+    uniform_part = list(np.linspace(0, 981272, num=num_uniform, dtype=int))
     return uniform_part + [pos_total]
 
 
@@ -757,8 +757,8 @@ def remove_edge_cifar_union(args):
 
     # Generate uniformly spaced points (including 0 and total) for each list
     neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
-    pos_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
-    # pos_remove_num = generate_pos_remove_steps(pos_total)
+    # pos_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
+    pos_remove_num = generate_pos_remove_steps(pos_total)
     remove_num = list(np.linspace(0, total_edge, num=10, dtype=int))
     
     total = sample_size * len(selected_classes)

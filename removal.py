@@ -98,8 +98,8 @@ if __name__=='__main__':
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                remove_edge_cifar_union(args)
-                # remove_w_cifar100(args)
+                # remove_edge_cifar_union(args)
+                remove_w_cifar100(args)
                 # remove_edge_cifar100_union_perlayer(args)
             if args.community and args.dataset.lower() == "cifar":
                 # community_check_cifar(args)
