@@ -38,6 +38,8 @@ from Lidar.plot_trajectories import main_lidar
 from Lidar.plot_trajectories_perlayer import main_lidar_perlayer
 from Lidar.remove_weights_fc import remove_w_lidar
 from CNN.community_check_imagenet import community_check_imagenet
+from CNN.community_check_cifar_iter import iterative_edge_removal_and_curvature
+from CNN.remove_wadan_cifar import remove_wadan_cifar
 
 import warnings
 
@@ -98,12 +100,14 @@ if __name__=='__main__':
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                # remove_edge_cifar100_union(args)
-                remove_w_cifar100(args)
+                remove_edge_cifar_union(args)
+                # remove_w_cifar100(args)
                 # remove_edge_cifar100_union_perlayer(args)
+                # remove_wadan_cifar(args)
             if args.community and args.dataset.lower() == "cifar":
                 # community_check_cifar(args)
-                community_check_cifar100(args)
+                # community_check_cifar100(args)
+                iterative_edge_removal_and_curvature(args)
             if args.community and args.dataset.lower() == "imagenet":
                 community_check_imagenet(args)
         else:

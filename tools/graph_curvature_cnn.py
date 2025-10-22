@@ -10,7 +10,6 @@ from collections import defaultdict
 import sys
 import random
 import os
-import math
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=sys.maxsize)
@@ -25,7 +24,6 @@ _distribution_in = {}
 _distribution_out = {}
 _alpha = 0.
 _pre_n = 0
-_W = dict()
 
 
 # For CNN
@@ -296,11 +294,6 @@ def process_edge(b, edge):
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
-    
-    if i_layer > 0 and j_layer < len(_dims)-1:
-        m = _W.get(i_layer)
-        if m is not None:
-            return (b, i, j, 1.0 - m/sp)
 
     # In-neighbors distribution
     if i_layer == 0:
@@ -344,6 +337,12 @@ def process_edge(b, edge):
     assert(in_neigh[-1] == i and out_neigh[-1] == j)
     d_np = compute_full_path_matrix(0, in_neigh, out_neigh)
     
+    # for m_idx, m in enumerate(in_neigh):
+    #     for n_idx, n in enumerate(out_neigh):
+    #         if (m == n):
+    #             d_np[m_idx, n_idx] = 0.
+    #         else:
+    #             d_np[m_idx, n_idx] = get_layer_path(_sp_dict, _prefix_dims, b, m, n)
     d_np[-1, -1] = sp
     if np.isinf(d_np).any():
         print(i_layer, np.isinf(d_np).sum(), np.isnan(d_np).sum())
@@ -352,98 +351,12 @@ def process_edge(b, edge):
         return (b,i, j, 2.0)
     
     m = ot.emd2(mu, nu, d_np)
-    # print(f'{i} - {j}: {len(mu)} - {len(nu)} - W = {m}')
+    
+    # if (i == 12 or i == 9):
+    #     print(f'{edge} : {d_np}, {mu}, {nu}, {m}')
+    #     print(in_neigh, out_neigh)
 
     return (b, i, j, 1.0 - m/sp)
-
-
-
-def process_edge_input(b, edge, W):
-    i, j = edge
-    i_layer = np.searchsorted(_prefix_dims, i, side='right') - 1
-    j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
-    
-    res = []
-    
-    if j_layer != i_layer + 1:
-        return []
-    
-    if (i_layer, j_layer) not in _sp_dict:
-        return []
-    
-    i_idx = i - _prefix_dims[i_layer]
-    sp_row = _sp_dict[(i_layer, j_layer)][b, i_idx]
-    # Dsts where the cost is finite
-    dst_idx = np.nonzero(np.isfinite(sp_row))[0]
-
-    for dst in dst_idx.tolist():
-        sp = float(sp_row[dst])
-        # score = 1 - W/sp, guard sp==0 just in case
-        score = 1.0 - (W / sp) if sp != 0.0 else (-np.inf if W > 0 else 1.0)
-
-        src_global = i  # starts from i only
-        dst_global = _prefix_dims[j_layer] + int(dst)
-        res.append((b, src_global, dst_global, float(score)))
-
-    return res
-
-
-
-def getW(b, i, j, i_layer, j_layer):
-    i_idx = i - _prefix_dims[i_layer]
-    j_idx = j - _prefix_dims[j_layer]
-    sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
-
-    # In-neighbors distribution
-    if i_layer == 0:
-        mu = np.array([1.0])
-        in_neigh = [i]
-    else:
-        mu = _distribution_in[i_layer][b, :, i_idx]
-        if len(np.nonzero(mu)[0]) == 0:   
-            mu = np.array([1.0])
-            in_neigh = [i]
-        else:
-            if (np.any(mu == -1.)):
-                tmp = (1.0 - _alpha) / len(np.nonzero(mu)[0])
-                mu[mu==-1] = tmp
-            non_zero = np.nonzero(mu)[0]
-            in_neigh = np.array(range(_prefix_dims[i_layer-1], _prefix_dims[i_layer]))
-            in_neigh = list(in_neigh[non_zero]) + [i]
-            mu = np.hstack((mu[non_zero], np.array(_alpha)))
-
-    # Out-neighbors distribution
-    if j_layer == len(_dims)-1:
-        nu = np.array([1.0])
-        out_neigh = [j]
-    else:
-        nu = _distribution_out[j_layer][b, j_idx, :]
-        if len(np.nonzero(nu)[0]) == 0:     
-            nu = np.array([1.0])
-            out_neigh = [j]
-        else:
-            if (np.any(nu == -1.)):
-                tmp = (1.0 - _alpha) / len(np.nonzero(nu)[0])
-                nu[nu==-1] = tmp
-            non_zero = np.nonzero(nu)[0]
-            out_neigh = np.array(range(_prefix_dims[j_layer+1], _prefix_dims[j_layer+2]))
-            out_neigh = list(out_neigh[non_zero]) + [j]
-            nu = np.hstack((nu[non_zero], np.array(_alpha)))
-
-    
-    # Get submatrix for neighbors
-    # d_np = np.full((len(in_neigh), len(out_neigh)), np.inf)
-    assert(in_neigh[-1] == i and out_neigh[-1] == j)
-    d_np = compute_full_path_matrix(0, in_neigh, out_neigh)
-    
-    d_np[-1, -1] = sp
-    if np.isinf(d_np).any():
-        print(i_layer, np.isinf(d_np).sum(), np.isnan(d_np).sum())
-
-    m = ot.emd2(mu, nu, d_np)
-
-    return m
-    
 
 
 
@@ -452,13 +365,7 @@ def _wrap_compute_single_edge(stuff):
     return process_edge(*stuff)
 
 
-def _wrap_compute_single_edge_input(stuff):
-    """Wrapper for args in multiprocessing."""
-    return process_edge_input(*stuff)
-
-
 def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., pre_n=0, layers_to_process=None):
-    import gc
     global _dims 
     global _prefix_dims 
     global _sp_dict 
@@ -492,14 +399,11 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             sp1 = fc_adjacent_layer(dims, probability_w, device)
             
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
-    
-    # print(f'Finish shorest path')
 
-    dis_w = sp1 if probability_w is not None else sp_dict
-        
-    del weights
-    del probability_w
-    torch.cuda.empty_cache()
+    if probability_w != None:
+        dis_w = sp1
+    else:
+        dis_w = sp_dict
         
     # print(dis_w)
         
@@ -521,10 +425,6 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             dist_prev *= mask
             
             distribution_in[layer] = dist_prev.cpu().numpy()
-            
-            # Clean up
-            del path_sub, mask, weights_layer, sum_weights, dist_prev, mask1
-            torch.cuda.empty_cache()
 
     for layer in range(len(dims)-1):
         if (layer, layer+1) in dis_w:
@@ -542,127 +442,29 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             dist_next *= mask
      
             distribution_out[layer] = dist_next.cpu().numpy()
-            
-            # Clean up
-            del path_sub, mask, weights_layer, sum_weights, dist_next, mask1
-            torch.cuda.empty_cache()
        
     _distribution_in = distribution_in
     _distribution_out = distribution_out
-    
-    ricci_results = defaultdict(list)
-    
-    # input layer
-    # W_cache = {}
-    # edges = []   # keep same structure: list[(b, (i_global, j_global))]
 
-    # layer = 0
-    # i_layer = layer
-    # j_layer = layer + 1
-
-    # sp_array = sp_dict[(i_layer, j_layer)]  # shape: (B, N_in, N_out)
-
-    # for b in range(batch_size):
-    #     # Get all finite (src, dst) pairs, row-major ordered (src asc, then dst asc)
-    #     non_inf = torch.nonzero(torch.isfinite(sp_array[b]), as_tuple=False).cpu().numpy()
-
-    #     seen_src = set()
-    #     for src, dst in non_inf:
-    #         if src in seen_src:
-    #             continue  # we only want the first edge from this src
-    #         seen_src.add(src)
-
-    #         # Map local (layer) indices to global node ids
-    #         i_global = prefix_dims[i_layer] + int(src)
-    #         j_global = prefix_dims[j_layer] + int(dst)
-
-    #         # Compute and store W for this first edge
-    #         W_val = getW(b, i_global, j_global, i_layer, j_layer)
-    #         # W_cache[(b, i_global)] = W_val
-
-    #         # Keep your original edges list with exactly one edge per input node now
-    #         edges.append((b, (i_global, j_global), W_val))
-
-    # # Build args like you had before
-    # args = [(b, edge, W) for b, edge, W in edges]
-    
-    # with get_context('fork').Pool(processes=proc) as pool:
-        
-    #     chunksize = max(1, (len(args) + (proc * 4 - 1)) // (proc * 4))
-
-    #     results = pool.imap_unordered(_wrap_compute_single_edge_input, args, chunksize=chunksize)
-    #     pool.close()
-    #     pool.join()
-        
-    # # print(f'Finish..')
-    
-    # for res in results:
-    #     for b, i, j, val in res:
-    #         ricci_results[b].append((i+_pre_n, j+_pre_n, val))
-            
-    # print(f'Finish input layer')
-    
-    
-    # middle layer
-    # count = 0
-    # for layer in layers:
-    #     if count > 10:
-    #         break
-    #     if 1 < layer < len(dims) - 2:
-    #         sp_array = sp_dict[(layer, layer + 1)]
-    #         layer_W = _W.get(layer, None)
-
-    #         for b in range(batch_size):
-    #             non_inf = torch.nonzero(torch.isfinite(sp_array[b]), as_tuple=False).cpu().numpy()
-    #             for src, dst in non_inf:
-    #                 i_global = prefix_dims[layer] + int(src)
-    #                 j_global = prefix_dims[layer + 1] + int(dst)
-
-    #                 if layer_W is None:
-    #                     layer_W = getW(b, i_global, j_global, layer, layer + 1)
-    #                     _W[layer] = layer_W  # cache for rest of this (and future) layers
-
-    #                 sp = sp_array[b, src, dst].item()
-    #                 ricci_results[b].append((i_global + _pre_n, j_global + _pre_n, 1.0 - layer_W / sp))
-    #                 count += 1
-    #                 print(f'W = {layer_W}')
-    #                 if count > 10:
-    #                     break
-                    
-    # print(f'Finish middle layer')
-        
-    # output layer
     # Generate edges from original weights
     edges = []
-    # layer = layers[-1]
-
     for layer in layers:
-        # if layer <= 1 or layer == len(dims) - 2:
         sp_array = sp_dict[(layer, layer+1)]
         
         for b in range(batch_size):
-            non_inf = torch.nonzero(torch.isfinite(sp_array[b]), as_tuple=False).cpu().numpy()
+            non_inf = torch.nonzero(~torch.isinf(sp_array[b])).cpu().numpy()
             for src, dst in non_inf:
                 global_src = prefix_dims[layer] + src
                 global_dst = prefix_dims[layer+1] + dst
-        
+     
                 # print(f'{src} - {dst}: {sp_array[b][src][dst]} {_sp_dict[(layer, layer+1)][b][src][dst]} - {global_src}:{global_dst}')
                 edges.append((b, (global_src, global_dst)))
-                # if (len(edges) > 10):
-                #     break
-    
-    # print(len(edges))
 
     args = [(b, edge) for b, edge in edges]
-    
-    # print(len(args))
-    
-    del sp_dict
-    torch.cuda.empty_cache()
 
     # print(len(args))
     # Process edges in parallel
-    
+    ricci_results = defaultdict(list)
     with get_context('fork').Pool(processes=proc) as pool:
         
         chunksize, extra = divmod(len(args), proc * 4)
@@ -672,15 +474,9 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
         results = pool.imap_unordered(_wrap_compute_single_edge, args, chunksize=chunksize)
         pool.close()
         pool.join()
-        
-    # print(f'Finish..')
     
     for b, i, j, val in results:
         ricci_results[b].append((i+_pre_n, j+_pre_n, val))
-        
-    # Final GPU cleanup
-    torch.cuda.empty_cache()
-    gc.collect()
 
     return ricci_results
 

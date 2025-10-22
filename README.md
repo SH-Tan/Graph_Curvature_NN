@@ -130,6 +130,6 @@
 
 - python removal.py --lidar 0 --metric w4 --model_type cnn --model_name ori --model_path CNN/models/new/ --mnist_res_path res/w4/tanh/cnnori/ --edge 0 --node 0 --activation tanh --community 1 --sample_num 100
 
-- python removal.py --lidar 0 --image 1 --cifar small --metric w4 --model_type cnn --model_name ori --model_path CNN/models/new/ --mnist_res_path res/w4/tanh/cifarori/ --dataset cifar --community 1 --activation tanh --sample_num 100
+- python removal.py --lidar 0 --image 1 --cifar small --metric w4 --model_type cnn --model_name ori --model_path CNN/models/new/ --mnist_res_path res/w4/relu/cifarori/ --dataset cifar --community 1 --activation relu --sample_num 100 --mnist_data_path res/w4/relu/cifarori/
 
 - python removal.py --lidar 0 --metric w4 --model_type cnn --model_name ori --model_path CNN/models/new/ --mnist_res_path res/w4/relu/imagebet/ --edge 0 --node 0 --activation relu --community 1 --sample_num 100 --dataset imagenet

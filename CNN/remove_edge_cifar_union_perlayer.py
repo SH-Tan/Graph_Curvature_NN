@@ -73,6 +73,14 @@ model_dims_small = {
 }
 
 
+# model_dims_small = {
+#     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3
+
+#     2: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
+#     3: {"name": "fc", "dim": {"out_size": 512}},
+#     4: {"name": "fc", "dim": {"out_size": 10}}
+# }
+
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
 
@@ -85,8 +93,11 @@ def process_batches_memory_efficient(
     sample_size,
     prefix_dims,
 ):
-    prefix = f"{model_full_n}_{metric}_{dataset}_batch"
+    # prefix = f"{model_full_n}_{metric}_{dataset}_batch"
+    prefix = f"{model_full_n}_{metric}_{dataset}_iter1_batch"
     suffix = ".pkl"
+    
+    print(prefix)
 
     def extract_batch_num(f):
         match = re.search(r'batch(\d+)', f)
@@ -284,7 +295,7 @@ def get_top_c(curvature, b, prefix_dims):
             if i_layer >= 7 and j_layer == i_layer + 1:
                 if curr < 0:
                     neg_e[i_layer].append((i, j, curr))
-                elif curr > 0:
+                elif curr >= 0:
                     pos_e[i_layer].append((i, j, curr))
 
     return neg_e, pos_e
@@ -500,14 +511,16 @@ def plot_curve(
 
     # Annotate frequencies BELOW points
     if neg_freq_labels:
-        for x, y, r in zip(neg_remove_num, neg_clean_acc, neg_freq_labels):
-            plt.annotate(r, (x, y), textcoords='offset points',
-                         xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
+        for i, (x, y, r) in enumerate(zip(neg_remove_num, neg_clean_acc, neg_freq_labels)):
+            if (i % 1 == 0):
+                plt.annotate(r, (x, y), textcoords='offset points',
+                            xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
 
     if pos_freq_labels:
-        for x, y, r in zip(pos_remove_num, pos_clean_acc, pos_freq_labels):
-            plt.annotate(r, (x, y), textcoords='offset points',
-                         xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+        for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
+            if ((i+1) % 5 == 0):
+                plt.annotate(r, (x, y), textcoords='offset points',
+                            xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
 
     # Labels and title
     plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
@@ -698,7 +711,7 @@ def remove_edge_cifar_union_perlayer(args):
 
             neg_freq_dict, pos_freq_dict = process_batches_memory_efficient(
                 data_path,
-                model_full_n,
+                model_name,
                 metric,
                 dataset,
                 sample_size,
@@ -716,7 +729,82 @@ def remove_edge_cifar_union_perlayer(args):
 
             with open(save_path, 'wb') as f:
                 pickle.dump(data_to_save, f)  # use dict to avoid defaultdict issues
-                
+    
+    # all_neg_edges = []
+    # all_pos_edges = []
+    
+    # fre = sample_size * len(selected_classes)
+
+    # for layer in sorted(neg_freq_dict.keys() | pos_freq_dict.keys()):
+    #     # Negative edges: keep all
+    #     neg_edges = [(i, j) for (i, j, _, _) in neg_freq_dict.get(layer, [])]
+    #     all_neg_edges.extend(neg_edges)
+
+    #     # Positive edges: apply per-layer filters
+    #     if layer == 7:
+    #         pos_edges = [(i, j) for (i, j, freq, _) in pos_freq_dict.get(layer, []) if freq > 0.5*fre]
+    #     elif layer == 9:
+    #         pos_edges = [(i, j) for (i, j, freq, _) in pos_freq_dict.get(layer, []) if freq > 0.05*fre]
+    #     else:
+    #         pos_edges = [(i, j) for (i, j, _, _) in pos_freq_dict.get(layer, [])]
+    #     all_pos_edges.extend(pos_edges)
+
+    # # Optional: remove duplicates if needed
+    # all_neg_edges = list(set(all_neg_edges))
+    # all_pos_edges = list(set(all_pos_edges))
+    
+    
+    # neg_total = len(all_neg_edges)
+    # pos_total = len(all_pos_edges)
+
+    # neg_remove_num = list(np.linspace(0, neg_total, num=5, dtype=int))
+    # pos_remove_num = list(np.linspace(0, pos_total, num=50, dtype=int))
+    
+    # print(f"\nLayer {layer}:")
+    # print(f"  Negative edges: {neg_total}")
+    # print(f"  Positive edges: {pos_total}")
+    # # print(f"  Overlapping edges: {overlap_count}")
+    # print(f"  Neg remove nums: {neg_remove_num}")
+    # print(f"  Pos remove nums: {pos_remove_num}")
+    
+    # total = sample_size * len(selected_classes)
+    # layer_edge = np.sum(edge_dims)
+    # remove_num = list(np.linspace(0, 1100000, num=10, dtype=int))
+    
+    # neg_acc_clean = []
+    # pos_acc_clean = []
+    
+    # # start remove
+    # for index, rem_f in enumerate(neg_remove_num):
+    #     # ff.write(f'Remove edge number {rem_f}: \n')
+
+    #     # remove second layer negative curvature edges
+    #     net_neg = copy.deepcopy(net_H)
+    #     net_neg.__build_remove_mask__(all_neg_edges, rem_f)
+    #     # test acc
+    #     acc_clean_neg = test_clean(net_neg, test_loader)
+    #     neg_acc_clean.append(acc_clean_neg)
+
+    # for index, rem_f in enumerate(pos_remove_num):
+    #     # remove positive curvature edges
+    #     net_pos = copy.deepcopy(net_H)
+    #     net_pos.__build_remove_mask__(all_pos_edges, rem_f)
+    #     # test acc
+    #     acc_clean_pos = test_clean(net_pos, test_loader)
+    #     pos_acc_clean.append(acc_clean_pos)  
+
+    # # Plot
+    # plot_curve(
+    #     neg_clean_acc=neg_acc_clean,
+    #     pos_clean_acc=pos_acc_clean,
+    #     neg_remove_num=neg_remove_num,
+    #     pos_remove_num=pos_remove_num,
+    #     label=str(sample_size) + "_combined",
+    #     res_path=res_path,
+    #     x_axis = remove_num
+    # )
+    
+    
 
     for layer in sorted(neg_freq_dict.keys() | pos_freq_dict.keys()):
         neg_acc_clean = []
@@ -732,8 +820,8 @@ def remove_edge_cifar_union_perlayer(args):
         neg_total = len(neg_edges)
         pos_total = len(pos_edges)
 
-        neg_remove_num = list(np.linspace(0, neg_total, num=3, dtype=int))
-        pos_remove_num = list(np.linspace(0, pos_total, num=6, dtype=int))
+        neg_remove_num = list(np.linspace(0, neg_total, num=5, dtype=int))
+        pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
         
         print(f"\nLayer {layer}:")
         print(f"  Negative edges: {neg_total}")
