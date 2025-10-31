@@ -286,8 +286,7 @@ def community_check_cifar100(args):
     data_iterators = {l: iter(robust_pair[l]) for l in selected_classes}
     finished_labels = set()
     round_id = 1  # Track how many full batches have been saved
-    
-    print(len(robust_pair[0]))
+
 
     while len(finished_labels) < len(selected_classes):
         finished_l = 0
@@ -323,6 +322,17 @@ def community_check_cifar100(args):
                             weights = output.detach().to(device)
                             del output
                             
+                            # offset = 0
+                            # for i, size in enumerate(edge_dims, 1):
+                            #     layer_weights = weights[:,offset:offset + size]
+                            #     print(f"Layer {i}:")
+                            #     print(f"  Range: [{offset}, {offset + size})")
+                            #     print(f"  Min: {layer_weights.min():.6f}")
+                            #     print(f"  Max: {layer_weights.max():.6f}")
+                            #     print(f"  Mean: {layer_weights.mean():.6f}")
+                            #     print(f"  Var: {layer_weights.var():.6e}")
+                            #     offset += size
+                            
                             # print(len(weights[0]), len(weights[weights!=0]))
                             
                             if metric.lower() == "w1":
@@ -347,14 +357,17 @@ def community_check_cifar100(args):
                                     layers_to_process=[1,2,3]
                                 )
                             elif metric.lower() == "w4":
-                                weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
+                                weights_inv1, weights_inv2, weights_inv3 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
                                 weights_inv = weights_inv1.detach()
                                 weights_inv2 = weights_inv2.detach()
-   
+                                weights_inv3 = weights_inv3.detach()
+                                
+                                # print(len(weights_inv[0]), len(weights_inv[weights_inv!=np.inf]))
+
                                 ricci_curvature = graph_curvature_main_torch(
                                     dims, weights_inv, device=device,
                                     model_dims=model_dims_small,
-                                    probability_w=weights_inv2, alpha=alpha,
+                                    probability_w=(weights_inv2, weights_inv3), alpha=alpha,
                                     pre_n=(np.sum(dims_full) - np.sum(dims)),
                                     layers_to_process=[1,2,3]
                                 )

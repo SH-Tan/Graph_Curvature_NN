@@ -93,8 +93,8 @@ def process_batches_memory_efficient(
     sample_size,
     prefix_dims,
 ):
-    # prefix = f"{model_full_n}_{metric}_{dataset}_batch"
-    prefix = f"{model_full_n}_{metric}_{dataset}_iter1_batch"
+    prefix = f"{model_full_n}_{metric}_{dataset}_batch"
+    # prefix = f"{model_full_n}_{metric}_{dataset}_iter1_batch"
     suffix = ".pkl"
     
     print(prefix)
@@ -518,9 +518,13 @@ def plot_curve(
 
     if pos_freq_labels:
         for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
-            if ((i+1) % 5 == 0):
+            if ((i+1) % 5 == 0 or (i == len(pos_remove_num)-2)):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                            xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+                    xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+                
+            elif i == len(pos_remove_num)-2:
+                plt.annotate(r, (x, y), textcoords='offset points',
+                    xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
 
     # Labels and title
     plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
@@ -628,7 +632,7 @@ def remove_edge_cifar_union_perlayer(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -711,7 +715,7 @@ def remove_edge_cifar_union_perlayer(args):
 
             neg_freq_dict, pos_freq_dict = process_batches_memory_efficient(
                 data_path,
-                model_name,
+                model_full_n,
                 metric,
                 dataset,
                 sample_size,

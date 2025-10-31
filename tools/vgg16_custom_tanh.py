@@ -11,6 +11,7 @@ class VGG16_CIFAR10(nn.Module):
         self.normalize = transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), 
                                               std=(0.2023, 0.1994, 0.2010))
         self.activation = nn.Tanh()
+        self.softmax = nn.Softmax(dim=1)
 
         # Helper for conv blocks (used for first 10 conv layers)
         def conv_block(in_c, out_c, num_convs):
@@ -52,7 +53,7 @@ class VGG16_CIFAR10(nn.Module):
 
 
         self.model_info = model_info
-        self.edge_set = edge_set if edge_set != None else set()
+        self.edge_set = edge_set if edge_set != None else list()
         self.cur_total_nodes = 0
         self.device = device
         self.remove_mask = dict()
@@ -87,15 +88,19 @@ class VGG16_CIFAR10(nn.Module):
         return cur_nodes, cur_size, cur_channel, cur_dim, cur_name, cur_padding, cur_pool
     
     
-    def __build_remove_mask__(self, new_edge_set = list(), num = 100000, start_l = 1):
+    def __build_remove_mask__(self, new_edge_set, num = 100000, start_l = 1, mask = "global"):
         cur_layer = start_l
         self.cur_total_nodes = 0
         total_layers = len(self.model_info)
         
-        if len(new_edge_set) > num:
+        remove_num = 0
+        
+        if mask == "global" and len(new_edge_set) > num:
             new_edge_set = new_edge_set[:num]
         
         while(cur_layer < total_layers):
+            if remove_num >= num:
+                break
             # get l1, l2 info
             l1_nodes, l1_size, l1_channel, l1_dim, l1_name, l1_padding, l1_pool = self.get_layer_info(cur_layer)
             l2_nodes, l2_size, l2_channel, l2_dim, l2_name, l2_padding, l2_pool = self.get_layer_info(cur_layer+1)
@@ -128,6 +133,12 @@ class VGG16_CIFAR10(nn.Module):
                         index = (input_indices[0,node] == n1).nonzero().item()
                         
                         self.remove_mask[cur_layer][channel_num, node, index] = 0
+                        remove_num += 1
+
+                        if remove_num >= num:
+                            break
+                if remove_num >= num:
+                    break
                 
             else:
                 if cur_layer not in self.remove_mask.keys():
@@ -139,6 +150,12 @@ class VGG16_CIFAR10(nn.Module):
                         n2 = e[1] - self.cur_total_nodes - l1_nodes
 
                         self.remove_mask[cur_layer][n1,n2] = 0
+                        remove_num += 1
+
+                        if remove_num >= num:
+                            break
+                if remove_num >= num:
+                    break
 
             self.cur_total_nodes += l1_nodes
             cur_layer += 1
@@ -337,6 +354,7 @@ class VGG16_CIFAR10(nn.Module):
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.fc3(x)
+        x = self.softmax(x)
         nodes = torch.cat((nodes, x), axis = 1)
         
         return edge_value, nodes, weights
@@ -568,11 +586,16 @@ class VGG16_CIFAR10(nn.Module):
                         in_edges = torch.arange(start_col, end_col, device=nodes.device)
                         
                         # Compute weights and normalization
-                        w = nodes[:, neighbors] * weights[:, in_edges]
+                        # w = nodes[:, neighbors] * weights[:, in_edges]
                         
                         # Shape: (batch_size, fan-in)
-                        node_slice = nodes[:, neighbors]
+                        node_slice = torch.abs(nodes[:, neighbors])
                         weight_slice = weights[:, in_edges]
+                        
+                        min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                        max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                        
+                        node_slice = (node_slice - min_vals) / (max_vals - min_vals)
                         
                        # Prevent divide-by-zero
                         weights_inv1[:, in_edges] = 1.0 / (torch.abs(weight_slice))
@@ -587,8 +610,13 @@ class VGG16_CIFAR10(nn.Module):
                 in_edges = torch.arange(start_col + (n - prefix_dims[current_l-1]), end_col, step)
             
                 # Shape: (batch_size, fan-in)
-                node_slice = nodes[:, neighbors]
+                node_slice = torch.abs(nodes[:, neighbors])
                 weight_slice = weights[:, in_edges]
+                
+                min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                
+                node_slice = (node_slice - min_vals) / (max_vals - min_vals)
 
                 # Prevent divide-by-zero
                 weights_inv1[:, in_edges] = 1.0 / (torch.abs(weight_slice))
@@ -657,9 +685,18 @@ class VGG16_CIFAR10(nn.Module):
 
                 # print(len(out_neighbors), len(out_edges))
 
-                out_node_slice = nodes[:, out_neighbors]
-                weights_inv3[:, out_edges] = 1.0 / torch.abs(out_node_slice)
+                node_slice = torch.abs(nodes[:, out_neighbors])
+                # weights_inv3[:, out_edges] = 1.0 / torch.abs(out_node_slice)
+                
+                # --- Step 1: normalize to [0, 1] ---
+                min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                
+                node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+
+                # --- Step 2: compute weights ---
+                weights_inv3[:, out_edges] = 1.0 / (torch.abs(node_slice))
+
                 n += 1
 
-        
         return weights_inv1, weights_inv2, weights_inv3

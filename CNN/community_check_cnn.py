@@ -188,7 +188,7 @@ def community_check_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -220,7 +220,8 @@ def community_check_cnn(args):
     model_full_n = model_type.lower() + model_pre_name.lower()
 
     dims = cal_dims(model_dims)
-    prefix_dims = np.cumsum([0] + dims).tolist()
+    
+    print(dims)
     
     if not os.path.exists(res_path):
         os.makedirs(res_path)
@@ -263,7 +264,7 @@ def community_check_cnn(args):
                     # weights[edge_array == 0] = 0.
                 
                 elif metric.lower() == "w3" or metric.lower() == "w4":
-                    weights = output.detach().clone().to(device)      
+                    weights = edge_array.detach().clone().to(device)      
                     # weights[edge_array == 0] = 0.
                     
                 if metric.lower() == "w1":
@@ -279,10 +280,18 @@ def community_check_cnn(args):
                     ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
                     
                 elif metric.lower() == "w4":
-                    weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims)
+                    weights_inv1, weights_inv2, weights_inv3 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims)
                     weights_inv = weights_inv1.detach()
                     weights_inv2 = weights_inv2.detach()
-                    ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+                    weights_inv3 = weights_inv3.detach()
+                    
+                    # print(len(weights_inv[0]), len(weights_inv[weights_inv!=np.inf]))
+
+                    ricci_curvature = graph_curvature_main_torch(
+                        dims, weights_inv, device=device, model_dims=model_dims,
+                        probability_w=(weights_inv2, weights_inv3), alpha=alpha,
+                        layers_to_process=[2,3,4]
+                    )
                 else:
                     raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
                 

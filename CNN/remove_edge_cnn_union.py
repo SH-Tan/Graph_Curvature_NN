@@ -330,14 +330,20 @@ def plot_curve(
 
     # Annotate frequencies BELOW points
     if neg_freq_labels:
-        for x, y, r in zip(neg_remove_num, neg_clean_acc, neg_freq_labels):
-            plt.annotate(r, (x, y), textcoords='offset points',
-                         xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
+        for i, (x, y, r) in enumerate(zip(neg_remove_num, neg_clean_acc, neg_freq_labels)):
+            if (i % 1 == 0):
+                plt.annotate(r, (x, y), textcoords='offset points',
+                            xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
 
     if pos_freq_labels:
-        for x, y, r in zip(pos_remove_num, pos_clean_acc, pos_freq_labels):
-            plt.annotate(r, (x, y), textcoords='offset points',
-                         xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+        for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
+            if ((i+1) % 5 == 0 or (i == len(pos_remove_num)-2)):
+                plt.annotate(r, (x, y), textcoords='offset points',
+                    xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+                
+            elif i == len(pos_remove_num)-2:
+                plt.annotate(r, (x, y), textcoords='offset points',
+                    xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
 
     # Labels and title
     plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
@@ -587,17 +593,85 @@ def remove_edge_cnn_union(args):
     neg_acc_clean = []
     pos_acc_clean = []
 
-    neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
-    pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]
+    # neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
+    # pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]
 
+    
+    # neg_total = len(neg_edges_only)
+    # pos_total = len(pos_edges_only)
+    
+    total_example = len(selected_classes)*sample_size
+    
+    # pos_edges_only = [(i, j) for (i, j, _, _) in pos_zero_freq_edges_sorted]
+    # neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
+    
+    layers_i = [np.searchsorted(prefix_dims, i, side='right') - 1 for (i, j, _, _) in pos_freq_edges_sorted]
+
+    # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
+    pos_edges_only = [
+        (i, j)
+        for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
+        if layer != 4
+    ]
+    
+    # neg_edges_new = [
+    #     (i, j, freq, curv)
+    #     for (i, j, freq, curv), layer in zip(pos_zero_freq_edges_sorted, layers_i)
+    #     if layer == 9 and ((curv < 0.5))
+    # ]
+    
+    layers_i = [np.searchsorted(prefix_dims, i, side='right') - 1 for (i, j, _, _) in neg_freq_edges_sorted]
+    
+    neg_edges_only = [
+        (i, j)
+        for (i, j, freq, curv), layer in zip(neg_freq_edges_sorted, layers_i)
+        if layer != 4
+    ]
+    
+    # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
+    # pos_edges_only = [
+    #     (i, j)
+    #     for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
+    #     if freq >= 0.6*total_example
+    # ]
+    
+    # neg_edges_new = [
+    #     (i, j, freq, curv)
+    #     for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
+    #     if freq < 0.6*total_example
+    # ]
+    
+    # Convert the existing list into a dictionary for quick lookup
+    # neg_edge_dict = {(i, j): [freq, curvature] for i, j, freq, curvature in neg_freq_edges_sorted}
+    
+    # # Merge / update
+    # for i, j, freq, curvature in neg_edges_new:
+    #     if (i, j) in neg_edge_dict:
+    #         f_old, c_old = neg_edge_dict[(i, j)]
+    #         f_new = f_old + freq
+    #         c_new = (c_old * f_old + curvature * freq) / f_new
+    #         neg_edge_dict[(i, j)] = [f_new, c_new]
+    #     else:
+    #         neg_edge_dict[(i, j)] = [freq, curvature]
+            
+    # # Rebuild full list from dictionary and sort
+    # neg_freq_edges_sorted = sorted(
+    #     [(i, j, freq, curv) for (i, j), (freq, curv) in neg_edge_dict.items()],
+    #     key=lambda x: (-x[2], x[3])  # sort by frequency descending, then curvature ascending
+    # )
+        
+    # neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
     
     neg_total = len(neg_edges_only)
     pos_total = len(pos_edges_only)
+    
+    print(f'New pos {pos_total}, neg {neg_total}')
+
 
     # remove_num = [0, 5000, (int)(len(neg_edges_only)*0.3), (int)(len(neg_edges_only)*0.5), (int)(len(neg_edges_only)*0.7), len(neg_edges_only), (int)(len(pos_edges_only)*0.7), (int)(len(pos_edges_only)*0.9), (int)(len(pos_edges_only))]
     # Generate uniformly spaced points (including 0 and total) for each list
-    neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
-    pos_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
+    neg_remove_num = list(np.linspace(0, neg_total, num=5, dtype=int))
+    pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
     
     remove_num = list(np.linspace(0, total_edge, num=10, dtype=int))
     
@@ -641,18 +715,34 @@ def remove_edge_cnn_union(args):
         acc_clean_pos = test_clean(net_pos, test_loader)
         pos_acc_clean.append(acc_clean_pos)
         
+        
+    # pack into a dictionary
+    data = {
+        "neg_clean_acc": neg_acc_clean,
+        "pos_clean_acc": pos_acc_clean,
+        "neg_remove_num": neg_remove_num,
+        "pos_remove_num": pos_remove_num,
+    }
+
+    # save to pickle file
+    with open(res_path+"results.pkl", "wb") as f:
+        pickle.dump(data, f)
+
+    print("Saved variables to results.pkl")
+    
+        
 
     # Plot
-    plot_curve(
-        neg_clean_acc=neg_acc_clean,
-        pos_clean_acc=pos_acc_clean,
-        neg_remove_num=neg_remove_num,
-        pos_remove_num=pos_remove_num,
-        label=sample_size,
-        res_path=res_path,
-        neg_freq_labels=neg_freq_labels,
-        pos_freq_labels=pos_freq_labels,
-        x_axis = remove_num
-    )
+    # plot_curve(
+    #     neg_clean_acc=neg_acc_clean,
+    #     pos_clean_acc=pos_acc_clean,
+    #     neg_remove_num=neg_remove_num,
+    #     pos_remove_num=pos_remove_num,
+    #     label=sample_size,
+    #     res_path=res_path,
+    #     neg_freq_labels=neg_freq_labels,
+    #     pos_freq_labels=pos_freq_labels,
+    #     x_axis = remove_num
+    # )
         # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
                 

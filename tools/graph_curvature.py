@@ -338,13 +338,36 @@ def process_edge(b, edge):
             out_neigh = list(out_neigh[non_zero]) + [j]
             nu = np.hstack((nu[non_zero], np.array(_alpha)))
             
-    # a = mu[mu!=0]
-    # c = nu[nu!=0]       
+            
     # if (i + _pre_n == 36679 and j + _pre_n == 37573):
-    #     print(in_neigh[:10])
-    #     print(a[:10])
-    #     print(out_neigh[:10])
-    #     print(c[:10])
+    #     a = mu[mu != 0]
+    #     c = nu[nu != 0]
+        
+    #     print(len(a), len(in_neigh))
+    #     print(len(c), len(out_neigh))
+    
+    #     print("in_neigh (first 10):", in_neigh[:10])
+    #     print("a (first 10):", a[:10])
+    #     print("out_neigh (first 10):", out_neigh[:10])
+    #     print("c (first 10):", c[:10])
+
+    #     # --- Find top 10 for a ---
+    #     top_a_idx = np.argsort(a)[-10:][::-1]  # indices of 10 largest values in descending order
+    #     top_a_vals = a[top_a_idx]
+    #     top_a_nodes = np.array(in_neigh)[top_a_idx]
+
+    #     print("\nTop 10 a values and corresponding in_neigh nodes:")
+    #     for node, val in zip(top_a_nodes, top_a_vals):
+    #         print(f"Node: {node}, Value: {val}")
+
+    #     # --- Find top 10 for c ---
+    #     top_c_idx = np.argsort(c)[-10:][::-1]
+    #     top_c_vals = c[top_c_idx]
+    #     top_c_nodes = np.array(out_neigh)[top_c_idx]
+
+    #     print("\nTop 10 c values and corresponding out_neigh nodes:")
+    #     for node, val in zip(top_c_nodes, top_c_vals):
+    #         print(f"Node: {node}, Value: {val}")
 
     
     # Get submatrix for neighbors
@@ -419,7 +442,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     del weights
     del probability_w
     torch.cuda.empty_cache()
-        
+    
     # Precompute distributions using dictionary
     distribution_in, distribution_out = {}, {}
     for layer in range(1, len(dims)):
@@ -427,9 +450,9 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             path_sub = dis_w_in[(layer-1, layer)]
             mask = (path_sub != float('inf'))
             weights_layer = torch.exp(-(path_sub ** 2)) * mask
-            # weights_layer = torch.exp(-(torch.abs(path_sub))) * mask
+            # weights_layer = (1./path_sub) * mask
             sum_weights = weights_layer.sum(dim=1)
-            
+
             dist_prev = ((1.0 - _alpha) * weights_layer) / sum_weights[:, None, :]
             
             indices = torch.where(sum_weights <= EPSILON)[1]
@@ -441,7 +464,6 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             
             distribution_in[layer] = dist_prev.cpu().numpy()
             
-
     for layer in range(len(dims)-1):
         if (layer, layer+1) in dis_w_out:
             path_sub = dis_w_out[(layer, layer+1)]
@@ -449,7 +471,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             mask = (path_sub != float('inf'))
             
             weights_layer = torch.exp(-(path_sub ** 2)) * mask
-            # weights_layer = torch.exp(-(torch.abs(path_sub))) * mask
+            # weights_layer = (1./path_sub) * mask
             sum_weights = weights_layer.sum(dim=2)
             
             dist_next = ((1.0 - _alpha) * weights_layer) / sum_weights[:, :, None]

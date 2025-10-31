@@ -17,6 +17,7 @@ class LeNet_custom_v2(nn.Module):
         self.fc2   = nn.Linear(120, 84)
         self.fc3   = nn.Linear(84, 10)
         self.activation = nn.ReLU()
+        self.softmax = nn.Softmax(dim=1)
         
         self.model_info = model_info
         self.edge_set = edge_set if edge_set != None else set()
@@ -41,12 +42,18 @@ class LeNet_custom_v2(nn.Module):
         return cur_nodes, cur_size, cur_channel, cur_dim, cur_name
     
     
-    def __build_remove_mask__(self, new_edge_set = set(), num = 100000):
-        cur_layer = 1
+    
+    def __build_remove_mask__(self, new_edge_set, num = 100000, start_l = 1, mask = "global"):
+        cur_layer = start_l
         self.cur_total_nodes = 0
+        total_layers = len(self.model_info)
+        
         remove_num = 0
         
-        while(cur_layer < len(self.model_info)):
+        if mask == "global"  and len(new_edge_set) > num:
+            new_edge_set = new_edge_set[:num]
+        
+        while(cur_layer < total_layers):
             if remove_num >= num:
                 break
             # get l1, l2 info
@@ -55,7 +62,6 @@ class LeNet_custom_v2(nn.Module):
             
             remove_e = [e for e in new_edge_set if (e[1] < (l2_nodes + l1_nodes + self.cur_total_nodes) and (e[1] >= l1_nodes + self.cur_total_nodes)) \
                 and (e[0] >= self.cur_total_nodes and e[0] < (l1_nodes + self.cur_total_nodes))]
-            
 
             if l2_name == "cnn":
                 k = l2_dim["kernel"]
@@ -87,38 +93,6 @@ class LeNet_custom_v2(nn.Module):
                 if remove_num >= num:
                     break
                 
-            elif l2_name == "pooling":
-                k = l2_dim["kernel"]
-                s = l2_dim["stride"]
-                
-                tensor_2d = torch.arange(l1_nodes).reshape(1,l1_channel,l1_size,l1_size).float()
-        
-                indices = F.unfold(tensor_2d, (k,k), stride = s)
-                indices = indices.view(1, l1_channel, k*k, -1)
-                input_indices = indices.view(1*l1_channel, k*k, -1).int()
-                
-                map_size = l2_size**2
-                
-                if cur_layer not in self.remove_mask.keys():
-                    self.remove_mask[cur_layer] = torch.ones((l2_channel, input_indices.shape[1], input_indices.shape[2]))
-                
-                if len(remove_e) > 0:
-                    for e in remove_e:
-                        n1 = e[0] - self.cur_total_nodes
-                        n2 = e[1] - self.cur_total_nodes - l1_nodes
-                        
-                        channel_num = n2 // map_size
-                        node = n2 - map_size*channel_num
-                        index = (input_indices[channel_num,:,node] == n1).nonzero().item()
-                        
-                        self.remove_mask[cur_layer][channel_num, index, node] = 0
-                        remove_num += 1
-
-                        if remove_num >= num:
-                            break
-                if remove_num >= num:
-                    break
-                        
             else:
                 if cur_layer not in self.remove_mask.keys():
                     self.remove_mask[cur_layer] = torch.ones((l1_nodes, l2_nodes))
@@ -138,8 +112,6 @@ class LeNet_custom_v2(nn.Module):
 
             self.cur_total_nodes += l1_nodes
             cur_layer += 1
-                
-        # self.edge_set |= new_edge_set
     
     
 
@@ -405,6 +377,7 @@ class LeNet_custom_v2(nn.Module):
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.fc3(x)
+        x = self.softmax(x)
         nodes = torch.cat((nodes, x), axis = 1)
         
         return edge_value, nodes, weights
@@ -791,6 +764,7 @@ class LeNet_custom_v2(nn.Module):
         
         weights_inv1 = torch.zeros_like(weights)
         weights_inv2 = torch.zeros_like(weights)
+        weights_inv3 = torch.zeros_like(weights)
         
         n = dims[0]  # Start from the first node of the second layer
 
@@ -834,13 +808,18 @@ class LeNet_custom_v2(nn.Module):
                         in_edges = torch.arange(start_col, end_col, device=nodes.device)
                         
                         # Compute weights and normalization
-                        w = nodes[:, neighbors] * weights[:, in_edges]
+                        # w = nodes[:, neighbors] * weights[:, in_edges]
                         
                         # Shape: (batch_size, fan-in)
-                        node_slice = nodes[:, neighbors]
+                        node_slice = torch.abs(nodes[:, neighbors])
                         weight_slice = weights[:, in_edges]
                         
-                        # Prevent divide-by-zero
+                        min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                        max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                        
+                        node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+                        
+                       # Prevent divide-by-zero
                         weights_inv1[:, in_edges] = 1.0 / (torch.abs(weight_slice))
                         weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
                         
@@ -853,16 +832,83 @@ class LeNet_custom_v2(nn.Module):
                 in_edges = torch.arange(start_col + (n - prefix_dims[current_l-1]), end_col, step)
             
                 # Shape: (batch_size, fan-in)
-                node_slice = nodes[:, neighbors]
+                node_slice = torch.abs(nodes[:, neighbors])
                 weight_slice = weights[:, in_edges]
+                
+                min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                
+                node_slice = (node_slice - min_vals) / (max_vals - min_vals)
 
                 # Prevent divide-by-zero
                 weights_inv1[:, in_edges] = 1.0 / (torch.abs(weight_slice))
                 weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
-            
+                    
                 n += 1
+                
+        ### ---------- SECOND PASS: outgoing edges ----------
+        n = 0  # restart from first node of input layer
+        current_l = 1
+        start_col = 0
+        end_col = 0
         
-        return weights_inv1, weights_inv2
+        while n < prefix_dims[-2]:  # go through all nodes except final output layer
+            if n >= prefix_dims[current_l - 1]:
+                # move to next layer's edges
+                start_col = end_col
+                
+                if current_l >= len(dims):
+                    break
+                
+                end_col += dims[current_l - 1] * dims[current_l]
+                current_l += 1
+                out_neighbors = torch.arange(prefix_dims[current_l-1], prefix_dims[current_l], device=nodes.device)
+      
+
+            layer = model_dims[current_l]
+            prev_layer = model_dims[current_l - 1]
+            cur_name = layer["name"]
+            cur_dim = layer["dim"]
+            pre_dim = prev_layer["dim"]
+
+            if cur_name in ["cnn", "pooling"]:
+                k = cur_dim['kernel']
+                s = cur_dim['stride']
+                in_size = pre_dim['out_size']
+                pre_channel = 1 if prev_layer["name"] == "fc" else pre_dim['channel']
+                cur_channel = 1 if cur_name == "fc" else cur_dim['channel']
+                
+                tensor_2d = torch.arange(pre_dim['out_size']**2 * pre_channel,
+                                        device=nodes.device).reshape(1, pre_channel, in_size, in_size).float()
+                indices = F.unfold(tensor_2d, (k, k), stride=s).transpose(1, 2).int()
+
+                step = k ** 2
+
+                for c in range(cur_channel):
+                    for l in range(indices.shape[1]):
+                        start_col += step * pre_channel
+                end_col = start_col
+                
+                n = prefix_dims[current_l - 1]
+
+            elif cur_name == "fc":
+                tmp = start_col + (n - prefix_dims[current_l - 2])*dims[current_l-1]
+                out_edges = torch.arange(tmp, tmp+dims[current_l-1], 1, device=nodes.device)
+
+                node_slice = torch.abs(nodes[:, out_neighbors])
+                # --- Step 1: normalize to [0, 1] ---
+                min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                
+                node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+
+                # --- Step 2: compute weights ---
+                weights_inv3[:, out_edges] = 1.0 / (torch.abs(node_slice))
+
+                n += 1
+
+        
+        return weights_inv1, weights_inv2, weights_inv3
     
     
     

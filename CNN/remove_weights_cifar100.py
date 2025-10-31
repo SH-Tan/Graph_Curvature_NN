@@ -10,6 +10,7 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import copy
 import torch.nn.functional as F
+import pickle
 
 import pandas as pd
 # from tools.vgg16_custom_mnist import VGG16_CIFAR10
@@ -402,7 +403,7 @@ def remove_w_cifar100(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
     
@@ -456,11 +457,11 @@ def remove_w_cifar100(args):
         break
     
     edge_array, nodes_ori, output = net_full.NN_info_batch(img)
+
+    weights = edge_array.detach().to(device)
     del img, edge_array, nodes_ori
     
-    weights = output.detach().to(device)
-    
-    print(weights.shape)
+    # print(weights.shape)
     
     # weights_abs = torch.abs(weights)
     # print(len(weights_abs[0][weights_abs[0]<1]))
@@ -476,6 +477,7 @@ def remove_w_cifar100(args):
     # Step 2: Define total number of edges and removal schedule
     neg_total = len(sorted_edges_low_np)
     pos_total = len(sorted_edges_high_np)
+
     
     low_remove_num = list(np.linspace(0, neg_total, num=10, dtype=int))
     high_remove_num = list(np.linspace(0, pos_total, num=10, dtype=int))
@@ -487,7 +489,7 @@ def remove_w_cifar100(args):
     for index, rem_f in enumerate(high_remove_num):
         # remove second layer negative curvature edges
         net_neg = copy.deepcopy(net_H)
-        net_neg.__build_remove_mask__(sorted_edges_high_np, rem_f)
+        net_neg.__build_remove_mask__(sorted_edges_high_np, rem_f, mask='global')
         # test acc
         acc = test_clean(net_neg, test_loader)
         high_acc_clean.append(acc)
@@ -495,13 +497,26 @@ def remove_w_cifar100(args):
     for index, rem_f in enumerate(low_remove_num):
         # remove positive curvature edges
         net_pos = copy.deepcopy(net_H)
-        net_pos.__build_remove_mask__(sorted_edges_low_np, rem_f)
+        net_pos.__build_remove_mask__(sorted_edges_low_np, rem_f, mask='global')
         # test acc
         acc_low = test_clean(net_pos, test_loader)
         low_acc_clean.append(acc_low)
         
-    plot_curve(high_acc_clean, low_acc_clean, low_remove_num, res_path, model_full_n+activation)
+    plot_curve(high_acc_clean, low_acc_clean, low_remove_num, res_path, model_full_n+activation + "wanda")
 
+    # pack into a dictionary
+    data = {
+        "neg_clean_acc": low_acc_clean,
+        "pos_clean_acc": high_acc_clean,
+        "neg_remove_num": low_remove_num,
+        "pos_remove_num": low_remove_num,
+    }
+
+    # save to pickle file
+    with open(res_path+"results_weight_local.pkl", "wb") as f:
+        pickle.dump(data, f)
+
+    print("Saved variables to results.pkl")
 
     # # Step 2: Separate edges by layer
     # sorted_edges_high_by_layer = separate_edges_by_layer_in_order(sorted_edges_high_np, prefix_dims_full)

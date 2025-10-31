@@ -499,14 +499,20 @@ def plot_curve(
 
     # Annotate frequencies BELOW points
     if neg_freq_labels:
-        for x, y, r in zip(neg_remove_num, neg_clean_acc, neg_freq_labels):
-            plt.annotate(r, (x, y), textcoords='offset points',
-                         xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
+        for i, (x, y, r) in enumerate(zip(neg_remove_num, neg_clean_acc, neg_freq_labels)):
+            if (i % 2 == 0):
+                plt.annotate(r, (x, y), textcoords='offset points',
+                            xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
 
     if pos_freq_labels:
-        for x, y, r in zip(pos_remove_num, pos_clean_acc, pos_freq_labels):
-            plt.annotate(r, (x, y), textcoords='offset points',
-                         xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+        for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
+            if ((i+1) % 5 == 0):
+                plt.annotate(r, (x, y), textcoords='offset points',
+                    xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+                
+            elif i == len(pos_remove_num)-2:
+                plt.annotate(r, (x, y), textcoords='offset points',
+                    xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
 
     # Labels and title
     plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
@@ -614,7 +620,7 @@ def remove_edge_cifar100_union_perlayer(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -731,8 +737,8 @@ def remove_edge_cifar100_union_perlayer(args):
         neg_total = len(neg_edges)
         pos_total = len(pos_edges)
 
-        neg_remove_num = list(np.linspace(0, neg_total, num=3, dtype=int))
-        pos_remove_num = list(np.linspace(0, pos_total, num=6, dtype=int))
+        neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
+        pos_remove_num = list(np.linspace(0, pos_total, num=50, dtype=int))
         
         print(f"\nLayer {layer}:")
         print(f"  Negative edges: {neg_total}")

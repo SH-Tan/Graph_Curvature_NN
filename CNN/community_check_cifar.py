@@ -19,7 +19,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature_new import graph_curvature_main_torch
+from tools.graph_curvature import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -217,7 +217,7 @@ def community_check_cifar(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -319,10 +319,41 @@ def community_check_cifar(args):
 
                             weights = output.detach().to(device)
                             del output
-                            # weights[edge_array == 0] = 0.
                             
-                            # print(len(weights[0]), len(weights[weights!=0]))
+                            normalized_weights = []
+                            start = 0
+
+                            for num_edges in edge_dims:
+                                end = start + num_edges
+                                w = weights[:, start:end]
+                                if w.numel() == 0:
+                                    normalized_weights.append(w)
+                                    continue
+
+                                w = w.abs()
+                                w_min, w_max = w.min(), w.max()
+                                if (w_max - w_min) > 0:
+                                    w_norm = (w - w_min) / (w_max - w_min)
+                                else:
+                                    w_norm = torch.zeros_like(w)
+                                normalized_weights.append(w_norm)
+                                start = end
+
+                            weights = torch.cat(normalized_weights, dim=1)
                             
+                            # print(weights.shape)
+                            
+                            # offset = 0
+                            # for i, size in enumerate(edge_dims, 1):
+                            #     layer_weights = weights[:,offset:offset + size]
+                            #     print(f"Layer {i}:")
+                            #     print(f"  Range: [{offset}, {offset + size})")
+                            #     print(f"  Min: {layer_weights.min():.6f}")
+                            #     print(f"  Max: {layer_weights.max():.6f}")
+                            #     print(f"  Mean: {layer_weights.mean():.6f}")
+                            #     print(f"  Var: {layer_weights.var():.6e}")
+                            #     offset += size
+                                
                             if metric.lower() == "w1":
                                 weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims_small)
                                 weights_inv = weights_inv1.detach()
@@ -345,14 +376,17 @@ def community_check_cifar(args):
                                     layers_to_process=[1,2,3]
                                 )
                             elif metric.lower() == "w4":
-                                weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
+                                weights_inv1, weights_inv2, weights_inv3 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
                                 weights_inv = weights_inv1.detach()
                                 weights_inv2 = weights_inv2.detach()
-   
+                                weights_inv3 = weights_inv3.detach()
+                                
+                                # print(len(weights_inv[0]), len(weights_inv[weights_inv!=np.inf]))
+
                                 ricci_curvature = graph_curvature_main_torch(
                                     dims, weights_inv, device=device,
                                     model_dims=model_dims_small,
-                                    probability_w=weights_inv2, alpha=alpha,
+                                    probability_w=(weights_inv2, weights_inv3), alpha=alpha,
                                     pre_n=(np.sum(dims_full) - np.sum(dims)),
                                     layers_to_process=[1,2,3]
                                 )

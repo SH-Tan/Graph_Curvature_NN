@@ -10,6 +10,7 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import copy
 import torch.nn.functional as F
+import pickle
 
 import pandas as pd
 # from tools.vgg16_custom_mnist import VGG16_CIFAR10
@@ -142,7 +143,7 @@ def get_last_three_layer_edges_sorted_cnn(model_dims, weights, prefix_dims, devi
         dst_size = prefix_dims[i + 2] - prefix_dims[i + 1]
 
         # Only keep transitions from 3→4, 4→5, 5→6
-        if not (i in [1, 2, 3]):
+        if not (i in [1, 2]):
             # Still skip over weights
             if current_layer['name'] == 'fc':
                 weight_idx += src_size * dst_size
@@ -401,7 +402,7 @@ def remove_w_cifar(args):
     seed = 59
     set_seed(seed)
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
     
@@ -482,7 +483,7 @@ def remove_w_cifar(args):
     for index, rem_f in enumerate(high_remove_num):
         # remove second layer negative curvature edges
         net_neg = copy.deepcopy(net_H)
-        net_neg.__build_remove_mask__(sorted_edges_high_np, rem_f)
+        net_neg.__build_remove_mask__(sorted_edges_high_np, rem_f, mask='local')
         # test acc
         acc = test_clean(net_neg, test_loader)
         high_acc_clean.append(acc)
@@ -490,12 +491,26 @@ def remove_w_cifar(args):
     for index, rem_f in enumerate(low_remove_num):
         # remove positive curvature edges
         net_pos = copy.deepcopy(net_H)
-        net_pos.__build_remove_mask__(sorted_edges_low_np, rem_f)
+        net_pos.__build_remove_mask__(sorted_edges_low_np, rem_f, mask='local')
         # test acc
         acc_low = test_clean(net_pos, test_loader)
         low_acc_clean.append(acc_low)
         
     plot_curve(high_acc_clean, low_acc_clean, low_remove_num, res_path, model_full_n+activation)
+    
+    # pack into a dictionary
+    data = {
+        "neg_clean_acc": low_acc_clean,
+        "pos_clean_acc": high_acc_clean,
+        "neg_remove_num": low_remove_num,
+        "pos_remove_num": low_remove_num,
+    }
+
+    # save to pickle file
+    with open(res_path+"results_weight_local.pkl", "wb") as f:
+        pickle.dump(data, f)
+
+    print("Saved variables to results.pkl")
 
 
     # # Step 2: Separate edges by layer

@@ -233,7 +233,7 @@ def iterative_edge_removal_and_curvature(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -360,19 +360,14 @@ def iterative_edge_removal_and_curvature(args):
                                 img = images[idx].to(device, non_blocking=True)
                                 edge_array, nodes_ori, output = net_iter.NN_info_batch(img.unsqueeze(0))
                                 
-                                # address 0 node value
-                                # nonzero_min = torch.min(torch.abs(nodes_ori[nodes_ori != 0]))
-                                # small_val = nonzero_min * 0.5
-                                # eps = 1e-6
-                                # small_val = torch.clamp(small_val, min=eps)
-                                # nodes_ori = torch.where(nodes_ori == 0, small_val, nodes_ori)
+                                # print(nodes_ori[:, torch.tensor([153, 200, 468, 500, 276, 102, 300, 304, 41, 48])])
                                 
                                 # print(len(torch.abs(nodes_ori[nodes_ori!=0])))
                                 weights = output.detach().to(device)
                                 del output
                                 # weights[edge_array == 0] = 0.
-                                # print(weights.shape)
-                                # print(torch.mean(weights[:,262144:524288+262144]), torch.var(weights[:,262144:524288+262144]))
+                                print(weights.shape)
+                                print(torch.mean(weights[:,262144:524288+262144]), torch.var(weights[:,262144:524288+262144]))
                                 
                                 if metric.lower() == "w1":
                                     weights_inv1, weights_inv2 = net_iter.normalization_weight_w1(nodes_ori, weights, dims, model_dims_small)

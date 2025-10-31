@@ -22,10 +22,13 @@ from pgd.remove_weights_fc import remove_w_fc
 from pgd.remove_edge_fc_union_perlayer import remove_edge_fc_union_perlayer
 from pgd.remove_edge_fc_perlayer_old import remove_edge_fc_union_perlayer_old
 from CNN.remove_edge_cnn_union import remove_edge_cnn_union
+from CNN.remove_edge_cnn_union_combined import remove_edge_cnn_union_combined
 from CNN.remove_weights_cnn import remove_w_cnn
 from CNN.remove_edge_cnn_union_perlayer import remove_edge_cnn_union_perlayer
 from CNN.remove_edge_cifar_union import remove_edge_cifar_union
+from CNN.remove_edge_cifar_union_combined import remove_edge_cifar_union_combined
 from CNN.remove_edge_cifar100_union import remove_edge_cifar100_union
+from CNN.remove_edge_cifar100_union_combined import remove_edge_cifar100_union_combined
 from CNN.remove_edge_cifar_union_perlayer import remove_edge_cifar_union_perlayer
 from CNN.remove_edge_cifar100_union_perlayer import remove_edge_cifar100_union_perlayer
 from CNN.remove_weights_cifar import remove_w_cifar
@@ -96,18 +99,18 @@ if __name__=='__main__':
                 community_check_fc(args)
         elif model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
-                remove_edge_cnn_union_perlayer(args)
+                remove_edge_cnn_union_combined(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                remove_edge_cifar_union(args)
-                # remove_w_cifar100(args)
-                # remove_edge_cifar100_union_perlayer(args)
+                # remove_edge_cifar_union_combined(args)
+                remove_w_cifar100(args)
+                # remove_edge_cifar100_union_combined(args)
                 # remove_wadan_cifar(args)
             if args.community and args.dataset.lower() == "cifar":
-                # community_check_cifar(args)
+                community_check_cifar(args)
                 # community_check_cifar100(args)
-                iterative_edge_removal_and_curvature(args)
+                # iterative_edge_removal_and_curvature(args)
             if args.community and args.dataset.lower() == "imagenet":
                 community_check_imagenet(args)
         else:
