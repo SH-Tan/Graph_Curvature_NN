@@ -2,7 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from .q_exponential import q_exponential
+import sys
+sys.path.append("..")
+
+import tools.utils as utils
 
 
 
@@ -311,6 +314,16 @@ class LeNet_custom_v2(nn.Module):
         ones_tmp = torch.ones_like(x)
         nodes = x.view(-1, self.num_flat_features(x))
         
+        # Take absolute values
+        nodes_abs = torch.abs(nodes)
+
+        # Compute min and max per sample (along nodes)
+        min_vals = nodes_abs.min(dim=1, keepdim=True)[0]  # shape (batch_size, 1)
+        max_vals = nodes_abs.max(dim=1, keepdim=True)[0]  # shape (batch_size, 1)
+
+        # Normalize to [0, 1]
+        nodes= (nodes_abs - min_vals) / (max_vals - min_vals)
+        
         # first CNN layer
         k1 = self.conv1.weight
         edge_v = (self.CNN_edges(x_tmp, k1, 1, 2)).cpu().detach()
@@ -324,7 +337,16 @@ class LeNet_custom_v2(nn.Module):
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
-        nodes = torch.cat((nodes, x.view(-1, self.num_flat_features(x))), axis = 1)
+        x_flat = x.view(-1, self.num_flat_features(x))
+
+        # Take absolute value and normalize per sample
+        x_abs = torch.abs(x_flat)
+        min_vals = x_abs.min(dim=1, keepdim=True)[0]
+        max_vals = x_abs.max(dim=1, keepdim=True)[0]
+        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
         
         # second CNN layer
         k2 = self.conv2.weight
@@ -335,7 +357,18 @@ class LeNet_custom_v2(nn.Module):
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
 
         x = self.activation(self.CNN(x, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3))
-        nodes = torch.cat((nodes, x.view(-1, self.num_flat_features(x))), axis = 1)
+        # nodes = torch.cat((nodes, x.view(-1, self.num_flat_features(x))), axis = 1)
+        
+        x_flat = x.view(-1, self.num_flat_features(x))
+
+        # Take absolute value and normalize per sample
+        x_abs = torch.abs(x_flat)
+        min_vals = x_abs.min(dim=1, keepdim=True)[0]
+        max_vals = x_abs.max(dim=1, keepdim=True)[0]
+        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
         
 
         # fully connected
@@ -354,7 +387,18 @@ class LeNet_custom_v2(nn.Module):
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
-        nodes = torch.cat((nodes, x), axis = 1)
+        # nodes = torch.cat((nodes, x), axis = 1)
+        
+        x_flat = x
+
+        # Take absolute value and normalize per sample
+        x_abs = torch.abs(x_flat)
+        min_vals = x_abs.min(dim=1, keepdim=True)[0]
+        max_vals = x_abs.max(dim=1, keepdim=True)[0]
+        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
         
         # fc2    
         edge_v = (self.fc_edges(x_tmp, self.fc2, 4, 5)).cpu().detach()
@@ -367,7 +411,18 @@ class LeNet_custom_v2(nn.Module):
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
-        nodes = torch.cat((nodes, x), axis = 1)
+        # nodes = torch.cat((nodes, x), axis = 1)
+        
+        x_flat = x
+
+        # Take absolute value and normalize per sample
+        x_abs = torch.abs(x_flat)
+        min_vals = x_abs.min(dim=1, keepdim=True)[0]
+        max_vals = x_abs.max(dim=1, keepdim=True)[0]
+        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
 
         # fc3
         edge_v = (self.fc_edges(x_tmp, self.fc3, 5, 6)).cpu().detach()
@@ -378,7 +433,18 @@ class LeNet_custom_v2(nn.Module):
         
         x = self.fc3(x)
         x = self.softmax(x)
-        nodes = torch.cat((nodes, x), axis = 1)
+        # nodes = torch.cat((nodes, x), axis = 1)
+        
+        x_flat = x
+
+        # Take absolute value and normalize per sample
+        x_abs = torch.abs(x_flat)
+        min_vals = x_abs.min(dim=1, keepdim=True)[0]
+        max_vals = x_abs.max(dim=1, keepdim=True)[0]
+        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
         
         return edge_value, nodes, weights
     
@@ -751,9 +817,92 @@ class LeNet_custom_v2(nn.Module):
     
     
     
+    
+    def normalization_weight_w4(self, nodes, weights, dims, model_dims, edge_dims, device='cuda'):
+        """
+        CNN/FC layer-wise normalization using adjacency reconstruction per layer.
+        Computes weights_inv1 (1/|w|), weights_inv2 (1/|input nodes|), weights_inv3 (1/|output nodes|).
+        """
+        nodes_num = nodes.shape[1]
+        prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
+        prefix_dims = torch.cat([torch.tensor([0]), prefix_dims]).to(nodes.device)
+
+        current_l = 1
+        start_col = 0
+        end_col = 0
         
+        weights_inv1 = 1./torch.abs(weights)
+        weights_inv2 = torch.zeros_like(weights)
+        weights_inv3 = torch.zeros_like(weights)
+        
+        n = dims[0]  # Start from the first node of the second layer
+
+        while n < nodes_num:
+            if n >= prefix_dims[current_l]:
+                current_l += 1
+                start_col = end_col
+                
+                end_col += (dims[current_l-2] * dims[current_l-1])
+                neighbors = torch.arange(prefix_dims[current_l-2], prefix_dims[current_l-1])
+                step = dims[current_l-1]
+            
+            layer = model_dims[current_l]
+            prev_layer = model_dims[current_l - 1]
+            
+            # Extract layer details
+            cur_name = layer["name"]
+            cur_dim = layer["dim"]
+            pre_dim = prev_layer["dim"]
+            
+            # Determine channels and dimensions
+            cur_channel = 1 if cur_name == "fc" else cur_dim['channel']
+            pre_channel = 1 if prev_layer["name"] == "fc" else pre_dim['channel']
+            pre_nodes_num = dims[current_l - 2]
+            
+            if cur_name in ["cnn", "pooling"]:
+                k = cur_dim['kernel']
+                s = cur_dim['stride']
+                in_size = pre_dim['out_size']
+                
+                # Generate indices for previous layer's nodes
+                tensor_2d = torch.arange(pre_nodes_num, device=nodes.device).reshape(1, pre_channel, in_size, in_size).float()
+                indices = F.unfold(tensor_2d, (k, k), stride=s).transpose(1, 2).int()
+                step = k ** 2
+                end_col = start_col + step * pre_channel
+                
+                # Process all channels and positions at once
+                for c in range(cur_channel):
+                    for l in range(indices.shape[1]):
+                        neighbors = indices[0,l] + prefix_dims[current_l-2] 
+                        in_edges = torch.arange(start_col, end_col, device=nodes.device)
+                        
+                        # Shape: (batch_size, fan-in)
+                        node_slice = torch.abs(nodes[:, neighbors])
+
+                        weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
+                        
+                        n += 1
+                        start_col = end_col
+                        end_col = start_col + step*pre_channel
+                end_col = start_col
+            
+            elif cur_name == "fc":
+                in_edges = torch.arange(start_col + (n - prefix_dims[current_l-1]), end_col, step)
+            
+                # Shape: (batch_size, fan-in)
+                node_slice = torch.abs(nodes[:, neighbors])
+
+                # Prevent divide-by-zero
+                weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
+                    
+                n += 1
+
+        return weights_inv1, weights_inv2, weights_inv3
+
+        
+    
     # weights regularization 
-    def normalization_weight_w4(self, nodes, weights, dims, model_dims):
+    def normalization_weight_w4_old(self, nodes, weights, dims, model_dims, edge_dims):
         nodes_num = nodes.shape[1]
         prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
         prefix_dims = torch.cat([torch.tensor([0]), prefix_dims]).to(nodes.device)
@@ -912,84 +1061,4 @@ class LeNet_custom_v2(nn.Module):
     
     
     
-    def normalization_weight_w6(self, nodes, weights, dims, model_dims, q):
-        nodes_num = nodes.shape[1]
-        prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
-        prefix_dims = torch.cat([torch.tensor([0]), prefix_dims]).to(nodes.device)
-
-        current_l = 1
-        start_col = 0
-        end_col = 0
-        
-        q_exp = q_exponential(q)
-        weights_inv = torch.zeros_like(weights)
-        
-        n = dims[0]  # Start from the first node of the second layer
-
-        while n < nodes_num:
-            if n >= prefix_dims[current_l]:
-                current_l += 1
-                start_col = end_col
-                
-                end_col += (dims[current_l-2] * dims[current_l-1])
-                neighbors = torch.arange(prefix_dims[current_l-2], prefix_dims[current_l-1])
-                step = dims[current_l-1]
-            
-            layer = model_dims[current_l]
-            prev_layer = model_dims[current_l - 1]
-            
-            # Extract layer details
-            cur_name = layer["name"]
-            cur_dim = layer["dim"]
-            pre_dim = prev_layer["dim"]
-            
-            # Determine channels and dimensions
-            cur_channel = 1 if cur_name == "fc" else cur_dim['channel']
-            pre_channel = 1 if prev_layer["name"] == "fc" else pre_dim['channel']
-            pre_nodes_num = dims[current_l - 2]
-            
-            if cur_name in ["cnn", "pooling"]:
-                k = cur_dim['kernel']
-                s = cur_dim['stride']
-                in_size = pre_dim['out_size']
-                
-                # Generate indices for previous layer's nodes
-                tensor_2d = torch.arange(pre_nodes_num, device=nodes.device).reshape(1, pre_channel, in_size, in_size).float()
-                indices = F.unfold(tensor_2d, (k, k), stride=s).transpose(1, 2).int()
-                step = k ** 2
-                end_col = start_col + step * pre_channel
-                
-                # Process all channels and positions at once
-                for c in range(cur_channel):
-                    for l in range(indices.shape[1]):
-                        in_edges = torch.arange(start_col, end_col, device=nodes.device)
-                        
-                        w = weights[:, in_edges]
-                        mask = (w != 0)
-                        if nodes[:, n].item() <= 0:
-                            weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(-w))
-                        else:
-                            weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(w))
-                        
-                        weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] *= mask
-                        
-                        n += 1
-                        start_col = end_col
-                        end_col = start_col + step*pre_channel
-                end_col = start_col
-            
-            elif cur_name == "fc":
-                in_edges = torch.arange(start_col + (n - prefix_dims[current_l-1]), end_col, step)
-            
-                w = weights[:, in_edges]
-                mask = (w != 0)
-                if nodes[:, n].item() <= 0:
-                    weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(-w))
-                else:
-                    weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(w))
-                
-                weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] *= mask
-                n += 1
-        
-        return weights_inv
     

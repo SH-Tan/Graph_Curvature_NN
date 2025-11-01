@@ -99,12 +99,12 @@ if __name__=='__main__':
                 community_check_fc(args)
         elif model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
-                remove_edge_cnn_union_combined(args)
+                remove_edge_cnn_union(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                # remove_edge_cifar_union_combined(args)
-                remove_w_cifar100(args)
+                remove_edge_cifar_union(args)
+                # remove_w_cifar100(args)
                 # remove_edge_cifar100_union_combined(args)
                 # remove_wadan_cifar(args)
             if args.community and args.dataset.lower() == "cifar":

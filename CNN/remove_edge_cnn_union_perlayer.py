@@ -171,11 +171,14 @@ def get_top_c(curvature, b, prefix_dims):
             j_layer = find_layer(j)
 
             # Only keep edges between adjacent layers (excluding input and first hidden)
-            if i_layer >= 2 and j_layer == i_layer + 1:
+            if j_layer == i_layer + 1:
                 if curr < 0:
                     neg_e[i_layer].append((i, j, curr))
                 elif curr >= 0:
-                    pos_e[i_layer].append((i, j, curr))
+                    if curr == 0:
+                        pos_e[i_layer].append((i, j, 0.5))
+                    else:
+                        pos_e[i_layer].append((i, j, curr))
 
     return neg_e, pos_e
 
@@ -588,7 +591,7 @@ def remove_edge_cnn_union_perlayer(args):
         pos_total = len(pos_edges)
 
         neg_remove_num = list(np.linspace(0, neg_total, num=3, dtype=int))
-        pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
+        pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
         
         print(f"\nLayer {layer}:")
         print(f"  Negative edges: {neg_total}")

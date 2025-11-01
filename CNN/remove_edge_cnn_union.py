@@ -152,6 +152,7 @@ def get_top_c(curvature, b, prefix_dims):
     neg_e = set()
     pos_e = set()
     mini_c = 0.
+    zero = 0
     
     for batch in range(b):
         ricci_curv = np.array(curvature[batch])  # shape (N, 3)
@@ -164,13 +165,14 @@ def get_top_c(curvature, b, prefix_dims):
 
         for i, j, curr in valid:
             i, j = int(i), int(j)
-            i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-            if i_layer >= 2: 
-                if curr < 0:
-                    mini_c = min(mini_c, curr)
-                    neg_e.add((i, j, curr))
-                elif curr > 0:
-                    pos_e.add((i, j, curr))
+            # i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
+            if curr < 0:
+                mini_c = min(mini_c, curr)
+                neg_e.add((i, j, curr))
+            elif curr >= 0:
+                if curr == 0:
+                    zero += 1
+                pos_e.add((i, j, curr))
 
     return neg_e, pos_e, mini_c
 
@@ -494,7 +496,7 @@ def remove_edge_cnn_union(args):
     
     edge_dims = cal_edges(model_dims)
     
-    total_edge = sum(edge_dims) - edge_dims[0] - edge_dims[1]
+    total_edge = sum(edge_dims) - edge_dims[0]
     
     print(edge_dims)
     print(total_edge)
@@ -611,7 +613,7 @@ def remove_edge_cnn_union(args):
     pos_edges_only = [
         (i, j)
         for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
-        if layer != 4
+        if layer != 0
     ]
     
     # neg_edges_new = [
@@ -625,7 +627,7 @@ def remove_edge_cnn_union(args):
     neg_edges_only = [
         (i, j)
         for (i, j, freq, curv), layer in zip(neg_freq_edges_sorted, layers_i)
-        if layer != 4
+        if layer != 0
     ]
     
     # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
@@ -717,32 +719,32 @@ def remove_edge_cnn_union(args):
         
         
     # pack into a dictionary
-    data = {
-        "neg_clean_acc": neg_acc_clean,
-        "pos_clean_acc": pos_acc_clean,
-        "neg_remove_num": neg_remove_num,
-        "pos_remove_num": pos_remove_num,
-    }
+    # data = {
+    #     "neg_clean_acc": neg_acc_clean,
+    #     "pos_clean_acc": pos_acc_clean,
+    #     "neg_remove_num": neg_remove_num,
+    #     "pos_remove_num": pos_remove_num,
+    # }
 
-    # save to pickle file
-    with open(res_path+"results.pkl", "wb") as f:
-        pickle.dump(data, f)
+    # # save to pickle file
+    # with open(res_path+"results.pkl", "wb") as f:
+    #     pickle.dump(data, f)
 
-    print("Saved variables to results.pkl")
+    # print("Saved variables to results.pkl")
     
         
 
     # Plot
-    # plot_curve(
-    #     neg_clean_acc=neg_acc_clean,
-    #     pos_clean_acc=pos_acc_clean,
-    #     neg_remove_num=neg_remove_num,
-    #     pos_remove_num=pos_remove_num,
-    #     label=sample_size,
-    #     res_path=res_path,
-    #     neg_freq_labels=neg_freq_labels,
-    #     pos_freq_labels=pos_freq_labels,
-    #     x_axis = remove_num
-    # )
+    plot_curve(
+        neg_clean_acc=neg_acc_clean,
+        pos_clean_acc=pos_acc_clean,
+        neg_remove_num=neg_remove_num,
+        pos_remove_num=pos_remove_num,
+        label=sample_size,
+        res_path=res_path,
+        neg_freq_labels=neg_freq_labels,
+        pos_freq_labels=pos_freq_labels,
+        x_axis = remove_num
+    )
         # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
                 

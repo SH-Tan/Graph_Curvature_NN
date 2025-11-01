@@ -292,7 +292,7 @@ def get_top_c(curvature, b, prefix_dims):
             i_layer = get_layer(i)
             j_layer = get_layer(j)
 
-            if i_layer >= 7 and j_layer == i_layer + 1:
+            if j_layer == i_layer + 1:
                 if curr < 0:
                     neg_e[i_layer].append((i, j, curr))
                 elif curr >= 0:

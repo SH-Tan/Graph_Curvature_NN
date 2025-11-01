@@ -318,41 +318,29 @@ def community_check_cifar(args):
                             edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
 
                             weights = output.detach().to(device)
+                            nodes_ori = nodes_ori.detach().clone().to(device)
                             del output
                             
-                            normalized_weights = []
-                            start = 0
+                            # normalized_weights = []
+                            # start = 0
 
-                            for num_edges in edge_dims:
-                                end = start + num_edges
-                                w = weights[:, start:end]
-                                if w.numel() == 0:
-                                    normalized_weights.append(w)
-                                    continue
+                            # for num_edges in edge_dims:
+                            #     end = start + num_edges
+                            #     w = weights[:, start:end]
+                            #     if w.numel() == 0:
+                            #         normalized_weights.append(w)
+                            #         continue
 
-                                w = w.abs()
-                                w_min, w_max = w.min(), w.max()
-                                if (w_max - w_min) > 0:
-                                    w_norm = (w - w_min) / (w_max - w_min)
-                                else:
-                                    w_norm = torch.zeros_like(w)
-                                normalized_weights.append(w_norm)
-                                start = end
+                            #     w = w.abs()
+                            #     w_min, w_max = w.min(), w.max()
+                            #     if (w_max - w_min) > 0:
+                            #         w_norm = (w - w_min) / (w_max - w_min)
+                            #     else:
+                            #         w_norm = torch.zeros_like(w)
+                            #     normalized_weights.append(w_norm)
+                            #     start = end
 
-                            weights = torch.cat(normalized_weights, dim=1)
-                            
-                            # print(weights.shape)
-                            
-                            # offset = 0
-                            # for i, size in enumerate(edge_dims, 1):
-                            #     layer_weights = weights[:,offset:offset + size]
-                            #     print(f"Layer {i}:")
-                            #     print(f"  Range: [{offset}, {offset + size})")
-                            #     print(f"  Min: {layer_weights.min():.6f}")
-                            #     print(f"  Max: {layer_weights.max():.6f}")
-                            #     print(f"  Mean: {layer_weights.mean():.6f}")
-                            #     print(f"  Var: {layer_weights.var():.6e}")
-                            #     offset += size
+                            # weights = torch.cat(normalized_weights, dim=1)
                                 
                             if metric.lower() == "w1":
                                 weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims_small)
@@ -386,9 +374,9 @@ def community_check_cifar(args):
                                 ricci_curvature = graph_curvature_main_torch(
                                     dims, weights_inv, device=device,
                                     model_dims=model_dims_small,
-                                    probability_w=(weights_inv2, weights_inv3), alpha=alpha,
-                                    pre_n=(np.sum(dims_full) - np.sum(dims)),
-                                    layers_to_process=[1,2,3]
+                                    probability_w=weights_inv2, alpha=alpha,
+                                    pre_n=(np.sum(dims_full) - np.sum(dims)), nodes=nodes_ori,
+                                    # layers_to_process=[1,2,3]
                                 )
                             else:
                                 raise Exception("Invalid graph metric, should be {w1, w3, w4}!")

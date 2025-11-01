@@ -152,6 +152,35 @@ def test(n, loader, device):
 
 
 
+def cal_edges(model_dims):
+    edges = []
+    layer_num = len(model_dims)
+    
+    for i in range(2, layer_num + 1):
+        cur_name = model_dims[i]["name"]
+        cur_dim = model_dims[i]["dim"]
+        cur_size = cur_dim['out_size']
+
+        pre_name = model_dims[i-1]["name"]
+        pre_dim = model_dims[i-1]["dim"]
+        pre_size = pre_dim['out_size']
+
+        if cur_name == "cnn":
+            k = cur_dim['kernel']
+            pool = cur_dim.get('pool', False)
+            if pool:
+                cur_size *= 2
+            pre_channel = 1 if (pre_name == "fc") else pre_dim['channel']
+            cur_edges = pre_channel * k**2 * cur_size**2 * cur_dim['channel']
+        else:
+            pre_nodes = pre_size if (pre_name == "fc") else pre_dim['channel']*(pre_size**2)
+            cur_edges = cur_size * pre_nodes
+            
+        edges.append(cur_edges)
+    
+    return edges
+
+
 
 def cal_dims(model_dims):
     dims = []
@@ -200,6 +229,7 @@ def community_check_cnn(args):
     
     eps = [0.03, 0.07, 0.1, 0.2]
     dims = cal_dims(model_dims)
+    edge_dims = cal_edges(model_dims)
     
     model_type = args.model_type
     model_pre_name = args.model_name
@@ -264,8 +294,11 @@ def community_check_cnn(args):
                     # weights[edge_array == 0] = 0.
                 
                 elif metric.lower() == "w3" or metric.lower() == "w4":
-                    weights = edge_array.detach().clone().to(device)      
-                    # weights[edge_array == 0] = 0.
+                    weights = output.detach().clone().to(device)  # take absolute values
+                    nodes_ori = nodes_ori.detach().clone().to(device)
+                    # min_pos = 1e-6
+                    # # replace zeros with min_pos
+                    # weights = torch.where(edge_array_abs == 0, min_pos, edge_array_abs).to(device)
                     
                 if metric.lower() == "w1":
                     weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
@@ -280,7 +313,7 @@ def community_check_cnn(args):
                     ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
                     
                 elif metric.lower() == "w4":
-                    weights_inv1, weights_inv2, weights_inv3 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims)
+                    weights_inv1, weights_inv2, weights_inv3 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims, edge_dims)
                     weights_inv = weights_inv1.detach()
                     weights_inv2 = weights_inv2.detach()
                     weights_inv3 = weights_inv3.detach()
@@ -289,8 +322,9 @@ def community_check_cnn(args):
 
                     ricci_curvature = graph_curvature_main_torch(
                         dims, weights_inv, device=device, model_dims=model_dims,
-                        probability_w=(weights_inv2, weights_inv3), alpha=alpha,
-                        layers_to_process=[2,3,4]
+                        probability_w=weights_inv2, alpha=alpha,
+                        nodes=nodes_ori,
+                        # layers_to_process=[2,3,4]
                     )
                 else:
                     raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")

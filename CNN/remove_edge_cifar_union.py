@@ -721,7 +721,7 @@ def remove_edge_cifar_union(args):
     pos_edges_only = [
         (i, j)
         for (i, j, freq, curv), layer in zip(pos_zero_freq_edges_sorted, layers_i)
-        if layer != 9
+        # if layer != 9
     ]
     
     # neg_edges_new = [
@@ -735,7 +735,7 @@ def remove_edge_cifar_union(args):
     neg_edges_only = [
         (i, j)
         for (i, j, freq, curv), layer in zip(neg_freq_edges_sorted, layers_i)
-        if layer != 9
+        # if layer != 9
     ]
     
     # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
@@ -780,7 +780,7 @@ def remove_edge_cifar_union(args):
     # Generate uniformly spaced points (including 0 and total) for each list
     neg_remove_num = list(np.linspace(0, neg_total, num=3, dtype=int))
     pos_remove_num = list(np.linspace(0, pos_total, num=40, dtype=int))
-    remove_num = list(np.linspace(0, 1100000, num=10, dtype=int))
+    remove_num = list(np.linspace(0, total_edge, num=10, dtype=int))
     
     total = sample_size * len(selected_classes)
         
