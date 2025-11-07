@@ -339,3 +339,29 @@ def build_cnn_adj(src_n, dst_n, model_dims, layer, w):
     return adjacent_m
 
 
+
+def build_cnn_unfold_index_table(in_ch: int, in_size: int, k: int, stride: int, padding: int, device = 'cpu'):
+    """
+    Returns:
+      unfolded (torch.LongTensor): shape (patches, L) where L = in_ch * k * k, containing input local indices
+      patches (int)
+      L (int) = in_ch * k * k
+      per_patch_map (List[dict]): per_patch_map[p] maps input_local_index -> column_idx
+    """
+    src_size = in_ch * in_size * in_size
+    dummy = torch.arange(src_size, device=device).reshape(1, in_ch, in_size, in_size).float()
+    unfolded = F.unfold(dummy, kernel_size=(k, k), stride=stride, padding=padding).transpose(1, 2).long()
+    unfolded = unfolded[0]  # (patches, L)
+    patches = unfolded.shape[0]
+    L = unfolded.shape[1]
+
+    per_patch_map = []
+    unfolded_np = unfolded.cpu().numpy()
+    for p in range(patches):
+        col_indices = unfolded_np[p]
+        d = {int(col_indices[c]): int(c) for c in range(len(col_indices))}
+        per_patch_map.append(d)
+
+    return unfolded, patches, L, per_patch_map
+
+

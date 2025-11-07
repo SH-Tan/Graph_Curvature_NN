@@ -88,6 +88,50 @@ class VGG16_CIFAR10(nn.Module):
         return cur_nodes, cur_size, cur_channel, cur_dim, cur_name, cur_padding, cur_pool
     
     
+    def __build_remove_mask_cnn__(self, layer, remove_idx):
+        """
+        Remove CNN filters or weights by index based on curvature ranking.
+        This is simpler than __build_remove_mask__, since it operates
+        directly on convolutional weight tensors (not edges).
+        
+        Args:
+            layer (int): CNN layer index (consistent with model_info)
+            remove_idx (list or tensor): Indices of filters (or individual weights)
+                                        to be masked out.
+        """
+        # Retrieve layer info
+        l1_nodes, l1_size, l1_channel, l1_dim, l1_name, l1_padding, l1_pool = self.get_layer_info(layer + 1)
+        l2_nodes, l2_size, l2_channel, l2_dim, l2_name, l2_padding, l2_pool = self.get_layer_info(layer + 2)
+
+        if l2_name != "cnn":
+            print(f"⚠️ Layer {layer} is not CNN, skipping __build_remove_mask_cnn__.")
+            return
+
+        # Initialize remove mask if not exists
+        if layer not in self.remove_mask.keys():
+            # CNN mask shape: (out_channels, in_channels, kernel_h, kernel_w)
+            kernel_shape = (
+                l2_channel,
+                l1_channel,
+                l2_dim["kernel"],
+                l2_dim["kernel"]
+            )
+            self.remove_mask[layer] = torch.ones(kernel_shape)
+
+        # Convert indices to tensor
+        remove_idx = torch.as_tensor(remove_idx, dtype=torch.long)
+
+        # Option 1: If remove_idx are filter indices (i.e., out_channels)
+        if remove_idx.numel() <= l2_channel:
+            self.remove_mask[layer][remove_idx, :, :, :] = 0
+
+        # Option 2: If remove_idx are flattened weight indices
+        else:
+            flat_mask = self.remove_mask[layer].flatten()
+            flat_mask[remove_idx] = 0
+            self.remove_mask[layer] = flat_mask.reshape_as(self.remove_mask[layer])
+        
+    
     def __build_remove_mask__(self, new_edge_set, num = 100000, start_l = 1, mask = "global"):
         cur_layer = start_l
         self.cur_total_nodes = 0
@@ -299,8 +343,7 @@ class VGG16_CIFAR10(nn.Module):
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = x_norm
-        
-        
+
         # 13th CNN layer
         k1 = self.conv5_3.weight
         edge_v = (self.CNN_edges(x_tmp, k1, 7, 8)).cpu().detach()
@@ -589,7 +632,6 @@ class VGG16_CIFAR10(nn.Module):
         
         weights_inv1 = 1./torch.abs(weights)
         weights_inv2 = torch.zeros_like(weights)
-        weights_inv3 = torch.zeros_like(weights)
         
         n = dims[0]  # Start from the first node of the second layer
 
@@ -634,6 +676,12 @@ class VGG16_CIFAR10(nn.Module):
                         
                         # Shape: (batch_size, fan-in)
                         node_slice = torch.abs(nodes[:, neighbors])
+                        
+                        # # --- Step 1: normalize to [0, 1] ---
+                        # min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                        # max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                        
+                        # node_slice = (node_slice - min_vals) / (max_vals - min_vals)
 
                         weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
                         
@@ -647,11 +695,84 @@ class VGG16_CIFAR10(nn.Module):
             
                 # Shape: (batch_size, fan-in)
                 node_slice = torch.abs(nodes[:, neighbors])
+                
+                # --- Step 1: normalize to [0, 1] ---
+                # min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                # max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                
+                # node_slice = (node_slice - min_vals) / (max_vals - min_vals)
 
                 # Prevent divide-by-zero
                 weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
                     
                 n += 1
+                
+                
+        weights_inv3 = torch.zeros_like(weights)
+        ### ---------- SECOND PASS: outgoing edges ----------
+        n = 0  # restart from first node of input layer
+        current_l = 1
+        start_col = 0
+        end_col = 0
+        
+        while n < prefix_dims[-2]:  # go through all nodes except final output layer
+            if n >= prefix_dims[current_l - 1]:
+                # move to next layer's edges
+                start_col = end_col
+            
+                end_col += dims[current_l - 1] * dims[current_l]
+                
+                current_l += 1
+                
+                out_neighbors = torch.arange(prefix_dims[current_l-1], prefix_dims[current_l], device=nodes.device)
+      
+
+            layer = model_dims[current_l]
+            prev_layer = model_dims[current_l - 1]
+            cur_name = layer["name"]
+            cur_dim = layer["dim"]
+            pre_dim = prev_layer["dim"]
+
+            if cur_name in ["cnn", "pooling"]:
+                k = cur_dim['kernel']
+                s = cur_dim['stride']
+                in_size = pre_dim['out_size']
+                pre_channel = 1 if prev_layer["name"] == "fc" else pre_dim['channel']
+                cur_channel = 1 if cur_name == "fc" else cur_dim['channel']
+
+                tensor_2d = torch.arange(pre_dim['out_size']**2 * pre_channel,
+                                        device=nodes.device).reshape(1, pre_channel, in_size, in_size).float()
+                indices = F.unfold(tensor_2d, (k, k), stride=s).transpose(1, 2).int()
+
+                step = k ** 2
+
+                for c in range(cur_channel):
+                    for l in range(indices.shape[1]):
+                        start_col += step * pre_channel
+                end_col = start_col
+                
+                n = prefix_dims[current_l - 1]
+
+            elif cur_name == "fc":
+                tmp = start_col + (n - prefix_dims[current_l - 2])*dims[current_l-1]
+                out_edges = torch.arange(tmp, tmp+dims[current_l-1], 1, device=nodes.device)
+
+                # print(len(out_neighbors), len(out_edges))
+
+                node_slice = torch.abs(nodes[:, out_neighbors])
+                # weights_inv3[:, out_edges] = 1.0 / torch.abs(out_node_slice)
+                
+                # --- Step 1: normalize to [0, 1] ---
+                # min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                # max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                
+                # node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+
+                # --- Step 2: compute weights ---
+                weights_inv3[:, out_edges] = 1.0 / (torch.abs(node_slice))
+
+                n += 1
+
 
         return weights_inv1, weights_inv2, weights_inv3
 
@@ -750,9 +871,7 @@ class VGG16_CIFAR10(nn.Module):
                 weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
                     
                 n += 1
-                
-                
-                
+    
         ### ---------- SECOND PASS: outgoing edges ----------
         n = 0  # restart from first node of input layer
         current_l = 1

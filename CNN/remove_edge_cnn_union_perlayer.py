@@ -175,10 +175,7 @@ def get_top_c(curvature, b, prefix_dims):
                 if curr < 0:
                     neg_e[i_layer].append((i, j, curr))
                 elif curr >= 0:
-                    if curr == 0:
-                        pos_e[i_layer].append((i, j, 0.5))
-                    else:
-                        pos_e[i_layer].append((i, j, curr))
+                    pos_e[i_layer].append((i, j, curr))
 
     return neg_e, pos_e
 
@@ -590,8 +587,8 @@ def remove_edge_cnn_union_perlayer(args):
         neg_total = len(neg_edges)
         pos_total = len(pos_edges)
 
-        neg_remove_num = list(np.linspace(0, neg_total, num=3, dtype=int))
-        pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
+        neg_remove_num = list(np.linspace(0, neg_total, num=5, dtype=int))
+        pos_remove_num = list(np.linspace(0, pos_total, num=40, dtype=int))
         
         print(f"\nLayer {layer}:")
         print(f"  Negative edges: {neg_total}")
@@ -605,7 +602,7 @@ def remove_edge_cnn_union_perlayer(args):
             
         total = sample_size * len(selected_classes)
         layer_edge = edge_dims[layer]
-        remove_num = list(np.linspace(0, layer_edge, num=6, dtype=int))
+        remove_num = list(np.linspace(0, layer_edge, num=10, dtype=int))
         
         # Build frequency mappings
         neg_freq_map = compute_removal_mapping(neg_summary, total_edges=total)

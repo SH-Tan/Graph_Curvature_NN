@@ -45,35 +45,69 @@ transform_test = torchvision.transforms.Compose([
 data_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
 data_test = CIFAR10('./data/cifar10', train=False, download=True, transform=transform_test)
 
+# model_dims = {
+#     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
+
+#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
+#     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
+#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
+#     5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
+
+#     6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
+#     7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
+#     8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
+
+#     9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
+#     10: {"name": "fc", "dim": {"out_size": 512}},
+#     11: {"name": "fc", "dim": {"out_size": 10}}
+# }
+
+
+
+
+# model_dims_small = {
+#     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
+#     2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
+
+#     3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
+#     4: {"name": "fc", "dim": {"out_size": 512}},
+#     5: {"name": "fc", "dim": {"out_size": 10}}
+# }
+
+
 model_dims = {
     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
-    5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
+    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv3_3
+    
+    5: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv4_2
+    6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # After conv4_3
 
-    6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
-    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
-    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
+    7: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 4}},   # conv5_1
+    8: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_2 
+    9: {"name": "cnn", "dim": {"channel": 256, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
 
-    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    10: {"name": "fc", "dim": {"out_size": 512}},
-    11: {"name": "fc", "dim": {"out_size": 10}}
+    10: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
+    11: {"name": "fc", "dim": {"out_size": 256}},
+    12: {"name": "fc", "dim": {"out_size": 10}}
 }
-
 
 
 
 model_dims_small = {
-    1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
-    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
+    1: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 8}},   # After conv4_2
+    2: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 6}},   # After conv4_3
 
-    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    4: {"name": "fc", "dim": {"out_size": 512}},
-    5: {"name": "fc", "dim": {"out_size": 10}}
+    3: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_1
+    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_2 
+    5: {"name": "cnn", "dim": {"channel": 256, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
+
+    6: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
+    7: {"name": "fc", "dim": {"out_size": 256}},
+    8: {"name": "fc", "dim": {"out_size": 10}}
 }
-
 
 # model_dims_small = {
 #     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3
@@ -181,8 +215,8 @@ def get_top_c(curvature, b, prefix_dims):
     mini_c = 0.
     
     for batch in range(b):
-        ricci_curv = np.array(curvature[batch])  # shape (N, 3)
-
+        ricci_curv = np.array(curvature)  # shape (N, 3)
+    
         # Filter values with valid curvature (<= 1)
         valid = ricci_curv[ricci_curv[:, 2] <= 1]
 
@@ -620,7 +654,7 @@ def remove_edge_cifar_union(args):
     data_path = args.mnist_data_path
     
     if activation.lower() == "relu":
-        from tools.vgg16_custom_relu import VGG16_CIFAR10
+        from tools.vgg16_custom_relu_new import VGG16_CIFAR10
     elif activation.lower() == "tanh":
         from tools.vgg16_custom_tanh import VGG16_CIFAR10
     
@@ -634,7 +668,7 @@ def remove_edge_cifar_union(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg16_ori_"
+        model_name = "vgg16_10_ori_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
@@ -652,9 +686,9 @@ def remove_edge_cifar_union(args):
     save_path = os.path.join(res_path, save_name)
     
     print(model_name)
-    edge_dims_small = cal_edges(model_dims_small)
+    edge_dims_small = cal_edges(model_dims_small) 
     
-    total_edge = sum(edge_dims_small)
+    total_edge = sum(edge_dims_small) - edge_dims_small[0] - edge_dims_small[1]
       
     test_cleanacc = test_clean(net_full, test_loader)
     
@@ -721,7 +755,7 @@ def remove_edge_cifar_union(args):
     pos_edges_only = [
         (i, j)
         for (i, j, freq, curv), layer in zip(pos_zero_freq_edges_sorted, layers_i)
-        # if layer != 9
+        # if layer == 6
     ]
     
     # neg_edges_new = [
@@ -735,7 +769,7 @@ def remove_edge_cifar_union(args):
     neg_edges_only = [
         (i, j)
         for (i, j, freq, curv), layer in zip(neg_freq_edges_sorted, layers_i)
-        # if layer != 9
+        # if layer == 6
     ]
     
     # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
@@ -778,8 +812,25 @@ def remove_edge_cifar_union(args):
     print(f'Combined: It has {neg_total} negative curvature edges, {pos_total} positive curvature egdes .. \n')
 
     # Generate uniformly spaced points (including 0 and total) for each list
-    neg_remove_num = list(np.linspace(0, neg_total, num=3, dtype=int))
-    pos_remove_num = list(np.linspace(0, pos_total, num=40, dtype=int))
+    neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
+    # pos_remove_num = list(np.linspace(0, pos_total, num=40, dtype=int))
+    
+    # define split points
+    split1 = int(0.3 * pos_total)
+    split2 = int(0.8 * pos_total)
+
+    # stage 1: first 40% (coarse)
+    part1 = np.linspace(0, split1, num=5, dtype=int)
+
+    # stage 2: next 40% (medium)
+    part2 = np.linspace(split1, split2, num=15, dtype=int)
+
+    # stage 3: last 20% (fine)
+    part3 = np.linspace(split2, pos_total, num=20, dtype=int)
+
+    # combine, removing duplicates at boundaries
+    pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
+        
     remove_num = list(np.linspace(0, total_edge, num=10, dtype=int))
     
     total = sample_size * len(selected_classes)
@@ -833,7 +884,7 @@ def remove_edge_cifar_union(args):
     }
 
     # save to pickle file
-    with open(res_path+"results_union.pkl", "wb") as f:
+    with open(res_path+"results.pkl", "wb") as f:
         pickle.dump(data, f)
 
     print("Saved variables to results.pkl")

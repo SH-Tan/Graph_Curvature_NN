@@ -30,34 +30,46 @@ _nodes_value = None
 
 
 def out_distribution(model_dims, sp1, device='cuda'):
-    layers = sorted(model_dims.items(), key=lambda x: x[0])
-    num_layers = len(layers)
     out_dist_matrices = {}
     inf = torch.tensor(float('inf'), device=device)
 
-    for i in range(num_layers - 1):
-        l = i + 1
-        cur_sp = sp1[(i,i+1)]
-        src_size = cur_sp.shape[1]
-        dst_size = cur_sp.shape[2]
+    # Sort by key so we process (i,j) pairs in order
+    for (i, j), cur_sp in sorted(sp1.items()):
+        batch_size, src_size, dst_size = cur_sp.shape
+        cur_layer = model_dims[j+1]
+        cur_n = cur_layer["name"]
         
-        out_matrix = torch.zeros_like(cur_sp, device=device)
+        # # Compute offsets for global/ node indices
+        dst_prefix = _prefix_dims[j]  # start index of destination layer
         
-        # iterate over destination nodes (local index)
-        for idx in range(dst_size):
-            # mask of valid edges (not inf)
-            mask = cur_sp[:, :, idx] != inf      # shape [batch_size, src_size]
-            # global index in nodes
-            global_idx = _prefix_dims[l] + idx    # l = current layer index
-            node_vals = _nodes_value[:, global_idx]     # shape [batch_size]
+        # initialize
+        out_matrix = torch.full_like(cur_sp, inf, device=device, dtype=torch.float32)
+        
+        for src_idx in range(src_size):
+            # mask for valid edges (finite distance)
+            mask = (cur_sp[:, src_idx, :]) != 0   # [dst_size]
             
-            # node_vals_exp = node_vals.unsqueeze(1).expand(-1, src_size)  # [batch_size, src_size]
-            out_matrix[:, :, idx][mask] = node_vals
+            if cur_n == "fc":
+                out_neighbors = torch.arange(_prefix_dims[j], _prefix_dims[j+1], device=device)
+                node_slice = torch.abs(_nodes_value[:, out_neighbors])
+                                
+                out_matrix[:, src_idx, :] = 1./node_slice
+            else:
+                valid_idx = torch.nonzero(mask[0], as_tuple=True)[0]  # assuming batch dim = 1
 
-        out_dist_matrices[(i, i+1)] = out_matrix
+                # global destination node index
+                global_idx = dst_prefix + valid_idx
+                node_slice = torch.abs(_nodes_value[:, global_idx])  # [B, dst_size] or [1, dst_size]
+                
+                # Compute reciprocal, avoid division by zero
+                node_inv = torch.where(node_slice != 0, 1.0 / node_slice, torch.zeros_like(node_slice))
+
+                # assign node value to all valid incoming edges
+                out_matrix[:, src_idx, valid_idx]= node_inv
+
+        out_dist_matrices[(i, j)] = torch.where(out_matrix > 0, out_matrix, inf)
         
     return out_dist_matrices
-            
 
 
 # For CNN
@@ -205,6 +217,8 @@ def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda'):
         dst_size = prefix_dims[i+2] - prefix_dims[i+1]
         
         if current_layer['name'] == 'fc':
+            # adjacent_m = torch.zeros((batch_size, src_size, dst_size), dtype=torch.float32, device=device)
+            
             # FC layer handling
             direct_dist = weights[:, weight_idx:weight_idx+src_size*dst_size]
             direct_dist = direct_dist.view(batch_size, src_size, dst_size)
@@ -245,7 +259,7 @@ def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda'):
                     end_col = weight_idx + step*pre_ch
                     n += 1
             
-            shortest_paths[(i, i+1)] = torch.where(adjacent_m > 0, adjacent_m, inf)
+            shortest_paths[(i, i+1)] = adjacent_m
             
     return shortest_paths
 
@@ -416,13 +430,15 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     _prefix_dims = np.array(prefix_dims)
     
     layers = layers_to_process or list(range(len(dims)-1))
+    inf = torch.tensor(float('inf'), device=device)
 
     # Compute shortest paths
     if model_dims:
         sp_dict = cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='cuda')
         if probability_w != None:
-            sp1 = cnn_adjacent_layer(model_dims, probability_w.to(device), prefix_dims, device='cuda')
+            sp1 = cnn_adjacent_layer(model_dims, probability_w[0].to(device), prefix_dims, device='cuda')
             sp2 = out_distribution(model_dims, sp1, device='cuda')
+            sp3 = cnn_adjacent_layer(model_dims, probability_w[1].to(device), prefix_dims, device='cuda')
     else:
         sp_dict = layerwise_shortest_path_torch(dims, weights, device)
         if probability_w != None:
@@ -432,6 +448,21 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
     
     # print(_sp_dict)
+    # print("sp1")
+    # for (i, j), cur_sp in sorted(sp1.items()):
+    #     print(i, j, cur_sp[:, 0:2, 0:10])
+    #     input()
+        
+    # print("sp2")
+    # for (i, j), cur_sp in sorted(sp2.items()):
+    #     print(i, j, cur_sp[:, 0:2, 0:10])
+    #     input()
+    
+    # print("sp3")
+    # for (i, j), cur_sp in sorted(sp3.items()):
+    #     print(i, j, cur_sp[:, 0:2, 0:10])
+    #     input()
+    
 
     if probability_w != None:
         dis_w_in = sp1
@@ -451,7 +482,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     for layer in range(1, len(dims)):
         if (layer-1, layer) in dis_w_in:
             path_sub = dis_w_in[(layer-1, layer)]
-            mask = (path_sub != float('inf'))
+            # path_sub = torch.where(path_sub > 0, path_sub, inf)
+            mask = (path_sub != float('inf')) & (path_sub != 0)
             weights_layer = torch.exp(-(path_sub ** 2)) * mask
             # weights_layer = (1./path_sub) * mask
             sum_weights = weights_layer.sum(dim=1)
@@ -470,8 +502,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     for layer in range(len(dims)-1):
         if (layer, layer+1) in dis_w_out:
             path_sub = dis_w_out[(layer, layer+1)]
-
-            mask = (path_sub != float('inf'))
+            # path_sub = torch.where(path_sub > 0, path_sub, inf)
+            mask = (path_sub != float('inf')) & (path_sub != 0)
             
             weights_layer = torch.exp(-(path_sub ** 2)) * mask
             # weights_layer = (1./path_sub) * mask
@@ -507,7 +539,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
 
 
     args = [(b, edge) for b, edge in edges]
-    
+
     del sp_dict, sp1, sp2
     torch.cuda.empty_cache()
 

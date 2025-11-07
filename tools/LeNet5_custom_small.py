@@ -304,6 +304,7 @@ class LeNet_custom_v2(nn.Module):
         
         edge_v = torch.cat([torch.reshape(w * x1[np.newaxis,:].T, (1, cur_shape)) for x1 in x_tmp], axis=0)
         return edge_v
+    
 
     # calculate edge weights
     def NN_info_batch(self, x):
@@ -322,7 +323,7 @@ class LeNet_custom_v2(nn.Module):
         max_vals = nodes_abs.max(dim=1, keepdim=True)[0]  # shape (batch_size, 1)
 
         # Normalize to [0, 1]
-        nodes= (nodes_abs - min_vals) / (max_vals - min_vals)
+        nodes = (nodes_abs - min_vals) / (max_vals - min_vals)
         
         # first CNN layer
         k1 = self.conv1.weight
@@ -336,6 +337,7 @@ class LeNet_custom_v2(nn.Module):
         
         x_tmp = x
         ones_tmp = torch.ones_like(x)
+        # nodes = torch.cat((nodes, x.view(-1, self.num_flat_features(x))), axis = 1)
         
         x_flat = x.view(-1, self.num_flat_features(x))
 
@@ -833,7 +835,6 @@ class LeNet_custom_v2(nn.Module):
         
         weights_inv1 = 1./torch.abs(weights)
         weights_inv2 = torch.zeros_like(weights)
-        weights_inv3 = torch.zeros_like(weights)
         
         n = dims[0]  # Start from the first node of the second layer
 
@@ -878,9 +879,19 @@ class LeNet_custom_v2(nn.Module):
                         
                         # Shape: (batch_size, fan-in)
                         node_slice = torch.abs(nodes[:, neighbors])
-
-                        weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
                         
+                        # min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                        # max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                        
+                        # if max_vals > min_vals:
+                        #     node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+                        # else:
+                        #     node_slice = node_slice
+                        
+                        # nodes[:, neighbors] = node_slice
+
+                        weights_inv2[:, in_edges] = 1.0/torch.abs(node_slice)
+        
                         n += 1
                         start_col = end_col
                         end_col = start_col + step*pre_channel
@@ -891,13 +902,20 @@ class LeNet_custom_v2(nn.Module):
             
                 # Shape: (batch_size, fan-in)
                 node_slice = torch.abs(nodes[:, neighbors])
+                
+                # min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                # max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                
+                # node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+                
+                # nodes[:, neighbors] = node_slice
 
                 # Prevent divide-by-zero
-                weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
+                weights_inv2[:, in_edges] = 1.0/torch.abs(node_slice)
                     
                 n += 1
 
-        return weights_inv1, weights_inv2, weights_inv3
+        return weights_inv1, weights_inv2
 
         
     

@@ -20,7 +20,7 @@ sys.path.append("..")
 
 import tools.utils as utils
 
-from tools.graph_curvature import graph_curvature_main_torch
+from tools.graph_curvature_threshold import graph_curvature_main_torch
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=torch.inf)
@@ -217,7 +217,7 @@ def community_check_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -294,8 +294,12 @@ def community_check_cnn(args):
                     # weights[edge_array == 0] = 0.
                 
                 elif metric.lower() == "w3" or metric.lower() == "w4":
+                    # output[edge_array!=0] = edge_array[edge_array!=0]
+                    # weights = edge_array.detach().clone().to(device)  # take absolute values
+                    # weights[edge_array!=0] = edge_array[edge_array!=0]
                     weights = output.detach().clone().to(device)  # take absolute values
-                    nodes_ori = nodes_ori.detach().clone().to(device)
+                    nodes_ori = nodes_ori.detach().clone().to(device) 
+                    # edge_array_abs = torch.abs(edge_array)
                     # min_pos = 1e-6
                     # # replace zeros with min_pos
                     # weights = torch.where(edge_array_abs == 0, min_pos, edge_array_abs).to(device)
@@ -313,17 +317,20 @@ def community_check_cnn(args):
                     ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
                     
                 elif metric.lower() == "w4":
-                    weights_inv1, weights_inv2, weights_inv3 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims, edge_dims)
+                    weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims, edge_dims)
                     weights_inv = weights_inv1.detach()
                     weights_inv2 = weights_inv2.detach()
-                    weights_inv3 = weights_inv3.detach()
-                    
+                    # weights_inv3 = weights_inv3.detach()
+                    node_abs = torch.abs(nodes_ori)
+                    edge_array = edge_array.detach().clone().to(device) 
+                    edge_array_abs = torch.abs(edge_array)
+        
                     # print(len(weights_inv[0]), len(weights_inv[weights_inv!=np.inf]))
 
                     ricci_curvature = graph_curvature_main_torch(
                         dims, weights_inv, device=device, model_dims=model_dims,
-                        probability_w=weights_inv2, alpha=alpha,
-                        nodes=nodes_ori,
+                        probability_w=(weights_inv2, weights_inv1), alpha=alpha,
+                        nodes=node_abs, edge_value = edge_array_abs, threshold = 0.8,
                         # layers_to_process=[2,3,4]
                     )
                 else:

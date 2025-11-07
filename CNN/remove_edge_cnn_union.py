@@ -496,10 +496,10 @@ def remove_edge_cnn_union(args):
     
     edge_dims = cal_edges(model_dims)
     
-    total_edge = sum(edge_dims) - edge_dims[0]
+    total_edge = sum(edge_dims)
     
     print(edge_dims)
-    print(total_edge)
+    # print(total_edge)
     
     if not os.path.exists(res_path):
         os.makedirs(res_path)
@@ -610,10 +610,11 @@ def remove_edge_cnn_union(args):
     layers_i = [np.searchsorted(prefix_dims, i, side='right') - 1 for (i, j, _, _) in pos_freq_edges_sorted]
 
     # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
+    print(len(pos_freq_edges_sorted))
     pos_edges_only = [
         (i, j)
         for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
-        if layer != 0
+        # if layer not in [0] or (layer == 0 and freq >= 0.44*total_example)
     ]
     
     # neg_edges_new = [
@@ -627,7 +628,7 @@ def remove_edge_cnn_union(args):
     neg_edges_only = [
         (i, j)
         for (i, j, freq, curv), layer in zip(neg_freq_edges_sorted, layers_i)
-        if layer != 0
+        # if layer not in [0] or (layer == 0 and freq >= 0.45*total_example)
     ]
     
     # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
@@ -719,18 +720,18 @@ def remove_edge_cnn_union(args):
         
         
     # pack into a dictionary
-    # data = {
-    #     "neg_clean_acc": neg_acc_clean,
-    #     "pos_clean_acc": pos_acc_clean,
-    #     "neg_remove_num": neg_remove_num,
-    #     "pos_remove_num": pos_remove_num,
-    # }
+    data = {
+        "neg_clean_acc": neg_acc_clean,
+        "pos_clean_acc": pos_acc_clean,
+        "neg_remove_num": neg_remove_num,
+        "pos_remove_num": pos_remove_num,
+    }
 
-    # # save to pickle file
-    # with open(res_path+"results.pkl", "wb") as f:
-    #     pickle.dump(data, f)
+    # save to pickle file
+    with open(res_path+"results.pkl", "wb") as f:
+        pickle.dump(data, f)
 
-    # print("Saved variables to results.pkl")
+    print("Saved variables to results.pkl")
     
         
 

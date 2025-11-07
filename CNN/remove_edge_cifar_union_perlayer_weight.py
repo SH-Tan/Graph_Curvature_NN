@@ -45,68 +45,68 @@ transform_test = torchvision.transforms.Compose([
 data_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
 data_test = CIFAR10('./data/cifar10', train=False, download=True, transform=transform_test)
 
-# model_dims = {
-#     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
-
-#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
-#     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
-#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
-#     5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
-
-#     6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
-#     7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
-#     8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
-
-#     9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-#     10: {"name": "fc", "dim": {"out_size": 512}},
-#     11: {"name": "fc", "dim": {"out_size": 10}}
-# }
-
-
-
-# model_dims_small = {
-#     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
-#     2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
-
-#     3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-#     4: {"name": "fc", "dim": {"out_size": 512}},
-#     5: {"name": "fc", "dim": {"out_size": 10}}
-# }
-
-
 model_dims = {
     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv3_3
-    
-    5: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv4_2
-    6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # After conv4_3
+    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
+    5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
 
-    7: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 4}},   # conv5_1
-    8: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_2 
-    9: {"name": "cnn", "dim": {"channel": 256, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
+    6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
+    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
+    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
 
-    10: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-    11: {"name": "fc", "dim": {"out_size": 256}},
-    12: {"name": "fc", "dim": {"out_size": 10}}
+    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
+    10: {"name": "fc", "dim": {"out_size": 512}},
+    11: {"name": "fc", "dim": {"out_size": 10}}
 }
 
 
 
 model_dims_small = {
-    1: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 8}},   # After conv4_2
-    2: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 6}},   # After conv4_3
+    1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
+    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
 
-    3: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_1
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_2 
-    5: {"name": "cnn", "dim": {"channel": 256, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
-
-    6: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-    7: {"name": "fc", "dim": {"out_size": 256}},
-    8: {"name": "fc", "dim": {"out_size": 10}}
+    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
+    4: {"name": "fc", "dim": {"out_size": 512}},
+    5: {"name": "fc", "dim": {"out_size": 10}}
 }
+
+
+# model_dims = {
+#     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
+
+#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
+#     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
+#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv3_3
+    
+#     5: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv4_2
+#     6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # After conv4_3
+
+#     7: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 4}},   # conv5_1
+#     8: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_2 
+#     9: {"name": "cnn", "dim": {"channel": 256, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
+
+#     10: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
+#     11: {"name": "fc", "dim": {"out_size": 256}},
+#     12: {"name": "fc", "dim": {"out_size": 10}}
+# }
+
+
+
+# model_dims_small = {
+#     1: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "pool":False, "out_size": 8}},   # After conv4_2
+#     2: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 6}},   # After conv4_3
+
+#     3: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_1
+#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_2 
+#     5: {"name": "cnn", "dim": {"channel": 256, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
+
+#     6: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
+#     7: {"name": "fc", "dim": {"out_size": 256}},
+#     8: {"name": "fc", "dim": {"out_size": 10}}
+# }
 
 
 # model_dims_small = {
@@ -119,6 +119,7 @@ model_dims_small = {
 
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
+
 
 
 def process_batches_memory_efficient(
@@ -152,6 +153,12 @@ def process_batches_memory_efficient(
     # Accumulate edge frequency and curvature directly
     neg_edge_acc = defaultdict(lambda: defaultdict(list))
     pos_edge_acc = defaultdict(lambda: defaultdict(list))
+    # CNN accumulators (per-weight lists): nested dicts layer -> weight_idx -> list[curv]
+    cnn_weight_acc_neg = defaultdict(lambda: defaultdict(list))
+    cnn_weight_acc_pos = defaultdict(lambda: defaultdict(list))
+    
+    # Precompute/cache CNN per-layer unfold maps to avoid repeating compute
+    cnn_map_cache = {}  # layer -> dict with 'patches','L','per_patch_map','in_ch','k','out_ch','device'
 
     for f in all_files:
         file_path = os.path.join(data_path, f)
@@ -167,28 +174,122 @@ def process_batches_memory_efficient(
             new_data = batch_data.get(l, [])
             available = sample_size - label_counts[l]
             use_data = new_data[:available]
-            
+
             # print(len(use_data))
 
             for ricci in use_data:
-                t1 = time.time()
                 neg_e, pos_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
-                t2 = time.time()
 
-                # Accumulate stats layer-wise
                 for layer, edges in neg_e.items():
-                    for (i, j, curv) in edges:
-                        neg_edge_acc[layer][(i, j)].append(curv)
-                for layer, edges in pos_e.items():
-                    for (i, j, curv) in edges:
-                        pos_edge_acc[layer][(i, j)].append(curv)
+                    cur_layer_idx = layer + 2
+                    prev_layer_idx = layer + 1
+                    
+                    if model_dims[cur_layer_idx]["name"] == "cnn":
+                        pre_dim = model_dims[prev_layer_idx]["dims"]
+                        in_ch = pre_dim["channel"]
+                        in_size = pre_dim['out_size']
+                        cur_dim = model_dims[cur_layer_idx]["dims"]
+                        k = cur_dim['kernel']      # expect torch.Tensor shape (out_ch,in_ch,k,k)
+                        stride = cur_dim['stride']
+                        padding = cur_dim['padding']
+                        out_ch = cur_dim['channel']
                         
-                t3 = time.time()
+                        # build cache entry if missing
+                        if layer not in cnn_map_cache:
+                            unfolded, patches, L, per_patch_map = utils.build_cnn_unfold_index_table(in_ch, in_size, k, stride, padding)
+                            cnn_map_cache[layer] = {
+                                'patches': patches,
+                                'L': L,
+                                'per_patch_map': per_patch_map,
+                                'in_ch': in_ch,
+                                'k': k,
+                                'out_ch': out_ch
+                            }
+                            
+                        cmap = cnn_map_cache[layer]
+                        patches = cmap['patches']
+                        L = cmap['L']
+                        per_patch_map = cmap['per_patch_map']
+                        out_ch = cmap['out_ch']
+                        
+                        # For each edge, compute weight index and append curvature
+                        for (i, j, cval) in edges:
+                            i_layer = layer
+                            j_layer = layer+1
+                            i_local = i - prefix_dims[i_layer]
+                            j_local = j - prefix_dims[j_layer]
+
+                            # oc and patch index mapping (matches your ordering)
+                            oc = j_local // patches
+                            p = j_local % patches
+
+                            if oc < 0 or oc >= out_ch:
+                                continue
+
+                            col_idx = per_patch_map[p].get(int(i_local), None)
+                            if col_idx is None:
+                                # this input doesn't appear in that patch (padding / out-of-bound)
+                                continue
+
+                            w_idx = oc * L + col_idx
+                            cnn_weight_acc_neg[layer][w_idx].append(cval)
+                    else:
+                        for (i, j, curv) in edges:
+                            neg_edge_acc[layer][(i, j)].append(curv)
+
+                for layer, edges in pos_e.items():
+                    cur_layer_idx = layer + 2
+                    prev_layer_idx = layer + 1
+   
+                    if model_dims[cur_layer_idx]["name"] == "cnn":
+                        pre_dim = model_dims[prev_layer_idx]["dims"]
+                        in_ch = pre_dim["channel"]
+                        in_size = pre_dim['out_size']
+                        cur_dim = model_dims[cur_layer_idx]["dims"]
+                        k = cur_dim['kernel']
+                        stride = cur_dim['stride']
+                        padding = cur_dim['padding']
+                        out_ch = cur_dim['channel']
+                        
+                        if layer not in cnn_map_cache:
+                            unfolded, patches, L, per_patch_map = utils.build_cnn_unfold_index_table(in_ch, in_size, k, stride, padding)
+                            cnn_map_cache[layer] = {
+                                'patches': patches,
+                                'L': L,
+                                'per_patch_map': per_patch_map,
+                                'in_ch': in_ch,
+                                'k': k,
+                                'out_ch': out_ch
+                            }
+                        cmap = cnn_map_cache[layer]
+                        patches = cmap['patches']
+                        L = cmap['L']
+                        per_patch_map = cmap['per_patch_map']
+                        out_ch = cmap['out_ch']
+                        
+                        for (i, j, cval) in edges:
+                            i_layer = layer
+                            j_layer = layer+1
+                            i_local = i - prefix_dims[i_layer]
+                            j_local = j - prefix_dims[j_layer]
+                            oc = j_local // patches
+                            p = j_local % patches
+
+                            if oc < 0 or oc >= out_ch:
+                                continue
+
+                            col_idx = per_patch_map[p].get(int(i_local), None)
+                            if col_idx is None:
+                                continue
+
+                            w_idx = oc * L + col_idx
+                            cnn_weight_acc_pos[layer][w_idx].append(cval)
+                    else:
+                        for (i, j, curv) in edges:
+                            pos_edge_acc[layer][(i, j)].append(curv)
 
                 del ricci, neg_e, pos_e
                 
-                # print(f'1: {t3-t2} - {t2-t1} - {t3-t1}')
-
             label_counts[l] += len(use_data)
 
         del batch_data
@@ -211,7 +312,28 @@ def process_batches_memory_efficient(
     neg_freq_dict = reduce_and_sort(neg_edge_acc, sort_desc=False)
     pos_freq_dict = reduce_and_sort(pos_edge_acc, sort_desc=True)
     
-    return neg_freq_dict, pos_freq_dict
+    # Build CNN per-weight summaries: mean, count and sorted lists
+    cnn_neg_stats = {}
+    cnn_pos_stats = {}
+    for layer, wdict in cnn_weight_acc_neg.items():
+        stats = []
+        for w_idx, curv_list in wdict.items():
+            arr = np.array(curv_list, dtype=float)
+            stats.append((int(w_idx), float(arr.mean()), int(arr.size)))
+        # sort negative list by mean curvature ascending (most negative first)
+        stats_sorted = sorted(stats, key=lambda x: x[1])
+        cnn_neg_stats[layer] = stats_sorted
+
+    for layer, wdict in cnn_weight_acc_pos.items():
+        stats = []
+        for w_idx, curv_list in wdict.items():
+            arr = np.array(curv_list, dtype=float)
+            stats.append((int(w_idx), float(arr.mean()), int(arr.size)))
+        # sort positive list by mean curvature descending (largest positive first)
+        stats_sorted = sorted(stats, key=lambda x: x[1], reverse=True)
+        cnn_pos_stats[layer] = stats_sorted
+
+    return neg_freq_dict, pos_freq_dict, cnn_neg_stats, cnn_pos_stats
 
 
     
@@ -306,7 +428,6 @@ def test(n, loader, eps, alpha, iters, device):
 def get_top_c(curvature, b, prefix_dims):
     neg_e = defaultdict(list)  # i_layer -> list of (i, j, curvature)
     pos_e = defaultdict(list)
-    seen_edges = set()
     zero_e = defaultdict(list)
 
     # Optional: cache for searchsorted results
@@ -317,14 +438,13 @@ def get_top_c(curvature, b, prefix_dims):
             layer_cache[node_idx] = np.searchsorted(prefix_dims, node_idx, side='right') - 1
         return layer_cache[node_idx]
 
-    # curvature = curvature[0]
+    curvature = curvature[0]
     
     for i, j, curr in curvature:
         if curr > 1:
             continue
 
         i, j = int(i), int(j)
-        seen_edges.add((i, j))  # optional: use (min(i, j), max(i, j)) for undirected
 
         i_layer = get_layer(i)
         j_layer = get_layer(j)
@@ -334,11 +454,6 @@ def get_top_c(curvature, b, prefix_dims):
                 neg_e[i_layer].append((i, j, curr))
             else:  # curr >= 0
                 pos_e[i_layer].append((i, j, curr))
-        if curr == 0:
-            zero_e[i_layer].append((i, j, curr))
-         
-    for l in zero_e.keys():
-        print(f"For layer {l}: {len(zero_e[l])} zero curvatures")
 
     return neg_e, pos_e
 
@@ -393,83 +508,6 @@ def cal_edges(model_dims):
     
     return edges
 
-
-
-# def plot_curve(
-#     neg_acc_clean, pos_acc_clean,
-#     neg_freq_ratios, pos_freq_ratios,
-#     neg_freq_thresholds, pos_freq_thresholds,
-#     label, save_path
-# ):
-#     # CMYK-like colors (safe RGB approximations)
-#     neg_colors = ['#00A3E0', '#6CACE4']  # Cyan, Blue-gray
-#     pos_colors = ['#EC008C', '#FF6F61']  # Magenta, Warm red
-
-#     plt.figure(figsize=(10, 6))
-
-#     # Negative Edge Plot
-#     plt.plot(
-#         neg_freq_ratios, neg_acc_clean,
-#         label='Negative Edge Removal',
-#         marker='o',
-#         linestyle='--',
-#         linewidth=2,
-#         markersize=6,
-#         color=neg_colors[0]
-#     )
-
-#     # Positive Edge Plot
-#     plt.plot(
-#         pos_freq_ratios, pos_acc_clean,
-#         label='Positive Edge Removal',
-#         marker='s',
-#         linestyle='-',
-#         linewidth=2,
-#         markersize=6,
-#         color=pos_colors[0]
-#     )
-
-#     # Annotate frequencies
-#     for x, y, freq in zip(neg_freq_ratios, neg_acc_clean, neg_freq_thresholds):
-#         plt.annotate(
-#             f"{freq}",
-#             (x, y),
-#             textcoords="offset points",
-#             xytext=(0, 10),
-#             ha='center',
-#             fontsize=9,
-#             color=neg_colors[1]
-#         )
-
-#     for x, y, freq in zip(pos_freq_ratios, pos_acc_clean, pos_freq_thresholds):
-#         plt.annotate(
-#             f"{freq}",
-#             (x, y),
-#             textcoords="offset points",
-#             xytext=(0, -15),
-#             ha='center',
-#             fontsize=9,
-#             color=pos_colors[1]
-#         )
-
-#     # Axes and title
-#     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)", fontsize=22)
-#     plt.ylabel("Clean Accuracy", fontsize=22)
-#     plt.title(f"Clean Accuracy vs. Frequency Ratio (Label {label})", fontsize=22)
-#     plt.xticks(fontsize=20)
-#     plt.yticks(fontsize=20)
-#     plt.ylim(0.0, 1.0)
-#     plt.gca().invert_xaxis()
-
-#     # Legend and grid
-#     plt.legend(fontsize=20, loc='best')
-#     plt.grid(True, linestyle='--', alpha=0.6)
-#     plt.tight_layout()
-
-#     # Save
-#     filename = os.path.join(save_path, f'{label}_freq_curve.png')
-#     plt.savefig(filename, dpi=300)
-#     plt.close()
 
 
 
@@ -659,56 +697,6 @@ def count_edge_frequency_and_sort(edge_sets, sort_curvature_desc=False):
 
 
 
-def build_edge_to_weight_map(kernel, in_size, stride, padding, device):
-    """
-    Build a mapping from each CNN edge to its corresponding kernel weight index.
-    
-    Returns:
-        edge_to_weight: tensor of shape (num_edges,)
-                        where each entry gives the index into kernel.view(-1)
-        edge_to_coord: tensor of shape (num_edges, 4)
-                        (out_ch, in_ch, k_h, k_w)
-    """
-    out_ch, in_ch, k, _ = kernel.shape
-
-    dummy = torch.arange(in_ch * in_size * in_size, device=device).reshape(1, in_ch, in_size, in_size).float()
-    unfolded = F.unfold(dummy, kernel_size=k, stride=stride, padding=padding).transpose(1, 2).int()
-    patches = unfolded.shape[1]
-
-    edge_to_weight = []
-    edge_to_coord = []
-
-    for oc in range(out_ch):
-        for p in range(patches):
-            cur_idx = unfolded[0, p]  # receptive field indices
-            # each input index corresponds to a specific (in_ch, k_h, k_w)
-            for ic in range(in_ch):
-                for kh in range(k):
-                    for kw in range(k):
-                        # linear index into kernel
-                        w_idx = oc * in_ch * k * k + ic * k * k + kh * k + kw
-                        edge_to_weight.append(w_idx)
-                        edge_to_coord.append([oc, ic, kh, kw])
-
-    edge_to_weight = torch.tensor(edge_to_weight, device=device)
-    edge_to_coord = torch.tensor(edge_to_coord, device=device)
-
-    return edge_to_weight, edge_to_coord
-
-
-
-def curvature_to_weight(curvatures, edge_to_weight, num_weights, mode="mean"):
-    weight_curv = torch.zeros(num_weights, device=curvatures.device)
-    counts = torch.zeros_like(weight_curv)
-    weight_curv.index_add_(0, edge_to_weight, curvatures)
-    counts.index_add_(0, edge_to_weight, torch.ones_like(curvatures))
-    if mode == "mean":
-        weight_curv = weight_curv / counts.clamp(min=1)
-    return weight_curv
-
-
-
-
 
 def remove_edge_cifar_union_perlayer(args):
     seed = 29
@@ -747,7 +735,7 @@ def remove_edge_cifar_union_perlayer(args):
     activation = args.activation
     
     if activation.lower() == "relu":
-        from tools.vgg16_custom_relu_new import VGG16_CIFAR10
+        from tools.vgg16_custom_relu import VGG16_CIFAR10
     elif activation.lower() == "tanh":
         from tools.vgg16_custom_tanh import VGG16_CIFAR10
     
@@ -761,7 +749,7 @@ def remove_edge_cifar_union_perlayer(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg16_10_ori_"
+        model_name = "vgg16_ori_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
@@ -803,7 +791,7 @@ def remove_edge_cifar_union_perlayer(args):
             # print(f'Current label {l}: \n')
             # ff.write(f'Current label {l}: \n')
 
-            neg_freq_dict, pos_freq_dict = process_batches_memory_efficient(
+            neg_freq_dict, pos_freq_dict, cnn_neg_stats, cnn_pos_stats = process_batches_memory_efficient(
                 data_path,
                 model_full_n,
                 metric,
@@ -818,7 +806,9 @@ def remove_edge_cifar_union_perlayer(args):
             
             data_to_save = {
                 'neg': neg_freq_dict,
-                'pos': pos_freq_dict
+                'pos': pos_freq_dict,
+                'cnn_neg': cnn_neg_stats,
+                'cnn_pos': cnn_pos_stats
             }
 
             with open(save_path, 'wb') as f:
@@ -953,7 +943,7 @@ def remove_edge_cifar_union_perlayer(args):
             
         
         total = sample_size * len(selected_classes)
-        layer_edge = edge_dims[layer-4]
+        layer_edge = edge_dims[layer-6]
 
         remove_num = list(np.linspace(0, layer_edge, num=6, dtype=int))
             
