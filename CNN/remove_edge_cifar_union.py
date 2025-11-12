@@ -57,8 +57,8 @@ model_dims = {
     7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
     8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
 
-    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    10: {"name": "fc", "dim": {"out_size": 512}},
+    9: {"name": "fc", "dim": {"out_size": 256}},  # Flatten(512×1×1) → 1024
+    10: {"name": "fc", "dim": {"out_size": 256}},
     11: {"name": "fc", "dim": {"out_size": 10}}
 }
 
@@ -68,8 +68,8 @@ model_dims_small = {
     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
     2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
 
-    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    4: {"name": "fc", "dim": {"out_size": 512}},
+    3: {"name": "fc", "dim": {"out_size": 256}},  # Flatten(512×1×1) → 1024
+    4: {"name": "fc", "dim": {"out_size": 256}},
     5: {"name": "fc", "dim": {"out_size": 10}}
 }
 
@@ -446,7 +446,7 @@ def plot_curve(
         )
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all.pdf'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_filtered.pdf'), dpi=300)
     plt.close()
     
     
@@ -638,7 +638,7 @@ def remove_edge_cifar_union(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -676,7 +676,7 @@ def remove_edge_cifar_union(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg16_ori_"
+        model_name = "vgg16_10_ori_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
@@ -749,16 +749,71 @@ def remove_edge_cifar_union(args):
     pos_acc_clean = []
     pos_acc_clean1 = []
             
-    neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
-    pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]
+    # neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
+    # pos_edges_only = [(i, j) for (i, j, _, _) in pos_freq_edges_sorted]
 
+    # neg_total = len(neg_edges_only)
+    # pos_total = len(pos_edges_only)
+    
+    
+    layers_i = [np.searchsorted(prefix_dims, i, side='right') - 1 for (i, j, _, _) in pos_freq_edges_sorted]
+
+    # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
+    pos_edges_only = [
+        (i, j)
+        for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
+        if layer != 9 or (curv >= 0.5)
+    ]
+    
+    neg_edges_new = [
+        (i, j, freq, curv)
+        for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
+        if layer == 9 and ((curv < 0.5))
+    ]
+    
+    # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
+    # pos_edges_only = [
+    #     (i, j)
+    #     for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
+    #     if freq >= 0.6*total_example
+    # ]
+    
+    # neg_edges_new = [
+    #     (i, j, freq, curv)
+    #     for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
+    #     if freq < 0.6*total_example
+    # ]
+    
+    # Convert the existing list into a dictionary for quick lookup
+    neg_edge_dict = {(i, j): [freq, curvature] for i, j, freq, curvature in neg_freq_edges_sorted}
+    
+    # Merge / update
+    for i, j, freq, curvature in neg_edges_new:
+        if (i, j) in neg_edge_dict:
+            f_old, c_old = neg_edge_dict[(i, j)]
+            f_new = f_old + freq
+            c_new = (c_old * f_old + curvature * freq) / f_new
+            neg_edge_dict[(i, j)] = [f_new, c_new]
+        else:
+            neg_edge_dict[(i, j)] = [freq, curvature]
+            
+    # Rebuild full list from dictionary and sort
+    neg_freq_edges_sorted = sorted(
+        [(i, j, freq, curv) for (i, j), (freq, curv) in neg_edge_dict.items()],
+        key=lambda x: (-x[2], x[3])  # sort by frequency descending, then curvature ascending
+    )
+        
+    neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
+    
     neg_total = len(neg_edges_only)
     pos_total = len(pos_edges_only)
+    
+    print(f'Combined: It has {neg_total} negative curvature edges, {pos_total} positive curvature egdes .. \n')
 
     # Generate uniformly spaced points (including 0 and total) for each list
-    neg_remove_num = list(np.linspace(0, neg_total, num=6, dtype=int))
-    # pos_remove_num = list(np.linspace(0, pos_total, num=8, dtype=int))
-    pos_remove_num = generate_pos_remove_steps(pos_total)
+    neg_remove_num = list(np.linspace(0, neg_total, num=3, dtype=int))
+    pos_remove_num = list(np.linspace(0, pos_total, num=50, dtype=int))
+    # pos_remove_num = generate_pos_remove_steps(pos_total)
     remove_num = list(np.linspace(0, total_edge, num=10, dtype=int))
     
     total = sample_size * len(selected_classes)

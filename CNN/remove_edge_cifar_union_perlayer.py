@@ -56,8 +56,8 @@ model_dims = {
     7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
     8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
 
-    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    10: {"name": "fc", "dim": {"out_size": 512}},
+    9: {"name": "fc", "dim": {"out_size": 256}},  # Flatten(512×1×1) → 1024
+    10: {"name": "fc", "dim": {"out_size": 256}},
     11: {"name": "fc", "dim": {"out_size": 10}}
 }
 
@@ -67,8 +67,8 @@ model_dims_small = {
     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
     2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
 
-    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    4: {"name": "fc", "dim": {"out_size": 512}},
+    3: {"name": "fc", "dim": {"out_size": 256}},  # Flatten(512×1×1) → 1024
+    4: {"name": "fc", "dim": {"out_size": 256}},
     5: {"name": "fc", "dim": {"out_size": 10}}
 }
 
@@ -654,7 +654,7 @@ def remove_edge_cifar_union_perlayer(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg16_ori_"
+        model_name = "vgg16_10_ori_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
@@ -733,7 +733,7 @@ def remove_edge_cifar_union_perlayer(args):
         pos_total = len(pos_edges)
 
         neg_remove_num = list(np.linspace(0, neg_total, num=3, dtype=int))
-        pos_remove_num = list(np.linspace(0, pos_total, num=6, dtype=int))
+        pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
         
         print(f"\nLayer {layer}:")
         print(f"  Negative edges: {neg_total}")

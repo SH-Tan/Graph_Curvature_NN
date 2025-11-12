@@ -19,7 +19,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature_new import graph_curvature_main_torch
+from tools.graph_curvature import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -44,8 +44,8 @@ model_dims = {
     7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2 + pool
     8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 
 
-    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    10: {"name": "fc", "dim": {"out_size": 512}},
+    9: {"name": "fc", "dim": {"out_size": 256}},  # Flatten(512×1×1) → 1024
+    10: {"name": "fc", "dim": {"out_size": 256}},
     11: {"name": "fc", "dim": {"out_size": 10}}
 }
 
@@ -55,8 +55,8 @@ model_dims_small = {
     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
     2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3
 
-    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    4: {"name": "fc", "dim": {"out_size": 512}},
+    3: {"name": "fc", "dim": {"out_size": 256}},  # Flatten(512×1×1) → 1024
+    4: {"name": "fc", "dim": {"out_size": 256}},
     5: {"name": "fc", "dim": {"out_size": 10}}
 }
 
@@ -217,7 +217,7 @@ def community_check_cifar(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -257,7 +257,7 @@ def community_check_cifar(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg16_ori_"
+        model_name = "vgg16_10_ori_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
@@ -345,14 +345,17 @@ def community_check_cifar(args):
                                     layers_to_process=[1,2,3]
                                 )
                             elif metric.lower() == "w4":
-                                weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
+                                weights_inv1, weights_inv2, weights_inv3 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
                                 weights_inv = weights_inv1.detach()
                                 weights_inv2 = weights_inv2.detach()
-   
+                                weights_inv3 = weights_inv3.detach()
+                                
+                                # print(len(weights_inv[0]), len(weights_inv[weights_inv!=np.inf]))
+
                                 ricci_curvature = graph_curvature_main_torch(
                                     dims, weights_inv, device=device,
                                     model_dims=model_dims_small,
-                                    probability_w=weights_inv2, alpha=alpha,
+                                    probability_w=(weights_inv2, weights_inv3), alpha=alpha,
                                     pre_n=(np.sum(dims_full) - np.sum(dims)),
                                     layers_to_process=[1,2,3]
                                 )
