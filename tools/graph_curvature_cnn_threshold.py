@@ -252,7 +252,7 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
             
     def adaptive_chunksize(max_chunk=512):
         free_mem, total_mem = torch.cuda.mem_get_info()
-        gb_free = free_mem / (1024**3)
+        gb_free = free_mem / (1024**3) 
         if gb_free < 2:
             return 64, 64
         elif gb_free < 8:

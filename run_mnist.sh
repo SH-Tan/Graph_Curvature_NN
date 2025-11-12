@@ -1,0 +1,1 @@
+python removal.py --lidar 0 --image 1 --cifar small --metric w4 --model_type cnn --model_name ori --model_path CNN/models/new/ --mnist_res_path res/w4/relu/cnnori_thre0_1/ --dataset mnist --community 0 --edge 1 --activation relu --sample_num 10 --mnist_data_path res/w4/relu/cnnori_thre0_1/     

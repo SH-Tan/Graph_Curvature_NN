@@ -7,56 +7,66 @@ import numpy as np
 
 
 
-class VGG11_CIFAR10(nn.Module):
+class VGG16_CIFAR10_small_BN(nn.Module):
     def __init__(self, model_info, edge_set, device, prefix_dims = [], input_c = 3, num_classes = 10, start_l=1):
         super().__init__()
 
         self.normalize = transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), 
                                               std=(0.2023, 0.1994, 0.2010))
+        
+        # self.normalize = transforms.Normalize(mean=(0.507, 0.4865, 0.4409), 
+        #                                       std=(0.2673, 0.2564, 0.276))
+
         self.activation = nn.ReLU(inplace=True)
         self.softmax = nn.Softmax(dim=1)
-
-        # Helper for conv blocks (used for first 10 conv layers)
-        def conv_block(in_c, out_c, num_convs, k=4, p = 0):
-            layers = []
-            for _ in range(num_convs):
-                layers += [
-                    nn.Conv2d(in_c, out_c, kernel_size=k, padding=p),
-                    nn.BatchNorm2d(out_c),
-                    nn.ReLU(inplace=True)
-                ]
-                in_c = out_c
-            # layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
-            return layers
-
-        # First 10 convolutional layers using conv_block (up to conv4_2)
-        self.features = nn.Sequential(
-            *conv_block(input_c, 64, 1, k = 3, p = 1),     # conv1_1, conv1_2 -> 32-4 = 28
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            *conv_block(64, 128, 1, k = 3, p = 1),         # conv2_1, conv2_2 -> 28 - 4 = 24
-            # nn.MaxPool2d(kernel_size=2, stride=2),
-            *conv_block(128, 256, 2, k = 4),        # conv3_1, conv3_2 -> 24 - 4*2 = 16
-            # *conv_block(256, 512, 2),        # conv4_1, conv4_2 -> 16 - 6 = 8
-        )
         
-        self.conv4_1 = nn.Conv2d(256, 256, kernel_size=3, padding=0) # 8
+        self.conv1_1 = nn.Conv2d(input_c, 64, kernel_size=4, padding=0)  # 29
+        self.bn1_1 = nn.BatchNorm2d(64)
         
-        self.conv4_2 = nn.Conv2d(256, 256, kernel_size=3, padding=0) # 6
+        self.conv1_2 = nn.Conv2d(64, 64, kernel_size=4, padding=0)  # 26
+        self.bn1_2 = nn.BatchNorm2d(64)
+        
+        self.conv2_1 = nn.Conv2d(64, 128, kernel_size=4, padding=0)  # 23
+        self.bn2_1 = nn.BatchNorm2d(128)
+        
+        self.conv2_2 = nn.Conv2d(128, 128, kernel_size=4, padding=0)  # 20
+        self.bn2_2 = nn.BatchNorm2d(128)
 
-        # Last 3 conv layers (conv5_1, conv5_2) defined explicitly
-        self.conv5_1 = nn.Conv2d(256, 512, kernel_size=3, padding=0) # 4
-        # self.bn5_1 = nn.BatchNorm2d(512)
+        self.conv3_1 = nn.Conv2d(128, 256, kernel_size=3, padding=0)  # 18
+        self.bn3_1 = nn.BatchNorm2d(256)
+        
+        self.conv3_2 = nn.Conv2d(256, 256, kernel_size=3, padding=0)  # 16
+        self.bn3_2 = nn.BatchNorm2d(256)
 
-        self.conv5_2 = nn.Conv2d(512, 256, kernel_size=3, padding=0) # 2
-        # self.bn5_2 = nn.BatchNorm2d(512)
+        self.conv3_3 = nn.Conv2d(256, 256, kernel_size=3, padding=0)  # 14
+        self.bn3_3 = nn.BatchNorm2d(256)
+        
+        self.conv4_1 = nn.Conv2d(256, 128, kernel_size=3, padding=0)  # 12
+        self.bn4_1 = nn.BatchNorm2d(128)
 
-        self.pool5 = nn.MaxPool2d(kernel_size=2, stride=2)  # 2x2 → 1x1
+        # Last 3 conv layers (conv4_3, conv5_1, conv5_2) defined explicitly
+        self.conv4_2 = nn.Conv2d(128, 128, kernel_size=3, padding=0)  # 10
+        self.bn4_2 = nn.BatchNorm2d(128)
+        
+        self.conv4_3 = nn.Conv2d(128, 256, kernel_size=3, padding=0)  # 8
+        self.bn4_3 = nn.BatchNorm2d(256)
+        
+        self.conv5_1 = nn.Conv2d(256, 256, kernel_size=3, padding=0)  # 6
+        self.bn5_1 = nn.BatchNorm2d(256)
+
+        self.conv5_2 = nn.Conv2d(256, 256, kernel_size=3, padding=0)  # 4
+        self.bn5_2 = nn.BatchNorm2d(256)
+
+        self.conv5_3 = nn.Conv2d(256, 512, kernel_size=3, padding=0)  # 2
+        self.bn5_3 = nn.BatchNorm2d(512)
 
         # Fully connected layers
-        self.fc1 = nn.Linear(256 * 2 * 2, 512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, num_classes)
-
+        self.fc1 = nn.Linear(512 * 2 * 2, 256)
+        self.bn1 = nn.BatchNorm1d(256)
+        self.fc2 = nn.Linear(256, 512)
+        self.bn2 = nn.BatchNorm1d(512)
+        self.fc3 = nn.Linear(512, num_classes)
+        
         self.prefix_dims = prefix_dims
         self.model_info = model_info
         self.edge_set = edge_set if edge_set != None else list()
@@ -186,13 +196,14 @@ class VGG11_CIFAR10(nn.Module):
                     else:
                         print(i, j, l1, l2, mask_tensor.shape)
                 else:
-                    print(i, j, l1, l2, self.model_info[l2]["name"])
+                    print(i, j, l1, l2, self.model_info[l2+1]["name"])
                 continue
             else:
                 print(item_type)
 
         print(f"Removed {remove_num} total connections/weights.")
                 
+
 
     def CNN(self, ori, kernel, b, l1, l2):
         # get l1, l2 info
@@ -251,24 +262,37 @@ class VGG11_CIFAR10(nn.Module):
         '''
         x = self.normalize(x)
 
-        x = self.features(x)  # First 11 conv layers (conv1_1 to conv4_1)
-        
-        x = self.activation((self.conv4_1(x)))
-        
-        x = self.activation((self.conv4_2(x)))
-        
-        # third CNN
-        x_cov1 = self.activation((self.CNN(x, self.conv5_1.weight, self.conv5_1.bias.unsqueeze(1), 6,7)))
-        x_cov2 = self.activation((self.CNN(x_cov1, self.conv5_2.weight, self.conv5_2.bias.unsqueeze(1), 7,8)))
+         # first CNN
+        x_cov1 = self.activation(self.bn1_1(self.CNN(x, self.conv1_1.weight, self.conv1_1.bias.unsqueeze(1), 1,2)))
+        x_cov2 = self.activation(self.bn1_2(self.CNN(x_cov1, self.conv1_2.weight, self.conv1_2.bias.unsqueeze(1), 2,3)))
 
+         # second CNN
+        x_cov3 = self.activation(self.bn2_1(self.CNN(x_cov2, self.conv2_1.weight, self.conv2_1.bias.unsqueeze(1), 3,4)))
+        x_cov4 = self.activation(self.bn2_2(self.CNN(x_cov3, self.conv2_2.weight, self.conv2_2.bias.unsqueeze(1), 4,5)))
+
+         # third CNN
+        x_cov5 = self.activation(self.bn3_1(self.CNN(x_cov4, self.conv3_1.weight, self.conv3_1.bias.unsqueeze(1), 5,6)))
+        x_cov6 = self.activation(self.bn3_2(self.CNN(x_cov5, self.conv3_2.weight, self.conv3_2.bias.unsqueeze(1), 6,7)))
+        x_cov7 = self.activation(self.bn3_3(self.CNN(x_cov6, self.conv3_3.weight, self.conv3_3.bias.unsqueeze(1), 7,8)))
+        
+        # forth CNN
+        x_cov8 = self.activation(self.bn4_1(self.CNN(x_cov7, self.conv4_1.weight, self.conv4_1.bias.unsqueeze(1), 8,9)))
+        x_cov9 = self.activation(self.bn4_2(self.CNN(x_cov8, self.conv4_2.weight, self.conv4_2.bias.unsqueeze(1), 9,10)))
+        x_cov10 = self.activation(self.bn4_3(self.CNN(x_cov9, self.conv4_3.weight, self.conv4_3.bias.unsqueeze(1), 10,11)))
+
+        # forth CNN
+        x_cov11 = self.activation(self.bn5_1(self.CNN(x_cov10, self.conv5_1.weight, self.conv5_1.bias.unsqueeze(1), 11,12)))
+        x_cov12 = self.activation(self.bn5_2(self.CNN(x_cov11, self.conv5_2.weight, self.conv5_2.bias.unsqueeze(1), 12,13)))
+        x_cov13 = self.activation(self.bn5_3(self.CNN(x_cov12, self.conv5_3.weight, self.conv5_3.bias.unsqueeze(1), 13,14)))
+        
         # fc
-        fc = x_cov2.view(-1, self.num_flat_features(x_cov2))
+        fc = x_cov13.view(-1, self.num_flat_features(x_cov13))
         
-        fc1 = self.activation(self.linear(fc, self.fc1, 8,9))
+        fc1 = self.activation(self.bn1(self.linear(fc, self.fc1, 14,15)))
         
-        fc2 = self.activation(self.linear(fc1, self.fc2, 9,10))
+        fc2 = self.activation(self.bn2(self.linear(fc1, self.fc2, 15,16)))
         
-        y = self.linear(fc2, self.fc3, 10,11)
+        y = self.linear(fc2, self.fc3, 16,17)
         
         return y
 
@@ -290,7 +314,7 @@ class VGG11_CIFAR10(nn.Module):
         
         res = None
         for i in range(l2_channel):
-            y = (mask[i]*ori_unf).transpose(1,2)
+            y = (ori_unf).transpose(1,2)
             edges = (y.unsqueeze(1) * w[None,i,:,:]).transpose(2,3)
             res = edges if res == None else torch.cat((res, edges), axis=1)
             
@@ -305,202 +329,377 @@ class VGG11_CIFAR10(nn.Module):
         mask = self.remove_mask[l1]
         mask = mask.to(self.device) 
             
-        w = layer.weight.T * mask
+        w = layer.weight.T
 
         cur_shape = layer.weight.shape[0]*layer.weight.shape[1]
         
         edge_v = torch.cat([torch.reshape(w * x1[np.newaxis,:].T, (1, cur_shape)) for x1 in x_tmp], axis=0)
         return edge_v
-
     
-
-    # calculate edge weights
-    def NN_info_batch(self, x):
-        x = self.normalize(x)
-        x = self.features(x)  # First 11 conv layers (conv1_1 to conv4_1)
-        
-        x = self.activation((self.conv4_1(x)))
-        
-        edge_value = None
-        weights = None
-        x_tmp = x
-        ones_tmp = torch.ones_like(x)
-        # nodes = x.view(-1, self.num_flat_features(x))
-        
+    
+    def node_norm(self, x):
         x_flat = x.view(-1, self.num_flat_features(x))
 
         # Take absolute value and normalize per sample
         x_abs = torch.abs(x_flat)
         min_vals = x_abs.min(dim=1, keepdim=True)[0]
         max_vals = x_abs.max(dim=1, keepdim=True)[0]
-        nodes = (x_abs - min_vals) / (max_vals - min_vals)
+        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+        
+        return x_norm
 
-        # CNN 4_2
-        k1 = self.conv4_2.weight
-        # mask = valid_mask(x_tmp, kernel_size=cur_kernel, stride=cur_stride, padding=cur_padding)
-        edge_v = (self.CNN_edges(x_tmp, k1, 5,6)).cpu().detach()
+    
+
+    # calculate edge weights
+    def NN_info_batch(self, x):
+        x = self.normalize(x)
+        
+        edge_value = None
+        weights = None
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        # nodes = x.view(-1, self.num_flat_features(x))
+        nodes = self.node_norm(x)
+        
+        # CNN 1_1
+        k1 = self.conv1_1.weight
+        b1 = self.conv1_1.bias
+        i,j = 1,2
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
-        # mask_expanded = mask.flatten().repeat_interleave(edges_per_pixel)
-        # edge_valid = edge_v[:, mask_expanded]
-        # edge_value = edge_valid if edge_value == None else torch.cat((edge_value, edge_valid), axis=1)
-
-        ones = (self.CNN_edges(ones_tmp, k1, 5,6)).cpu().detach()
-        # ones_valid = ones[:, mask.flatten()]
-        # weights = ones_valid if weights == None else torch.cat((weights, ones_valid), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
-        x_cov3 = self.activation((self.CNN(x, self.conv4_2.weight, self.conv4_2.bias.unsqueeze(1), 5,6)))
+        x = self.activation(self.bn1_1(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
 
-        x_tmp = x_cov3
-        ones_tmp = torch.ones_like(x_cov3)
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
         
         # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
-        
-        x_flat = x_cov3.view(-1, self.num_flat_features(x_cov3))
 
-        # Take absolute value and normalize per sample
-        x_abs = torch.abs(x_flat)
-        min_vals = x_abs.min(dim=1, keepdim=True)[0]
-        max_vals = x_abs.max(dim=1, keepdim=True)[0]
-        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+        x_norm = self.node_norm(x)
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
+        
+        # CNN 1_2
+        k1 = self.conv1_2.weight
+        b1 = self.conv1_2.bias
+        i,j = 2,3
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.bn1_2(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
+
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
+
+        x_norm = self.node_norm(x)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
+        
+        # CNN 2_1
+        k1 = self.conv2_1.weight
+        b1 = self.conv2_1.bias
+        i,j = 3,4
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.bn2_1(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
+
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
+
+        x_norm = self.node_norm(x)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
+        
+        # CNN 2_2
+        k1 = self.conv2_2.weight
+        b1 = self.conv2_2.bias
+        i,j = 4,5
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.bn2_2(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
+
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
+
+        x_norm = self.node_norm(x)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
+        
+        # CNN 3_1
+        k1 = self.conv3_1.weight
+        b1 = self.conv3_1.bias
+        i,j = 5,6
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.bn3_1(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
+
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
+
+        x_norm = self.node_norm(x)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
+        
+        # CNN 3_2
+        k1 = self.conv3_2.weight
+        b1 = self.conv3_2.bias
+        i,j = 6,7
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.bn3_2(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
+
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
+
+        x_norm = self.node_norm(x)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
+        
+        # CNN 3_3
+        k1 = self.conv3_3.weight
+        b1 = self.conv3_3.bias
+        i,j = 7,8
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.bn3_3(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
+
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
+
+        x_norm = self.node_norm(x)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
+        
+        
+        # CNN 4_1
+        k1 = self.conv4_1.weight
+        b1 = self.conv4_1.bias
+        i,j = 8,9
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.bn4_1(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
+
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
+
+        x_norm = self.node_norm(x)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
+        
+        # CNN 4_2
+        k1 = self.conv4_2.weight
+        b1 = self.conv4_2.bias
+        i,j = 9,10
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.bn4_2(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
+
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
+
+        x_norm = self.node_norm(x)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
+
+        # CNN 4_3
+        k1 = self.conv4_3.weight
+        b1 = self.conv4_3.bias
+        i,j = 10,11
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.bn4_3(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
+
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
+
+        x_norm = self.node_norm(x)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
+        
         
         # CNN 5_1
-        k2 = self.conv5_1.weight
-        # mask = valid_mask(x_tmp, kernel_size=cur_kernel, stride=cur_stride, padding=cur_padding)
-        edge_v = (self.CNN_edges(x_tmp, k2, 6,7)).cpu().detach()
+        k1 = self.conv5_1.weight
+        b1 = self.conv5_1.bias
+        i,j = 11,12
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
-        # edge_valid = edge_v[:, mask.flatten()]
-        # edge_value = edge_valid if edge_value == None else torch.cat((edge_value, edge_valid), axis=1)
-
-        ones = (self.CNN_edges(ones_tmp, k2, 6,7)).cpu().detach()
-        # ones_valid = ones[:, mask.flatten()]
-        # weights = ones_valid if weights == None else torch.cat((weights, ones_valid), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
-        x_cov4 = self.activation((self.CNN(x_cov3, self.conv5_1.weight, self.conv5_1.bias.unsqueeze(1), 6,7)))
+        x = self.activation(self.bn5_1(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
 
-        x_tmp = x_cov4
-        ones_tmp = torch.ones_like(x_cov4)
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
         
-        # nodes = torch.cat((nodes, x_cov4.view(-1, self.num_flat_features(x_cov4))), axis = 1)
-        
-        x_flat = x_cov4.view(-1, self.num_flat_features(x_cov4))
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
 
-        # Take absolute value and normalize per sample
-        x_abs = torch.abs(x_flat)
-        min_vals = x_abs.min(dim=1, keepdim=True)[0]
-        max_vals = x_abs.max(dim=1, keepdim=True)[0]
-        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+        x_norm = self.node_norm(x)
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
         
-        
-        # CNN 5_2        
-        k2 = self.conv5_2.weight
-        # mask = valid_mask(x_tmp, kernel_size=cur_kernel, stride=cur_stride, padding=cur_padding)
-        edge_v = (self.CNN_edges(x_tmp, k2, 7,8)).cpu().detach()
+        # CNN 5_2
+        k1 = self.conv5_2.weight
+        b1 = self.conv5_2.bias
+        i,j = 12,13
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
-        # edge_valid = edge_v[:, mask.flatten()]
-        # edge_value = edge_valid if edge_value == None else torch.cat((edge_value, edge_valid), axis=1)
-
-        ones = (self.CNN_edges(ones_tmp, k2, 7,8)).cpu().detach()
-        # ones_valid = ones[:, mask.flatten()]
-        # weights = ones_valid if weights == None else torch.cat((weights, ones_valid), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
-        x_cov5 = self.activation((self.CNN(x_cov4, self.conv5_2.weight, self.conv5_2.bias.unsqueeze(1), 7,8)))
+        x = self.activation(self.bn5_2(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
 
-        x_tmp = x_cov5
-        ones_tmp = torch.ones_like(x_cov5)
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
         
-        # nodes = torch.cat((nodes, x_cov5.view(-1, self.num_flat_features(x_cov5))), axis = 1)
-        
-        x_flat = x_cov5.view(-1, self.num_flat_features(x_cov5))
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
 
-        # Take absolute value and normalize per sample
-        x_abs = torch.abs(x_flat)
-        min_vals = x_abs.min(dim=1, keepdim=True)[0]
-        max_vals = x_abs.max(dim=1, keepdim=True)[0]
-        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+        x_norm = self.node_norm(x)
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
+
+        # CNN 5_3
+        k1 = self.conv5_3.weight
+        b1 = self.conv5_3.bias
+        i,j = 13,14
+        edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
         
+        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.bn5_3(self.CNN(x, k1, b1.unsqueeze(1),i,j)))
+
+        x_tmp = x
+        ones_tmp = torch.ones_like(x)
+        
+        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
+
+        x_norm = self.node_norm(x)
+
+        # Concatenate normalized x to nodes along feature dimension
+        nodes = torch.cat((nodes, x_norm), axis=1)
 
         # fully connected
-        x = x_cov5.view(-1, self.num_flat_features(x_cov5)) # batch * input size
+        x = x.view(-1, self.num_flat_features(x)) # batch * input size
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
         # fc1
-        edge_v = (self.fc_edges(x_tmp, self.fc1, 8,9)).cpu().detach()
+        edge_v = (self.fc_edges(x_tmp, self.fc1, 14,15)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
-        ones = (self.fc_edges(ones_tmp, self.fc1, 8,9)).cpu().detach()
+        ones = (self.fc_edges(ones_tmp, self.fc1, 14,15)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
 
-        x = self.activation(self.linear(x, self.fc1, 8,9))
+        x = self.activation(self.bn1(self.fc1(x)))
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
         # nodes = torch.cat((nodes, x), axis = 1)
         
-        x_flat = x
-
-        # Take absolute value and normalize per sample
-        x_abs = torch.abs(x_flat)
-        min_vals = x_abs.min(dim=1, keepdim=True)[0]
-        max_vals = x_abs.max(dim=1, keepdim=True)[0]
-        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+        x_norm = self.node_norm(x)
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
         
         # fc2    
-        edge_v = (self.fc_edges(x_tmp, self.fc2, 9,10)).cpu().detach()
+        edge_v = (self.fc_edges(x_tmp, self.fc2, 15,16)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
-        ones = (self.fc_edges(ones_tmp, self.fc2, 9,10)).cpu().detach()
+        ones = (self.fc_edges(ones_tmp, self.fc2, 15,16)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
-        x = self.activation(self.linear(x, self.fc2, 9,10))
+        x = self.activation(self.bn2(self.fc2(x)))
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
         # nodes = torch.cat((nodes, x), axis = 1)
-        x_flat = x
-
-        # Take absolute value and normalize per sample
-        x_abs = torch.abs(x_flat)
-        min_vals = x_abs.min(dim=1, keepdim=True)[0]
-        max_vals = x_abs.max(dim=1, keepdim=True)[0]
-        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
-
+        x_norm = self.node_norm(x)
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
         
 
         # fc3
-        edge_v = (self.fc_edges(x_tmp, self.fc3, 10,11)).cpu().detach()
+        edge_v = (self.fc_edges(x_tmp, self.fc3, 16,17)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
-        ones = (self.fc_edges(ones_tmp, self.fc3, 10,11)).cpu().detach()
+        ones = (self.fc_edges(ones_tmp, self.fc3, 16,17)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.fc3(x)
-        x = self.softmax(x)
+        # x = self.softmax(x)
         # nodes = torch.cat((nodes, x), axis = 1)
-        x_flat = x
-
-        # Take absolute value and normalize per sample
-        x_abs = torch.abs(x_flat)
-        min_vals = x_abs.min(dim=1, keepdim=True)[0]
-        max_vals = x_abs.max(dim=1, keepdim=True)[0]
-        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
+        x_norm = self.node_norm(x)
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)

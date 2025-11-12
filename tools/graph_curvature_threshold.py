@@ -527,6 +527,30 @@ def process_edge(b, edge):
     
     # if np.isinf(d_np).any():
     #     print(i_layer, np.isinf(d_np).sum(), np.isnan(d_np).sum(), m)
+    
+    # === Debug print section for layer 4 ===
+    # if i_layer == 3 and (sp <= 1./0.36 or sp >= 1./ 0.00001):
+    #     print(_prefix_dims)
+    #     print(f"\nEdge ({i} → {j}), sp = {sp}")
+    #     print("Node values:")
+    #     print("  i node:", _nodes_value[:, i])
+    #     print("  j node:", _nodes_value[:, j])
+        
+    #     # Sort and print top 10 μ
+    #     mu_sorted_idx = np.argsort(mu)[::-1][:10]
+    #     print("\nTop 10 μ values:")
+    #     for rank, idx in enumerate(mu_sorted_idx):
+    #         node_id = in_neigh[idx] if idx < len(in_neigh) else None
+    #         node_val = _nodes_value[:, node_id] if node_id is not None else None
+    #         print(f"  {rank+1}. μ[{idx}] = {mu[idx]:.4f}, node = {node_id}, value = {node_val}")
+
+    #     # Sort and print top 10 ν
+    #     nu_sorted_idx = np.argsort(nu)[::-1][:10]
+    #     print("\nTop 10 ν values:")
+    #     for rank, idx in enumerate(nu_sorted_idx):
+    #         node_id = out_neigh[idx] if idx < len(out_neigh) else None
+    #         node_val = _nodes_value[:, node_id] if node_id is not None else None
+    #         print(f"  {rank+1}. ν[{idx}] = {nu[idx]:.4f}, node = {node_id}, value = {node_val}")
 
     return (b, i, j, 1.0 - m/sp)
 
@@ -640,6 +664,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             mask = (path_sub != float('inf')) & (path_sub != 0)
             
             weights_layer = torch.exp(-(path_sub ** 2)) * mask
+                
             # weights_layer = (1./path_sub) * mask
             sum_weights = weights_layer.sum(dim=2)
             
@@ -653,7 +678,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             dist_next *= mask
      
             distribution_out[layer] = dist_next.cpu().numpy()
- 
+
+
     _distribution_in = distribution_in
     _distribution_out = distribution_out
     _nodes_value = _nodes_value.cpu().numpy()

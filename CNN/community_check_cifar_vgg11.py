@@ -380,7 +380,7 @@ def community_check_cifar_vgg11(args):
                                 weight_idx = 0
                                 start = 0
                                 combined = []
-                                for l_key in [1, 2, 3, [4, 5, 6]]:  # loop variable is l_key
+                                for l_key in [1, 2, [3, 4, 5]]:  # loop variable is l_key
                                     # Determine weight index slice
                                     weight_idx = min(l_key) - 1 if isinstance(l_key, list) else l_key - 1
                                     start = np.sum(edge_dims[0:weight_idx]) if weight_idx > 0 else 0

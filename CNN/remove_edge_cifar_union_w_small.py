@@ -17,6 +17,8 @@ from collections import Counter
 import gc
 import re
 
+from .e2w_utils import *
+
 import sys
 sys.path.append("..")
 
@@ -48,78 +50,59 @@ data_test = CIFAR10('./data/cifar10', train=False, download=True, transform=tran
 # model_dims = {
 #     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
-#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
-#     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
-#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
-#     5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
+#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 29}}, 
+#     3: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 26}},   # After conv1_2 
+    
+#     4: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 23}},  
+#     5: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 20}},   # After conv2_2 
+    
+#     6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 18}},
+#     7: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 16}},
+#     8: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv3_3
+    
+#     9: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},   # After conv4_1
+#     10: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
+#     11: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
 
-#     6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
-#     7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
-#     8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
+#     12: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # conv5_1
+#     13: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
+#     14: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
 
-#     9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-#     10: {"name": "fc", "dim": {"out_size": 512}},
-#     11: {"name": "fc", "dim": {"out_size": 10}}
-# }
-
-
-
-
-# model_dims_small = {
-#     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
-#     2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
-
-#     3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-#     4: {"name": "fc", "dim": {"out_size": 512}},
-#     5: {"name": "fc", "dim": {"out_size": 10}}
+#     15: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 1024
+#     16: {"name": "fc", "dim": {"out_size": 512}},
+#     17: {"name": "fc", "dim": {"out_size": 10}}
 # }
 
 
 model_dims = {
     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
-    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 26}},   # After conv1_2 + pool
-    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 20}},   # After conv2_2 + pool
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv3_3
+    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 29}}, 
+    3: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 26}},   # After conv1_2 
     
-    5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},   # After conv4_1
+    4: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 23}},  
+    5: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 20}},   # After conv2_2 
     
-    6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
-    7: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
+    6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 18}},
+    7: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 16}},
+    8: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv3_3
+    
+    9: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},   # After conv4_1
+    10: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
+    11: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
 
-    8: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # conv5_1
-    9: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
-    10: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
+    12: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # conv5_1
+    13: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
+    14: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
 
-    11: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-    12: {"name": "fc", "dim": {"out_size": 256}},
-    13: {"name": "fc", "dim": {"out_size": 10}}
+    15: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 1024
+    16: {"name": "fc", "dim": {"out_size": 512}},
+    17: {"name": "fc", "dim": {"out_size": 10}}
 }
 
 
 
-model_dims_small = {
-    1: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
-    2: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
-
-    3: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 6}},   # conv5_1
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
-    5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
-
-    6: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-    7: {"name": "fc", "dim": {"out_size": 256}},
-    8: {"name": "fc", "dim": {"out_size": 10}}
-}
-
-
-# model_dims_small = {
-#     1: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3
-
-#     2: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-#     3: {"name": "fc", "dim": {"out_size": 512}},
-#     4: {"name": "fc", "dim": {"out_size": 10}}
-# }
-
+model_dims_small = model_dims
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
 all_classes = [0,1,2,3,4,5,6,7,8,9]
 
@@ -210,36 +193,38 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 
+
 def get_top_c(curvature, b, prefix_dims):
-    neg_e = set()
-    pos_e = set()
-    zero_e = set()
-    pos_zero_e = set()
-    mini_c = 0.
-    
+    neg_e = defaultdict(list)
+    pos_e = defaultdict(list)
+
+    # Precompute a fast index-to-layer map
+    def find_layer(index):
+        return np.searchsorted(prefix_dims, index, side='right') - 1
+
     for batch in range(b):
-        ricci_curv = np.array(curvature)  # shape (N, 3)
-    
-        # Filter values with valid curvature (<= 1)
-        valid = ricci_curv[ricci_curv[:, 2] <= 1]
-
-        # Convert to int for indexing
-        valid[:, 0:2] = valid[:, 0:2].astype(int)
-
+        ricci_curv = np.array(curvature)
+        
+        # Filter out large curvature values
+        valid = ricci_curv[ricci_curv[:, 2] <= 1.0]
+        valid[:, :2] = valid[:, :2].astype(int)
+        
         for i, j, curr in valid:
-            i, j = int(i), int(j)
-            if curr < 0:
-                mini_c = min(mini_c, curr)
-                neg_e.add((i, j, curr))
-            elif curr > 0:
-                pos_e.add((i, j, curr))
-            else:
-                zero_e.add((i, j, curr))
-                
-            if curr >= 0:
-                pos_zero_e.add((i, j, curr))
+            # curr = min(curr, 1.0)  # clip curvature
+            i = int(i)
+            j = int(j)
 
-    return neg_e, pos_e, mini_c, zero_e, pos_zero_e
+            i_layer = find_layer(i)
+            j_layer = find_layer(j)
+
+            # Only keep edges between adjacent layers (excluding input and first hidden)
+            if j_layer == i_layer + 1:
+                if curr < 0:
+                    neg_e[i_layer].append((i, j, curr))
+                elif curr >= 0:
+                    pos_e[i_layer].append((i, j, curr))
+
+    return neg_e, pos_e
 
 
 
@@ -379,10 +364,10 @@ def compute_removal_mapping(summary, total_edges):
 
     Returns list of (count, freq, count_str, ratio_str)
     """
-    freqs = sorted({freq for (_, _, freq, _) in summary}, reverse=True)
+    freqs = sorted({freq for (_,_, _, freq, _) in summary}, reverse=True)
     mapping = []
     for freq_threshold in freqs:
-        count = sum(1 for (_, _, freq, _) in summary if freq >= freq_threshold)
+        count = sum(1 for (_,_, _, freq, _) in summary if freq >= freq_threshold)
         ratio = freq_threshold / total_edges
         mapping.append((count, freq_threshold, str(count), f"{ratio:.2f}"))
     return mapping
@@ -488,7 +473,7 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all_filtered.pdf'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para.pdf'), dpi=300)
     plt.close()
     
     
@@ -496,12 +481,12 @@ def count_edge_frequency(edge_sets):
     freq = Counter()
     curvature_sum = defaultdict(float)
 
-    for edge_set in edge_sets:
-        for i, j, c in edge_set:
-            # Normalize undirected edge direction efficiently
-            key = (min(i, j), max(i, j))
-            freq[key] += 1
-            curvature_sum[key] += c
+    # for edge_set in edge_sets:
+    for i, j, c in edge_sets:
+        # Normalize undirected edge direction efficiently
+        key = (min(i, j), max(i, j))
+        freq[key] += 1
+        curvature_sum[key] += c
 
     # Use list comprehension for speed and clarity
     results = [
@@ -523,52 +508,88 @@ def process_batches_memory_efficient(
     prefix_dims
 ):
     # prefix = f"{model_full_n}_{metric}_{dataset}_batch"
-    prefix = f"{model_full_n}_{metric}_{dataset}_batch"
+    prefix = f"{model_full_n}_{metric}_{dataset}_label"
     suffix = ".pkl"
 
-    def extract_batch_num(f):
-        match = re.search(r'batch(\d+)', f)
-        return int(match.group(1)) if match else -1
+    # extract label + id from filename
+    def extract_label_id(f):
+        match = re.search(r'label(\d+)_id(\d+)', f)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+        return -1, -1
 
-    all_files = sorted([
+    all_files = [
         f for f in os.listdir(data_path)
         if f.startswith(prefix) and f.endswith(suffix)
-    ], key=extract_batch_num)
+    ]
+    # Sort by label then id
+    all_files = sorted(all_files, key=lambda f: extract_label_id(f)[1])
 
     print(f"Found files: {all_files}")
+    
+    # Precompute edge->weight mapping per CNN layer
+    cnn_edge_to_weight_map = {}
+    for layer in range(len(model_dims)-2):  # skip input/output placeholder layers
+        layer_info = model_dims[layer+2]
+        if layer_info["name"] == "cnn":
+            pre_dim = model_dims[layer+1]["dim"]
+            pre_ch = pre_dim["channel"]
+            in_size = pre_dim["out_size"]
+            cur_dim = layer_info["dim"]
+            cur_ch = cur_dim["channel"]
+            kernel = cur_dim["kernel"]
+            stride = cur_dim["stride"]
+            padding = cur_dim["padding"]
+
+            cnn_edge_to_weight_map[layer] = build_cnn_edge_weight_map(
+                pre_ch, in_size, cur_ch, kernel, stride, padding, layer, prefix_dims
+            )
 
     label_counts = {l: 0 for l in selected_classes}
+    neg_weight_sets = []
+    pos_weight_sets = []
     neg_edge_sets = []
     pos_edge_sets = []
-    zero_edge_sets = []
-    mini_c_list = []
-    pos_zero_e_sets = []
 
     for f in all_files:
+        label, sample_id = extract_label_id(f)
+        if label not in selected_classes:
+            continue
+        if label_counts[label] >= sample_size:
+            continue
+        
         file_path = os.path.join(data_path, f)
         print(f'file_path: {file_path}')
         
         with open(file_path, 'rb') as file:
             batch_data = pickle.load(file)
 
-        for l in selected_classes:
-            if label_counts[l] >= sample_size:
-                continue
+        new_data = batch_data
+        # available = sample_size - label_counts[l]
+        use_data = [new_data]
 
-            new_data = batch_data.get(l, [])
-            available = sample_size - label_counts[l]
-            use_data = new_data[:available]
+        for ricci in use_data:
+            neg_e, pos_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
+            # === Aggregate CNN edges → per-weight curvatures ===
+            for layer, edges in neg_e.items():
+                layer_info = model_dims[layer + 2]
+                if layer_info["name"] == "cnn":
+                    weight_curv, freq = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
+                    neg_weight_sets.append([(w, c, f) for w, (c, f) in weight_curv.items()])
+                else:
+                    # FC layer — keep per-edge
+                    neg_edge_sets.extend(edges)
 
-            for ricci in use_data:
-                neg_e, pos_e, mini_c, zero_c, pos_zero_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
-                neg_edge_sets.append(neg_e)
-                pos_edge_sets.append(pos_e)
-                zero_edge_sets.append(zero_c)
-                pos_zero_e_sets.append(pos_zero_e)
-                mini_c_list.append(mini_c)
-                del ricci, neg_e, pos_e
+            for layer, edges in pos_e.items():
+                layer_info = model_dims[layer + 2]
+                if layer_info["name"] == "cnn":
+                    weight_curv, freq = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
+                    pos_weight_sets.append([(w, c, f) for w, (c, f) in weight_curv.items()])
+                else:
+                    pos_edge_sets.extend(edges)
+            del ricci, neg_e, pos_e
 
-            label_counts[l] += len(use_data)
+        label_counts[label] += len(use_data)
 
         del batch_data
         gc.collect()
@@ -578,50 +599,60 @@ def process_batches_memory_efficient(
 
     print("Finished processing all required batches.")
 
-    neg_freq = count_edge_frequency(neg_edge_sets)
-    zero_freq = count_edge_frequency(zero_edge_sets)
-    pos_freq = count_edge_frequency(pos_edge_sets)
-    pos_zero_freq = count_edge_frequency(pos_zero_e_sets)
+    neg_freq_fc = count_edge_frequency(neg_edge_sets)
+    pos_freq_fc = count_edge_frequency(pos_edge_sets)
 
-    return neg_freq, pos_freq, mini_c_list, zero_freq, pos_zero_freq
+    neg_freq_cnn = count_weight_frequency(neg_weight_sets, model_dims)
+    pos_freq_cnn = count_weight_frequency(pos_weight_sets, model_dims)
+    
+    neg_all = (
+        [("edge", i, j, f, c) for (i, j, f, c) in neg_freq_fc] +
+        [("weight", w, None, f, c) for (w, f, c) in neg_freq_cnn]
+    )
+    pos_all = (
+        [("edge", i, j, f, c) for (i, j, f, c) in pos_freq_fc] +
+        [("weight", w, None, f, c) for (w, f, c) in pos_freq_cnn]
+    )
+
+    neg_freq_edges_sorted = sorted(neg_all, key=lambda x: (-x[3], x[4]))  # by frequency desc, curvature asc
+    pos_freq_edges_sorted = sorted(pos_all, key=lambda x: (-x[3], -x[4])) # by frequency desc, curvature desc
 
 
-
-def curvature_threshold(pos_zero_freq_edges_sorted, sparsity):
-    """
-    Extract all curvature values from pos_zero_freq_edges_sorted and
-    find the kth threshold based on sparsity (like pruning threshold).
-
-    Parameters:
-        pos_zero_freq_edges_sorted (list of tuples): (i, j, freq, curv)
-        sparsity (float): fraction of edges to prune (0 <= sparsity < 1)
-
-    Returns:
-        float: curvature threshold value, or None if not computable
-    """
-    # Extract curvature values
-    curvs = [e[3] for e in pos_zero_freq_edges_sorted]
-    if len(curvs) == 0:
-        return None
-
-    # Convert to torch tensor
-    global_curvs = torch.tensor(curvs, dtype=torch.float32)
-
-    # Flatten (optional, matches your global_scores style)
-    global_curvs = torch.flatten(global_curvs)
-
-    # Compute k = number of elements to keep
-    k = int((1.0 - sparsity) * global_curvs.numel())
-    if k < 1:
-        return None
-
-    # kth smallest curvature value as threshold
-    threshold, _ = torch.kthvalue(global_curvs, k)
-    return k
+    return neg_freq_edges_sorted, pos_freq_edges_sorted
 
 
 
-def remove_edge_cifar_union(args):
+def cal_parameters(model_dims):
+    edges = []
+    layer_num = len(model_dims)
+    
+    for i in range(2, layer_num + 1):
+        cur_name = model_dims[i]["name"]
+        cur_dim = model_dims[i]["dim"]
+        cur_size = cur_dim['out_size']
+
+        pre_name = model_dims[i-1]["name"]
+        pre_dim = model_dims[i-1]["dim"]
+        pre_size = pre_dim['out_size']
+
+        if cur_name == "cnn":
+            k = cur_dim['kernel']
+            pool = cur_dim.get('pool', False)
+            if pool:
+                cur_size *= 2
+            pre_channel = 1 if (pre_name == "fc") else pre_dim['channel']
+            cur_edges = pre_channel * k**2 * cur_dim['channel']
+        else:
+            pre_nodes = pre_size if (pre_name == "fc") else pre_dim['channel']*(pre_size**2)
+            cur_edges = cur_size * pre_nodes
+            
+        edges.append(cur_edges)
+    
+    return edges
+
+
+
+def remove_edge_cifar_union_w_small(args):
     seed = 29
     
     # set random seed
@@ -657,7 +688,7 @@ def remove_edge_cifar_union(args):
     data_path = args.mnist_data_path
     
     if activation.lower() == "relu":
-        from tools.vgg16_custom_relu_new import VGG16_CIFAR10
+        from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
     elif activation.lower() == "tanh":
         from tools.vgg16_custom_tanh import VGG16_CIFAR10
     
@@ -677,9 +708,9 @@ def remove_edge_cifar_union(args):
     elif model_pre_name == 'wd':
         model_name = "vgg16_wd_"
         
-    model_name = model_name + activation + ".pth"
+    model_name = model_name + activation + "_fcbn.pth"
     
-    net_H = VGG16_CIFAR10(model_dims, None, device)
+    net_H = VGG16_CIFAR10_small_BN(model_dims, None, device, prefix_dims)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
@@ -690,8 +721,14 @@ def remove_edge_cifar_union(args):
     
     print(model_name)
     edge_dims_small = cal_edges(model_dims_small) 
+    para_dims = cal_parameters(model_dims_small)
+
+    total_para = sum(para_dims) - sum(para_dims[:10]) - sum(para_dims[-3:])
     
-    total_edge = sum(edge_dims_small) - edge_dims_small[0] - edge_dims_small[1]
+    print(para_dims)
+    print(total_para)
+    
+    total_edge = sum(edge_dims_small) - edge_dims_small[0]
       
     test_cleanacc = test_clean(net_full, test_loader)
     
@@ -701,10 +738,8 @@ def remove_edge_cifar_union(args):
         with open(save_path, 'rb') as f:
             data_loaded = pickle.load(f)
             # Access the contents
-            neg_freq_edges_sorted = data_loaded.get('neg', [])
-            pos_freq_edges_sorted = data_loaded.get('pos', [])
-            zero_freq_edges_sorted = data_loaded.get('zero', [])
-            pos_zero_freq_edges_sorted = data_loaded.get('pos_zero', [])
+            neg_freq_dict = data_loaded.get('neg', [])
+            pos_freq_dict = data_loaded.get('pos', [])
         print("File loaded successfully!")
     else:
 
@@ -712,7 +747,7 @@ def remove_edge_cifar_union(args):
             ff.write(f'For model {model_name}: \n')
             ff.write(f'The clean accuracy for original model is {test_cleanacc}\n')
             
-            neg_freq_dict, pos_freq_dict, mini_c_list, zero_freq_dict, pos_zero_dict = process_batches_memory_efficient(
+            neg_freq_dict, pos_freq_dict = process_batches_memory_efficient(
                 data_path,
                 model_full_n,
                 metric,
@@ -720,20 +755,10 @@ def remove_edge_cifar_union(args):
                 sample_size,
                 prefix_dims
             )
-            
-            mini_c_list = np.array(mini_c_list)
-            
-            neg_freq_edges_sorted = sorted(neg_freq_dict, key=lambda x: (-x[2], x[3]))
-            pos_freq_edges_sorted = sorted(pos_freq_dict, key=lambda x: (-x[2], -x[3]))
-            zero_freq_edges_sorted = sorted(zero_freq_dict, key=lambda x: (-x[2], -x[3]))
-            pos_zero_freq_edges_sorted = sorted(pos_zero_dict, key=lambda x: (-x[2], -x[3]))
-            
-            
+
             data_to_save = {
-                'neg': neg_freq_edges_sorted,
-                'pos': pos_freq_edges_sorted,
-                'zero': zero_freq_edges_sorted,
-                'pos_zero': pos_zero_freq_edges_sorted
+                'neg': neg_freq_dict,
+                'pos': pos_freq_dict
             }
             
             save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}.pkl"
@@ -742,38 +767,53 @@ def remove_edge_cifar_union(args):
             with open(save_path, 'wb') as f:
                 pickle.dump(data_to_save, f)  # use dict to avoid defaultdict issues
     
-    print(f'It has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes, {len(zero_freq_edges_sorted)} zero curvature egdes, {len(pos_zero_freq_edges_sorted)} combined positive and zero curvature egdes .. \n')
+    print(f'It has {len(neg_freq_dict)} negative curvature edges, {len(pos_freq_dict)} positive curvature egdes.. \n')
     
     neg_acc_clean = []
     pos_acc_clean = []
     
-    total_example = len(selected_classes)*sample_size
+    total = sample_size * len(selected_classes)
     
-    # pos_edges_only = [(i, j) for (i, j, _, _) in pos_zero_freq_edges_sorted]
-    # neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
-    
-    layers_i = [np.searchsorted(prefix_dims, i, side='right') - 1 for (i, j, _, _) in pos_zero_freq_edges_sorted]
+    # Compute which layer each edge (i) belongs to
+    layers_i = [
+        np.searchsorted(prefix_dims, i, side='right') - 1
+        if item == "edge" else None
+        for (item, i, j, f, c) in pos_freq_dict
+    ]
 
-    # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
-    pos_edges_only = [
-        (i, j)
-        for (i, j, freq, curv), layer in zip(pos_zero_freq_edges_sorted, layers_i)
-        # if layer == 6
+    # Filter: keep all weights, and only edges not in layer 9
+    pos_filtered_edges = [
+        (item, i, j, f, c)
+        for (item, i, j, f, c), layer in zip(pos_freq_dict, layers_i)
+        if not (item == "edge")
     ]
     
-    # neg_edges_new = [
-    #     (i, j, freq, curv)
-    #     for (i, j, freq, curv), layer in zip(pos_zero_freq_edges_sorted, layers_i)
-    #     if layer == 9 and ((curv < 0.5))
-    # ]
+    # Compute which layer each edge (i) belongs to
+    layers_i = [
+        np.searchsorted(prefix_dims, i, side='right') - 1
+        if item == "edge" else None
+        for (item, i, j, f, c) in neg_freq_dict
+    ]
+
+    # Filter: keep all weights, and only edges not in layer 9
+    neg_filtered_edges = [
+        (item, i, j, f, c)
+        for (item, i, j, f, c), layer in zip(neg_freq_dict, layers_i)
+        if not (item == "edge")
+    ]
     
-    layers_i = [np.searchsorted(prefix_dims, i, side='right') - 1 for (i, j, _, _) in neg_freq_edges_sorted]
     
     neg_edges_only = [
-        (i, j)
-        for (i, j, freq, curv), layer in zip(neg_freq_edges_sorted, layers_i)
-        # if layer == 6
+        (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in neg_filtered_edges
     ]
+    pos_edges_only = [
+        (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in pos_filtered_edges
+    ]
+
+    neg_total = len(neg_edges_only)
+    pos_total = len(pos_edges_only)
+    
+    
     
     # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
     # pos_edges_only = [
@@ -834,13 +874,11 @@ def remove_edge_cifar_union(args):
     # combine, removing duplicates at boundaries
     pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
         
-    remove_num = list(np.linspace(0, total_edge, num=10, dtype=int))
-    
-    total = sample_size * len(selected_classes)
-        
+    remove_num = list(np.linspace(0, total_para, num=10, dtype=int))
+
     # Build frequency mappings
-    neg_freq_map = compute_removal_mapping(neg_freq_edges_sorted, total_edges=total)
-    pos_freq_map = compute_removal_mapping(pos_freq_edges_sorted, total_edges=total)
+    neg_freq_map = compute_removal_mapping(neg_freq_dict, total_edges=total)
+    pos_freq_map = compute_removal_mapping(pos_freq_dict, total_edges=total)
 
     neg_freq_labels = match_frequencies(neg_remove_num, neg_freq_map)
     pos_freq_labels = match_frequencies(pos_remove_num, pos_freq_map)

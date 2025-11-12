@@ -1,7 +1,6 @@
 import torch
-from torchvision.datasets.cifar import CIFAR10
+from torchvision.datasets.mnist import MNIST
 import torchvision.transforms as transforms
-import torchvision
 import numpy as np
 import random
 import os
@@ -10,257 +9,57 @@ import torch.nn as nn
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import copy
-import time
-import torch.nn.functional as F
-
 from .e2w_utils import *
 
-import re
-import gc
 import pickle
+import time
 import pandas as pd
 
 import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature import graph_curvature_main_torch
-# from tools.vgg16_custom_relu import VGG16_CIFAR10
+
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=torch.inf)
 
 import warnings
 
-transform_train = torchvision.transforms.Compose([
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomCrop(size=32, padding=4),
-    transforms.ToTensor(),
-    # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-])
+# Ignore all warnings
+warnings.filterwarnings("ignore")
 
-transform_test = torchvision.transforms.Compose([
-    transforms.ToTensor(),
-    # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-])
+data_train = MNIST('./data/mnist',
+                  train=True,
+                  download=True,
+                  transform=transforms.Compose([
+                      # transforms.Resize((32, 32)),
+                      transforms.ToTensor()]))
 
-data_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
-data_test = CIFAR10('./data/cifar10', train=False, download=True, transform=transform_test)
-
-model_dims = {
-    1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
-
-    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
-    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
-    5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
-
-    6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
-    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
-    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
-
-    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    10: {"name": "fc", "dim": {"out_size": 512}},
-    11: {"name": "fc", "dim": {"out_size": 10}}
-}
-
-
-
-model_dims_small = {
-    1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
-    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
-
-    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    4: {"name": "fc", "dim": {"out_size": 512}},
-    5: {"name": "fc", "dim": {"out_size": 10}}
-}
-
-
-# model_dims = {
-#     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
-
-#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 26}},   # After conv1_2 + pool
-#     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 20}},   # After conv2_2 + pool
-#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv3_3
-    
-#     5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},   # After conv4_1
-    
-#     6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
-#     7: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
-
-#     8: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # conv5_1
-#     9: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
-#     10: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
-
-#     11: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-#     12: {"name": "fc", "dim": {"out_size": 256}},
-#     13: {"name": "fc", "dim": {"out_size": 10}}
-# }
-
-
-
-# model_dims_small = {
-#     1: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
-#     2: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
-
-#     3: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 6}},   # conv5_1
-#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
-#     5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
-
-#     6: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-#     7: {"name": "fc", "dim": {"out_size": 256}},
-#     8: {"name": "fc", "dim": {"out_size": 10}}
-# }
-
-
+data_test = MNIST('./data/mnist',
+                  train=False,
+                  download=True,
+                  transform=transforms.Compose([
+                      # transforms.Resize((32, 32)),
+                      transforms.ToTensor()]))
 
 
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
 
 
-def reduce_and_sort_all(edge_acc, sort_desc=False):
-    """
-    Reduce edge_acc to average curvature per edge/weight and frequency,
-    and return a sorted list per layer.
-    
-    For FC: keys are (i,j)
-    For CNN: keys are weight indices (e.g., tuples like (out_ch, in_ch, kh, kw))
-    """
-    layer_sorted = {}
+nodes_num = 2118
 
-    for layer, items_dict in edge_acc.items():
-        items = []
-
-        for key, curvs in items_dict.items():
-            freq = len(curvs)
-            avg_curv = sum(curvs) / freq
-            # distinguish FC vs CNN by type/length of key
-            if isinstance(key, tuple) and len(key) == 2:
-                # FC edge
-                items.append(("edge", key[0], key[1], freq, avg_curv))
-            else:
-                # CNN weight index
-                items.append(("weight", key, None, freq, avg_curv))
-
-        # Sort by freq descending, then avg curvature ascending or descending
-        if sort_desc:
-            items.sort(key=lambda x: (-x[3], -x[4]))  # freq ↓, curvature ↓
-        else:
-            items.sort(key=lambda x: (-x[3], x[4]))   # freq ↓, curvature ↑
-        layer_sorted[layer] = items
-
-    return layer_sorted
+model_dims = {
+    1: {"name": "input", "dim": {"channel": 1, "out_size": 28}},
+    2: {"name": "cnn", "dim": {"channel": 6, "kernel": 6, "stride": 2, "out_size": 12, "padding":0}},
+    3: {"name": "cnn", "dim": {"channel": 16, "kernel": 6, "stride": 2, "out_size": 4, "padding":0}},
+    4: {"name": "fc", "dim": {"out_size": 120}},
+    5: {"name": "fc", "dim": {"out_size": 84}},
+    6: {"name": "fc", "dim": {"out_size": 10}}
+}
 
 
-def process_batches_memory_efficient(
-    data_path,
-    model_full_n,
-    metric,
-    dataset,
-    sample_size,
-    prefix_dims,
-):
-    prefix = f"{model_full_n}_{metric}_{dataset}_batch"
-    # prefix = f"{model_full_n}_{metric}_{dataset}_iter1_batch"
-    suffix = ".pkl"
-    
-    print(prefix)
-
-    def extract_batch_num(f):
-        match = re.search(r'batch(\d+)', f)
-        return int(match.group(1)) if match else -1
-
-    all_files = sorted([
-        f for f in os.listdir(data_path)
-        if f.startswith(prefix) and f.endswith(suffix)
-    ], key=extract_batch_num)
-
-    print(f"Found files: {all_files}")
-    
-    # Precompute edge->weight mapping per CNN layer
-    cnn_edge_to_weight_map = {}
-    for layer in range(len(model_dims)-2):  # skip input/output placeholder layers
-        layer_info = model_dims[layer+2]
-        if layer_info["name"] == "cnn":
-            pre_dim = model_dims[layer+1]["dim"]
-            pre_ch = pre_dim["channel"]
-            in_size = pre_dim["out_size"]
-            cur_dim = layer_info["dim"]
-            cur_ch = cur_dim["channel"]
-            kernel = cur_dim["kernel"]
-            stride = cur_dim["stride"]
-            padding = cur_dim["padding"]
-
-            cnn_edge_to_weight_map[layer] = build_cnn_edge_weight_map(
-                pre_ch, in_size, cur_ch, kernel, stride, padding, layer, prefix_dims
-            )
-
-    # Tracking how many samples per label we’ve used
-    label_counts = {l: 0 for l in selected_classes}
-    
-    # Prepare storage per layer
-    neg_edge_sets_by_layer = defaultdict(lambda: defaultdict(list))
-    pos_edge_sets_by_layer = defaultdict(lambda: defaultdict(list))
-    
-    for f in all_files:
-        file_path = os.path.join(data_path, f)
-        print(f'file_path: {file_path}')
-        
-        with open(file_path, 'rb') as file:
-            batch_data = pickle.load(file)
-            
-        for l in selected_classes:
-            if label_counts[l] >= sample_size:
-                continue
-
-            new_data = batch_data.get(l, [])
-            available = sample_size - label_counts[l]
-            use_data = new_data[:available]
-
-            # print(len(use_data))
-
-            for ricci in use_data:
-                neg_e, pos_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
-
-                # --- Accumulate per-layer curvatures ---
-                for edge_dict, acc in zip([neg_e, pos_e], [neg_edge_sets_by_layer, pos_edge_sets_by_layer]):
-                    for layer, edges in edge_dict.items():
-                        layer_info = model_dims[layer + 2]
-
-                        if layer_info["name"] == "cnn":
-                            # CNN: accumulate per weight index
-                            edge_to_weight = cnn_edge_to_weight_map[layer]  # precomputed
-                            for (i, j, curv) in edges:
-                                w_idx = edge_to_weight[(i, j)]  # e.g., (l, out_ch, in_ch, kh, kw)
-                                acc[layer][w_idx].append(curv)
-
-                        elif layer_info["name"] == "fc":
-                            # FC: accumulate per edge
-                            for (i, j, curv) in edges:
-                                acc[layer][(i, j)].append(curv)
-
-                del ricci, neg_e, pos_e
-
-            label_counts[l] += len(use_data)
-        del batch_data
-        gc.collect()
-
-        if all(label_counts[l] >= sample_size for l in selected_classes):
-            break
-
-    print("Finished processing all required batches.")
-
-    # Negatives
-    neg_freq_dict = reduce_and_sort_all(neg_edge_sets_by_layer, sort_desc=False)
-
-    # Positives
-    pos_freq_dict = reduce_and_sort_all(pos_edge_sets_by_layer,  sort_desc=True)
-    
-    return neg_freq_dict, pos_freq_dict
-
-
-    
 
 def standard_PGD(model, images, labels, device, eps=11/255, alpha=2/255, iters=40):
     images = images.to(device)
@@ -350,36 +149,38 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 def get_top_c(curvature, b, prefix_dims):
-    neg_e = defaultdict(list)  # i_layer -> list of (i, j, curvature)
+    neg_e = defaultdict(list)
     pos_e = defaultdict(list)
-    zero_e = defaultdict(list)
 
-    # Optional: cache for searchsorted results
-    layer_cache = {}
+    # Precompute a fast index-to-layer map
+    def find_layer(index):
+        return np.searchsorted(prefix_dims, index, side='right') - 1
 
-    def get_layer(node_idx):
-        if node_idx not in layer_cache:
-            layer_cache[node_idx] = np.searchsorted(prefix_dims, node_idx, side='right') - 1
-        return layer_cache[node_idx]
+    for batch in range(b):
+        ricci_curv = np.array(curvature[batch])
+        
+        # Filter out large curvature values
+        valid = ricci_curv[ricci_curv[:, 2] <= 1.0]
+        valid[:, :2] = valid[:, :2].astype(int)
+        
+        for i, j, curr in valid:
+            # curr = min(curr, 1.0)  # clip curvature
+            i = int(i)
+            j = int(j)
 
-    # curvature = curvature[0]
-    
-    for i, j, curr in curvature:
-        if curr > 1:
-            continue
+            i_layer = find_layer(i)
+            j_layer = find_layer(j)
 
-        i, j = int(i), int(j)
-
-        i_layer = get_layer(i)
-        j_layer = get_layer(j)
-
-        if j_layer == i_layer + 1:
-            if curr < 0:
-                neg_e[i_layer].append((i, j, curr))
-            else:  # curr >= 0
-                pos_e[i_layer].append((i, j, curr))
+            # Only keep edges between adjacent layers (excluding input and first hidden)
+            if j_layer == i_layer + 1:
+                if curr < 0:
+                    neg_e[i_layer].append((i, j, curr))
+                elif curr >= 0:
+                    pos_e[i_layer].append((i, j, curr))
 
     return neg_e, pos_e
+
+
 
 
 def cal_dims(model_dims):
@@ -401,37 +202,6 @@ def cal_dims(model_dims):
         dims.append(cur_nodes)
     
     return dims
-
-
-
-def cal_edges(model_dims):
-    edges = []
-    layer_num = len(model_dims)
-    
-    for i in range(2, layer_num + 1):
-        cur_name = model_dims[i]["name"]
-        cur_dim = model_dims[i]["dim"]
-        cur_size = cur_dim['out_size']
-
-        pre_name = model_dims[i-1]["name"]
-        pre_dim = model_dims[i-1]["dim"]
-        pre_size = pre_dim['out_size']
-
-        if cur_name == "cnn":
-            k = cur_dim['kernel']
-            pool = cur_dim.get('pool', False)
-            if pool:
-                cur_size *= 2
-            pre_channel = 1 if (pre_name == "fc") else pre_dim['channel']
-            cur_edges = pre_channel * k**2 * cur_size**2 * cur_dim['channel']
-        else:
-            pre_nodes = pre_size if (pre_name == "fc") else pre_dim['channel']*(pre_size**2)
-            cur_edges = cur_size * pre_nodes
-            
-        edges.append(cur_edges)
-    
-    return edges
-
 
 
 
@@ -457,9 +227,9 @@ def plot_frequency_distribution(summary, res_path, mark):
     plt.tight_layout()
     plt.savefig(os.path.join(res_path, f'{mark}_hist_perlayer.pdf'), dpi=300)
     plt.close()
-    
-    
-    
+
+
+
 def compute_removal_mapping(summary, total_edges):
     """
     Given summary = list of tuples (_, _, freq, _),
@@ -468,10 +238,10 @@ def compute_removal_mapping(summary, total_edges):
 
     Returns list of (count, freq, count_str, ratio_str)
     """
-    freqs = sorted({freq for (_, _, _, freq, _) in summary}, reverse=True)
+    freqs = sorted({freq for (_,_, _, freq, _) in summary}, reverse=True)
     mapping = []
     for freq_threshold in freqs:
-        count = sum(1 for (_, _, _, freq, _) in summary if freq >= freq_threshold)
+        count = sum(1 for (_,_, _, freq, _) in summary if freq >= freq_threshold)
         ratio = freq_threshold / total_edges
         mapping.append((count, freq_threshold, str(count), f"{ratio:.2f}"))
     return mapping
@@ -529,6 +299,7 @@ def plot_curve(
                 plt.annotate(r, (x, y), textcoords='offset points',
                     xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
 
+
     # Labels and title
     plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
     plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
@@ -582,6 +353,33 @@ def plot_curve(
 
 
 
+# def plot_curve(neg_acc_clean, pos_acc_clean, neg_freq_ratios, pos_freq_ratios, neg_freq_thresholds, pos_freq_thresholds, label, save_path):
+#     plt.figure(figsize=(8, 6))
+
+#     plt.plot(neg_freq_ratios, neg_acc_clean, 'r-o', label='Negative Edge Removal')
+#     plt.plot(pos_freq_ratios, pos_acc_clean, 'b-o', label='Positive Edge Removal')
+
+#     for x, y, freq in zip(neg_freq_ratios, neg_acc_clean, neg_freq_thresholds):
+#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, 10),
+#                      ha='center', fontsize=8, color='red')
+
+#     for x, y, freq in zip(pos_freq_ratios, pos_acc_clean, pos_freq_thresholds):
+#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, -15),
+#                      ha='center', fontsize=8, color='blue')
+
+#     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)")
+#     plt.ylabel("Accuracy")
+#     plt.title(f"Accuracy vs Frequency Ratio for Label {label}")
+#     plt.xticks(neg_freq_ratios)  # or freq_ratios if shared
+#     plt.gca().invert_xaxis()
+#     plt.grid(True)
+#     plt.legend()
+#     plt.tight_layout()
+#     plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
+#     plt.close()
+
+
+
 from collections import Counter
 def count_edge_frequency_and_sort(edge_sets, sort_curvature_desc=False):
     """
@@ -621,6 +419,72 @@ def count_edge_frequency_and_sort(edge_sets, sort_curvature_desc=False):
 
 
 
+def reduce_and_sort_all(edge_acc, sort_desc=False):
+    """
+    Reduce edge_acc to average curvature per edge/weight and frequency,
+    and return a sorted list per layer.
+    
+    For FC: keys are (i,j)
+    For CNN: keys are weight indices (e.g., tuples like (out_ch, in_ch, kh, kw))
+    """
+    layer_sorted = {}
+
+    for layer, items_dict in edge_acc.items():
+        items = []
+
+        for key, curvs in items_dict.items():
+            freq = len(curvs)
+            avg_curv = sum(curvs) / freq
+            # distinguish FC vs CNN by type/length of key
+            if isinstance(key, tuple) and len(key) == 2:
+                # FC edge
+                items.append(("edge", key[0], key[1], freq, avg_curv))
+            else:
+                # CNN weight index
+                items.append(("weight", key, None, freq, avg_curv))
+
+        # Sort by freq descending, then avg curvature ascending or descending
+        if sort_desc:
+            items.sort(key=lambda x: (-x[3], -x[4]))  # freq ↓, curvature ↓
+        else:
+            items.sort(key=lambda x: (-x[3], x[4]))   # freq ↓, curvature ↑
+        layer_sorted[layer] = items
+
+    return layer_sorted
+
+
+
+
+def cal_edges(model_dims):
+    edges = []
+    layer_num = len(model_dims)
+    
+    for i in range(2, layer_num + 1):
+        cur_name = model_dims[i]["name"]
+        cur_dim = model_dims[i]["dim"]
+        cur_size = cur_dim['out_size']
+
+        pre_name = model_dims[i-1]["name"]
+        pre_dim = model_dims[i-1]["dim"]
+        pre_size = pre_dim['out_size']
+
+        if cur_name == "cnn":
+            k = cur_dim['kernel']
+            pool = cur_dim.get('pool', False)
+            if pool:
+                cur_size *= 2
+            pre_channel = 1 if (pre_name == "fc") else pre_dim['channel']
+            cur_edges = pre_channel * k**2 * cur_size**2 * cur_dim['channel']
+        else:
+            pre_nodes = pre_size if (pre_name == "fc") else pre_dim['channel']*(pre_size**2)
+            cur_edges = cur_size * pre_nodes
+            
+        edges.append(cur_edges)
+    
+    return edges
+
+
+
 def cal_parameters(model_dims):
     edges = []
     layer_num = len(model_dims)
@@ -651,9 +515,7 @@ def cal_parameters(model_dims):
 
 
 
-
-
-def remove_edge_cifar_union_perlayer_w(args):
+def remove_edge_cnn_union_perlayer_w(args):
     seed = 29
     
     # set random seed
@@ -665,18 +527,17 @@ def remove_edge_cifar_union_perlayer_w(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     
-    train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=128, valid_num=50)
+    train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
     # sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
     
     eps = [0.03]
     dims = cal_dims(model_dims)
-    edge_dims = cal_edges(model_dims_small)
     
     model_type = args.model_type
     model_pre_name = args.model_name
@@ -690,46 +551,50 @@ def remove_edge_cifar_union_perlayer_w(args):
     activation = args.activation
     
     if activation.lower() == "relu":
-        from tools.vgg16_custom_relu_w import VGG16_CIFAR10
+        from tools.LeNet5_custom_small_w import LeNet_custom_v2
     elif activation.lower() == "tanh":
-        from tools.vgg16_custom_tanh import VGG16_CIFAR10
+        from tools.LeNet5_custom_small_tanh_w import LeNet_custom_v2
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
     dims = cal_dims(model_dims)
     prefix_dims = np.cumsum([0] + dims).tolist()
+    edge_dims = cal_edges(model_dims)
     
-    para_dims = cal_parameters(model_dims_small)
+    para_dims = cal_parameters(model_dims)
     
+    total_edge = sum(edge_dims)
+    total_para = sum(para_dims)
+    
+    print(edge_dims)
     print(para_dims)
     
-   
     if not os.path.exists(res_path):
         os.makedirs(res_path)
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg16_ori_"
+        model_name = "cnn_ori_"
     elif model_pre_name == 'adv':
-        model_name = "vgg16_adv_"
+        model_name = "cnn_adv_"
     elif model_pre_name == 'wd':
-        model_name = "vgg16_wd_"
+        model_name = "cnn_wd_"
         
     model_name = model_name + activation + ".pth"
-        
-    net_H = VGG16_CIFAR10(model_dims, None, device, prefix_dims)
+    
+    net_H = LeNet_custom_v2(model_dims, None, device, prefix_dims)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
     net_full = copy.deepcopy(net_H)
 
     print(model_name)
+    # remove_frac = [0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.8, 1]
+    remove_num = []
   
     test_cleanacc = test_clean(net_full, test_loader)
     # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
-    print(f'Finish test..')
 
-    # print(f'Finish read pickle file...')
     
     save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_perlayer_para.pkl"
     save_path = os.path.join(res_path, save_name)
@@ -744,23 +609,72 @@ def remove_edge_cifar_union_perlayer_w(args):
             pos_freq_dict = data_loaded.get('pos', [])
         print("File loaded successfully!")
     else:
-    
+        correct_suffix_res = dataset + "_res_correct.pkl"
+        res_name = model_full_n + metric + '_' + correct_suffix_res
+
+        with open(data_path + res_name, 'rb') as file:
+            res_dict = pickle.load(file)   
+            
+        # Precompute edge->weight mapping per CNN layer
+        cnn_edge_to_weight_map = {}
+        for layer in range(len(model_dims)-2):  # skip input/output placeholder layers
+            layer_info = model_dims[layer+2]
+            if layer_info["name"] == "cnn":
+                pre_dim = model_dims[layer+1]["dim"]
+                pre_ch = pre_dim["channel"]
+                in_size = pre_dim["out_size"]
+                cur_dim = layer_info["dim"]
+                cur_ch = cur_dim["channel"]
+                kernel = cur_dim["kernel"]
+                stride = cur_dim["stride"]
+                padding = cur_dim["padding"]
+
+                cnn_edge_to_weight_map[layer] = build_cnn_edge_weight_map(
+                    pre_ch, in_size, cur_ch, kernel, stride, padding, layer, prefix_dims
+                )
+                
+        # Prepare storage per layer
+        neg_edge_sets_by_layer = defaultdict(lambda: defaultdict(list))
+        pos_edge_sets_by_layer = defaultdict(lambda: defaultdict(list))
+        
+        
         with open(res_path + "edge_cnn_" + ".txt", "a+") as ff:
             ff.write(f'For model {model_name}: \n')
             ff.write(f'The clean accuracy for original model is {test_cleanacc}\n')
             # print(f'Current label {l}: \n')
             # ff.write(f'Current label {l}: \n')
 
-            neg_freq_dict, pos_freq_dict = process_batches_memory_efficient(
-                data_path,
-                model_full_n,
-                metric,
-                dataset,
-                sample_size,
-                prefix_dims
-            )
-            print(neg_freq_dict.keys())
-            
+            for l in selected_classes:
+                idx = 0
+                for (ricci, batch, dim, node) in res_dict[l]:
+                    neg_e, pos_e = get_top_c(ricci, 1, prefix_dims)
+
+                    # --- Accumulate per-layer curvatures ---
+                    for edge_dict, acc in zip([neg_e, pos_e], [neg_edge_sets_by_layer, pos_edge_sets_by_layer]):
+                        for layer, edges in edge_dict.items():
+                            layer_info = model_dims[layer + 2]
+
+                            if layer_info["name"] == "cnn":
+                                # CNN: accumulate per weight index
+                                edge_to_weight = cnn_edge_to_weight_map[layer]  # precomputed
+                                for (i, j, curv) in edges:
+                                    w_idx = edge_to_weight[(i, j)]  # e.g., (l, out_ch, in_ch, kh, kw)
+                                    acc[layer][w_idx].append(curv)
+
+                            elif layer_info["name"] == "fc":
+                                # FC: accumulate per edge
+                                for (i, j, curv) in edges:
+                                    acc[layer][(i, j)].append(curv)
+                    idx += 1
+                    if idx >= sample_size:
+                        break
+
+            # Negatives
+            neg_freq_dict = reduce_and_sort_all(neg_edge_sets_by_layer, sort_desc=False)
+
+            # Positives
+            pos_freq_dict = reduce_and_sort_all(pos_edge_sets_by_layer,  sort_desc=True)
+
             data_to_save = {
                 'neg': neg_freq_dict,
                 'pos': pos_freq_dict
@@ -769,14 +683,15 @@ def remove_edge_cifar_union_perlayer_w(args):
             with open(save_path, 'wb') as f:
                 pickle.dump(data_to_save, f)  # use dict to avoid defaultdict issues
                 
-    
+                
+                
     for layer in sorted(neg_freq_dict.keys() | pos_freq_dict.keys()):
         neg_acc_clean = []
         pos_acc_clean = []
         
         neg_summary = neg_freq_dict.get(layer, [])
         pos_summary = pos_freq_dict.get(layer, [])
-
+    
         neg_edges = [
             (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in neg_summary
         ]
@@ -788,48 +703,22 @@ def remove_edge_cifar_union_perlayer_w(args):
         pos_total = len(pos_edges)
 
         neg_remove_num = list(np.linspace(0, neg_total, num=5, dtype=int))
-        # pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
-        
-        # define split points
-        split1 = int(0.3 * pos_total)
-        split2 = int(0.8 * pos_total)
-
-        # stage 1: first 40% (coarse)
-        part1 = np.linspace(0, split1, num=3, dtype=int)
-
-        # stage 2: next 40% (medium)
-        part2 = np.linspace(split1, split2, num=10, dtype=int)
-
-        # stage 3: last 20% (fine)
-        part3 = np.linspace(split2, pos_total, num=10, dtype=int)
-
-        # combine, removing duplicates at boundaries
-        pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
+        pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
         
         print(f"\nLayer {layer}:")
         print(f"  Negative edges: {neg_total}")
         print(f"  Positive edges: {pos_total}")
-        # print(f"  Overlapping edges: {overlap_count}")
         print(f"  Neg remove nums: {neg_remove_num}")
         print(f"  Pos remove nums: {pos_remove_num}")
-        
 
-        # ff.write(f"\nLayer {layer}:\n")
-        # ff.write(f"  Negative edges: {neg_total}\n")
-        # ff.write(f"  Positive edges: {pos_total}\n")
-        # # ff.write(f"  Overlapping edges: {overlap_count}\n")
-        # ff.write(f"  Neg remove nums: {neg_remove_num}\n")
-        # ff.write(f"  Pos remove nums: {pos_remove_num}\n")
-        
         # plot_frequency_distribution(neg_summary,res_path, str(sample_size) + '_' + str(layer) + "_neg" )
         # plot_frequency_distribution(pos_summary,res_path, str(sample_size) + '_' + str(layer) + "_pos" )
             
-        
-        total = sample_size * len(selected_classes)
-        layer_edge = para_dims[layer-6]
-
-        remove_num = list(np.linspace(0, layer_edge, num=6, dtype=int))
             
+        total = sample_size * len(selected_classes)
+        layer_edge = para_dims[layer]
+        remove_num = list(np.linspace(0, layer_edge, num=10, dtype=int))
+        
         # Build frequency mappings
         neg_freq_map = compute_removal_mapping(neg_summary, total_edges=total)
         pos_freq_map = compute_removal_mapping(pos_summary, total_edges=total)
@@ -854,8 +743,8 @@ def remove_edge_cifar_union_perlayer_w(args):
             net_pos.__build_remove_mask__(pos_edges, rem_f)
             # test acc
             acc_clean_pos = test_clean(net_pos, test_loader)
-            pos_acc_clean.append(acc_clean_pos)  
-
+            pos_acc_clean.append(acc_clean_pos)
+            
         # Plot
         plot_curve(
             neg_clean_acc=neg_acc_clean,
@@ -867,9 +756,8 @@ def remove_edge_cifar_union_perlayer_w(args):
             neg_freq_labels=neg_freq_labels,
             pos_freq_labels=pos_freq_labels,
             x_axis = remove_num
-        )
+        )  
 
-
-        # plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, str(layer) + '_' + str(sample_size), res_path)
+        # plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, layer, res_path)
         # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
-                
+            

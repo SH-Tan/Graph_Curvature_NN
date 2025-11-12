@@ -25,11 +25,16 @@ from CNN.remove_edge_cnn_union import remove_edge_cnn_union
 from CNN.remove_edge_cnn_union_combined import remove_edge_cnn_union_combined
 from CNN.remove_weights_cnn import remove_w_cnn
 from CNN.remove_edge_cnn_union_perlayer import remove_edge_cnn_union_perlayer
+from CNN.remove_edge_cnn_union_perlayer_w import remove_edge_cnn_union_perlayer_w
 from CNN.remove_edge_cifar_union import remove_edge_cifar_union
+from CNN.remove_edge_cifar_union_w import remove_edge_cifar_union_w
+from CNN.remove_edge_cnn_union_w import remove_edge_cnn_union_w
+from CNN.remove_edge_cifar_union_w_small import remove_edge_cifar_union_w_small
 from CNN.remove_edge_cifar_union_combined import remove_edge_cifar_union_combined
 from CNN.remove_edge_cifar100_union import remove_edge_cifar100_union
 from CNN.remove_edge_cifar100_union_combined import remove_edge_cifar100_union_combined
 from CNN.remove_edge_cifar_union_perlayer import remove_edge_cifar_union_perlayer
+from CNN.remove_edge_cifar_union_perlayer_weight import remove_edge_cifar_union_perlayer_w
 from CNN.remove_edge_cifar100_union_perlayer import remove_edge_cifar100_union_perlayer
 from CNN.remove_weights_cifar import remove_w_cifar
 from CNN.remove_weights_cifar100 import remove_w_cifar100
@@ -37,7 +42,11 @@ from pgd.community_check_fc import community_check_fc
 from CNN.community_check_cnn import community_check_cnn
 from CNN.community_check_cifar import community_check_cifar
 from CNN.community_check_cifar_new import community_check_cifar_new
+from CNN.community_check_cifar_new_small import community_check_cifar_new_small
 from CNN.community_check_cifar_vgg11 import community_check_cifar_vgg11
+from CNN.remove_edge_cifar_union_perlayer_weight_vgg11 import remove_edge_cifar_union_perlayer_w_vgg11
+from CNN.remove_edge_cifar_union_perlayer_weight_small import remove_edge_cifar_union_perlayer_w_small
+from CNN.remove_edge_cifar_union_w_vgg11 import remove_edge_cifar_union_w_vgg11
 from CNN.community_check_cifar100 import community_check_cifar100
 from Lidar.plot_trajectories import main_lidar
 from Lidar.plot_trajectories_perlayer import main_lidar_perlayer
@@ -101,16 +110,18 @@ if __name__=='__main__':
                 community_check_fc(args)
         elif model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
-                remove_edge_cnn_union(args)
+                remove_edge_cnn_union_w(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                remove_edge_cifar_union_perlayer(args)
+                # remove_edge_cifar_union_perlayer_w(args)
+                remove_edge_cifar_union_perlayer_w_small(args)
                 # remove_w_cifar100(args)
                 # remove_edge_cifar100_union_combined(args)
                 # remove_wadan_cifar(args)
+                # remove_edge_cifar_union_w_vgg11(args)
             if args.community and args.dataset.lower() == "cifar":
-                community_check_cifar_vgg11(args)
+                community_check_cifar_new_small(args)
                 # community_check_cifar100(args)
                 # iterative_edge_removal_and_curvature(args)
             if args.community and args.dataset.lower() == "imagenet":

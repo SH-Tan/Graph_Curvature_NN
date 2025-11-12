@@ -301,6 +301,25 @@ class LeNet_custom_v2(nn.Module):
         
         edge_v = torch.cat([torch.reshape(w * x1[np.newaxis,:].T, (1, cur_shape)) for x1 in x_tmp], axis=0)
         return edge_v
+    
+    
+    def norm_w(self, w, e_v, scale=5.0, threshold=1.0, eps=1e-8):
+        # Compute how far into saturation each edge is
+        excess = torch.relu(torch.abs(e_v) - threshold)
+
+        # Only suppress edges that exceed the threshold
+        suppression = torch.exp(-scale * excess)
+
+        # Apply selective suppression
+        w_scaled = w * suppression
+
+        # Renormalize to preserve total L2 norm
+        orig_norm = w.norm(p=2)
+        new_norm = w_scaled.norm(p=2) + eps
+        w_normed = w_scaled * (orig_norm / new_norm)
+
+        return w_normed
+    
 
     # calculate edge weights
     def NN_info_batch(self, x):
@@ -327,6 +346,8 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.CNN_edges(ones_tmp, k1, 1, 2)).cpu().detach()
+        
+        # norm_w = self.norm_w(ones, edge_v)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.activation(self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2))
@@ -354,6 +375,8 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
         
         ones = (self.CNN_edges(ones_tmp, k2, 2, 3)).cpu().detach()
+        # norm_w = self.norm_w(ones, edge_v)
+        # weights = ones if weights == None else torch.cat((weights, norm_w), axis=1)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
 
         x = self.activation(self.CNN(x, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3))
@@ -381,6 +404,9 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc1, 3, 4)).cpu().detach()
+        # norm_w = self.norm_w(ones, edge_v)
+        # weights = ones if weights == None else torch.cat((weights, norm_w), axis=1)
+        
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.activation(self.linear(x, self.fc1, 3, 4))
@@ -406,6 +432,9 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc2, 4, 5)).cpu().detach()
+        # norm_w = self.norm_w(ones, edge_v)
+        # weights = ones if weights == None else torch.cat((weights, norm_w), axis=1)
+        
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.activation(self.linear(x, self.fc2, 4, 5))
@@ -431,23 +460,25 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc3, 5, 6)).cpu().detach()
+        # norm_w = self.norm_w(ones, edge_v)
+        # weights = ones if weights == None else torch.cat((weights, norm_w), axis=1)
+        
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.fc3(x)
-        x = self.softmax(x)
+        # x = self.softmax(x)
         # nodes = torch.cat((nodes, x), axis = 1)
         
         x_flat = x
 
         # Take absolute value and normalize per sample
-        x_abs = torch.abs(x_flat)
+        x_abs = x_flat
         min_vals = x_abs.min(dim=1, keepdim=True)[0]
         max_vals = x_abs.max(dim=1, keepdim=True)[0]
         x_norm = (x_abs - min_vals) / (max_vals - min_vals)
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
-        
         
         return edge_value, nodes, weights
     

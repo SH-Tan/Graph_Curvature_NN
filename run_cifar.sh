@@ -1,0 +1,1 @@
+python removal.py --lidar 0 --image 1 --cifar small --metric w4 --model_type cnn --model_name ori --model_path CNN/models/cnn/ --mnist_res_path res/w4/relu/cifarori_thre0_vgg11/ --dataset cifar --community 0 --edge 1 --activation relu --sample_num 10 --mnist_data_path res/w4/relu/cifarori_thre0_vgg11/     

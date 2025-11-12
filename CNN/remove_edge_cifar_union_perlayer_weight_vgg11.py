@@ -51,66 +51,35 @@ model_dims = {
     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
-    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
-    5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
+    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv2_2 + pool
+    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 4, "stride": 1, "padding":0, "out_size": 10}},   # After conv3_3
+    
+    5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_1
+    
+    6: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # After conv4_2
 
-    6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
-    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
-    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
+    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":0, "out_size": 4}},   # conv5_1
+    8: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_2 
 
-    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    10: {"name": "fc", "dim": {"out_size": 512}},
+    9: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
+    10: {"name": "fc", "dim": {"out_size": 256}},
     11: {"name": "fc", "dim": {"out_size": 10}}
 }
 
 
 
 model_dims_small = {
-    1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
-    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
+    1: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_1
+    2: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # After conv4_2
 
-    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    4: {"name": "fc", "dim": {"out_size": 512}},
-    5: {"name": "fc", "dim": {"out_size": 10}}
+    3: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":0, "out_size": 4}},   # conv5_1
+    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_2 
+
+    5: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
+    6: {"name": "fc", "dim": {"out_size": 256}},
+    7: {"name": "fc", "dim": {"out_size": 10}}
 }
 
-
-# model_dims = {
-#     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
-
-#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 26}},   # After conv1_2 + pool
-#     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 20}},   # After conv2_2 + pool
-#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv3_3
-    
-#     5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},   # After conv4_1
-    
-#     6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
-#     7: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
-
-#     8: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # conv5_1
-#     9: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
-#     10: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
-
-#     11: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-#     12: {"name": "fc", "dim": {"out_size": 256}},
-#     13: {"name": "fc", "dim": {"out_size": 10}}
-# }
-
-
-
-# model_dims_small = {
-#     1: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
-#     2: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
-
-#     3: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 6}},   # conv5_1
-#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
-#     5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
-
-#     6: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-#     7: {"name": "fc", "dim": {"out_size": 256}},
-#     8: {"name": "fc", "dim": {"out_size": 10}}
-# }
 
 
 
@@ -653,7 +622,7 @@ def cal_parameters(model_dims):
 
 
 
-def remove_edge_cifar_union_perlayer_w(args):
+def remove_edge_cifar_union_perlayer_w_vgg11(args):
     seed = 29
     
     # set random seed
@@ -690,7 +659,7 @@ def remove_edge_cifar_union_perlayer_w(args):
     activation = args.activation
     
     if activation.lower() == "relu":
-        from tools.vgg16_custom_relu_w import VGG16_CIFAR10
+        from tools.vgg11_custom_relu import VGG11_CIFAR10
     elif activation.lower() == "tanh":
         from tools.vgg16_custom_tanh import VGG16_CIFAR10
     
@@ -709,7 +678,7 @@ def remove_edge_cifar_union_perlayer_w(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg16_ori_"
+        model_name = "vgg11_10_ori_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
@@ -717,7 +686,7 @@ def remove_edge_cifar_union_perlayer_w(args):
         
     model_name = model_name + activation + ".pth"
         
-    net_H = VGG16_CIFAR10(model_dims, None, device, prefix_dims)
+    net_H = VGG11_CIFAR10(model_dims, None, device, prefix_dims)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
@@ -826,7 +795,7 @@ def remove_edge_cifar_union_perlayer_w(args):
             
         
         total = sample_size * len(selected_classes)
-        layer_edge = para_dims[layer-6]
+        layer_edge = para_dims[layer-4]
 
         remove_num = list(np.linspace(0, layer_edge, num=6, dtype=int))
             

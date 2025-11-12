@@ -8,7 +8,7 @@ import numpy as np
 
 
 class VGG16_CIFAR10(nn.Module):
-    def __init__(self, model_info, edge_set, device, input_c = 3, num_classes = 10, start_l=1):
+    def __init__(self, model_info, edge_set, device, prefix_dims = [], input_c = 3, num_classes = 10, start_l=1):
         super().__init__()
 
         self.normalize = transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), 
@@ -63,12 +63,13 @@ class VGG16_CIFAR10(nn.Module):
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, num_classes)
 
+        self.prefix_dims = prefix_dims
         self.model_info = model_info
         self.edge_set = edge_set if edge_set != None else list()
         self.cur_total_nodes = 0
         self.device = device
         self.remove_mask = dict()
-        self.__build_remove_mask__(self.edge_set, start_l)
+        self.init_remove_mask()
 
 
     def num_flat_features(self, x):
@@ -99,114 +100,150 @@ class VGG16_CIFAR10(nn.Module):
         return cur_nodes, cur_size, cur_channel, cur_dim, cur_name, cur_padding, cur_pool
     
     
-    def __build_remove_mask__(self, new_edge_set, num = 100000, start_l = 1, mask = "global"):
-        cur_layer = start_l
-        self.cur_total_nodes = 0
+    def init_remove_mask(self):
         total_layers = len(self.model_info)
-        
-        remove_num = 0
-        
-        if mask == "global" and len(new_edge_set) > num:
-            new_edge_set = new_edge_set[:num]
-        
-        while(cur_layer < total_layers):
-            if remove_num >= num:
-                break
-            # get l1, l2 info
-            l1_nodes, l1_size, l1_channel, l1_dim, l1_name, l1_padding, l1_pool = self.get_layer_info(cur_layer)
-            l2_nodes, l2_size, l2_channel, l2_dim, l2_name, l2_padding, l2_pool = self.get_layer_info(cur_layer+1)
-            
-            remove_e = [e for e in new_edge_set if (e[1] < (l2_nodes + l1_nodes + self.cur_total_nodes) and (e[1] >= l1_nodes + self.cur_total_nodes)) \
-                and (e[0] >= self.cur_total_nodes and e[0] < (l1_nodes + self.cur_total_nodes))]
 
-            if l2_name == "cnn":
-                k = l2_dim["kernel"]
-                s = l2_dim["stride"]
-                if l1_pool:
-                    l1_size = (int)(l1_size/2)
-                    
-                tensor_2d = torch.arange(l1_nodes).reshape(1,l1_channel,l1_size,l1_size).float()
-                input_indices = F.unfold(tensor_2d, (k,k), stride = s, padding = l2_padding).transpose(1,2).int()
-                
-                map_size = l2_size**2
-                
-                if cur_layer not in self.remove_mask.keys():
-                    self.remove_mask[cur_layer] = torch.ones((l2_channel, input_indices.shape[1], input_indices.shape[2]))
+        # === 1. Prebuild all-one masks for every layer ===
+        self.remove_mask = {}
+        for l in range(1, total_layers):  # skip input layer
+            layer_info = self.model_info[l+1]
+            l1_info = self.model_info[l]
 
-                if (len(remove_e) > 0):
-                    for e in remove_e:
-                        n1 = e[0] - self.cur_total_nodes
-                        n2 = e[1] - self.cur_total_nodes - l1_nodes
-                        
-                        channel_num = n2 // map_size
-                        node = n2 - map_size*channel_num
-                        
-                        index = (input_indices[0,node] == n1).nonzero().item()
-                        
-                        self.remove_mask[cur_layer][channel_num, node, index] = 0
-                        remove_num += 1
-
-                        if remove_num >= num:
-                            break
-                if remove_num >= num:
-                    break
-                
+            if layer_info["name"] == "cnn":
+                out_ch = layer_info["dim"]["channel"]
+                k = layer_info["dim"]["kernel"]
+                in_ch = l1_info["dim"]["channel"]
+                self.remove_mask[l] = torch.ones((out_ch, in_ch, k, k))
             else:
-                if cur_layer not in self.remove_mask.keys():
-                    self.remove_mask[cur_layer] = torch.ones((l1_nodes, l2_nodes))
+                l1_nodes = l1_info["dim"]["out_size"]
+                l2_nodes = layer_info["dim"]["out_size"]
                 
-                if len(remove_e) > 0:
-                    for e in remove_e:
-                        n1 = e[0] - self.cur_total_nodes
-                        n2 = e[1] - self.cur_total_nodes - l1_nodes
+                if l1_info["name"] == "cnn":
+                    l1_nodes = l1_nodes**2 * l1_info["dim"]["channel"]
+                
+                self.remove_mask[l] = torch.ones((l1_nodes, l2_nodes))
+    
+    
+    
+    def __build_remove_mask__(
+        self,
+        mixed_set,
+        num=100000,
+        mask="global"
+    ):
+        total_layers = len(self.model_info)
+        remove_num = 0
 
-                        self.remove_mask[cur_layer][n1,n2] = 0
+        # Global truncation
+        if mask == "global" and len(mixed_set) > num:
+            mixed_set = mixed_set[:num]
+
+        # === 3. Main removal loop ===
+        for item in mixed_set:
+            item_type = item[0]
+
+            # --- CNN weight-level removal ---
+            if item_type == "weight":
+                w_idx = item[1]
+                if len(w_idx) != 5:
+                    print(w_idx)
+                    continue
+                layer, oc, ic, kh, kw = w_idx
+                if (layer+1) not in self.remove_mask or self.model_info[layer+2]["name"] != "cnn":
+                    print(f"no cnn mask: {layer}")
+                    continue
+
+                mask_tensor = self.remove_mask[layer+1]
+                if (
+                    0 <= oc < mask_tensor.shape[0]
+                    and 0 <= ic < mask_tensor.shape[1]
+                    and 0 <= kh < mask_tensor.shape[2]
+                    and 0 <= kw < mask_tensor.shape[3]
+                ):
+                    mask_tensor[oc, ic, kh, kw] = 0
+                    remove_num += 1
+                else:
+                    print(w_idx, mask_tensor.shape)
+                continue
+
+            # --- FC edge-level removal (using prefix_dims) ---
+            elif item_type == "edge":
+                i, j = item[1], item[2]
+                # Determine layer index using prefix_dims
+                l1 = np.searchsorted(self.prefix_dims, i, side="right") - 1
+                l2 = np.searchsorted(self.prefix_dims, j, side="right") - 1
+
+                # Ensure it’s a valid FC layer
+                if (
+                    l1 >= 0
+                    and l2 > l1
+                    and l2 < total_layers
+                    and self.model_info[l2+1]["name"] != "cnn"
+                ):
+                    local_i = i - self.prefix_dims[l1]
+                    local_j = j - self.prefix_dims[l2]
+                    mask_tensor = self.remove_mask[l2]
+                    if (
+                        0 <= local_i < mask_tensor.shape[0]
+                        and 0 <= local_j < mask_tensor.shape[1]
+                    ):
+                        mask_tensor[local_i, local_j] = 0
                         remove_num += 1
+                    else:
+                        print(i, j, l1, l2, mask_tensor.shape)
+                else:
+                    print(i, j, l1, l2, self.model_info[l2+1]["name"])
+                continue
+            else:
+                print(item_type)
 
-                        if remove_num >= num:
-                            break
-                if remove_num >= num:
-                    break
-
-            self.cur_total_nodes += l1_nodes
-            cur_layer += 1
+        print(f"Removed {remove_num} total connections/weights.")
                 
+
 
     def CNN(self, ori, kernel, b, l1, l2):
         # get l1, l2 info
-        l2_nodes, l2_size, l2_channel, l2_dim, _, l2_padding, l2_pool = self.get_layer_info(l2)
+        l1_nodes, l1_size, l1_channel, l1_dim, _, _, _ = self.get_layer_info(l1)
+        l2_nodes, l2_size, l2_channel, l2_dim, _, _, _ = self.get_layer_info(l2)
         
-        mask = self.remove_mask[l1]
-        mask = mask.to(self.device) 
-        
-        s = l2_dim["stride"]
-        
-        w = kernel.view(kernel.size(0),-1).T
-        
-        ori_unf = F.unfold(ori,(kernel.shape[2],kernel.shape[3]), stride=s, padding = l2_padding).transpose(1,2)
-        
-        res = None
-        for i in range(l2_channel):
-            y = (mask[i]*ori_unf.unsqueeze(1)) @ w[:,i]
-            res = y if res == None else torch.cat((res, y), axis=1)
-            
-        y = F.fold(res, (l2_size,l2_size), (1,1))
+        # load mask
+        mask = self.remove_mask[l1].to(self.device)  # shape: [out_ch, in_ch, k, k]
 
-        y = y + b[None,:,:,None]
+        s = l2_dim["stride"]
+        kH, kW = kernel.shape[2], kernel.shape[3]
+        
+        # Flatten kernel and mask
+        w = kernel.view(l2_channel, -1)  # [out_ch, in_ch*k*k]
+        mask_flat = mask.view(l2_channel, -1)  # same shape
+
+        # Masked kernel
+        w_masked = w * mask_flat
+
+        # Unfold input
+        ori_unf = F.unfold(ori, (kH, kW), stride=s)  # [B, in_ch*k*k, H_out*W_out]
+        ori_unf = ori_unf.transpose(1, 2)  # [B, H_out*W_out, in_ch*k*k]
+
+        # Batch matrix multiply: [B, H_out*W_out, in_ch*k*k] @ [in_ch*k*k, out_ch] -> [B, H_out*W_out, out_ch]
+        res = torch.matmul(ori_unf, w_masked.T)
+
+        # Fold back
+        y = F.fold(res.transpose(1, 2), (l2_size, l2_size), (1, 1))  # [B, out_ch, H_out, W_out]
+
+        # Add bias
+        y = y + b[None, :, :, None]
         
         return y
     
     
     def linear(self, x, fc_layer, l1, l2):
-        mask = self.remove_mask[l1]
-        mask = mask.to(self.device) 
         
-        with torch.no_grad():
-            w = fc_layer.weight
-            w *= mask.T  # Apply the transposed mask directly to w
-            fc_layer.weight.copy_(w)
-                
-        y = fc_layer(x)
+        mask = self.remove_mask[l1].to(self.device) 
+        
+        # Apply mask without modifying original weights permanently
+        w_masked = fc_layer.weight * mask.T  # [out_features, in_features]
+
+        # Perform linear manually
+        y = F.linear(x, w_masked, fc_layer.bias)
         
         return y
     
@@ -261,7 +298,7 @@ class VGG16_CIFAR10(nn.Module):
         
         res = None
         for i in range(l2_channel):
-            y = (mask[i]*ori_unf).transpose(1,2)
+            y = (ori_unf).transpose(1,2)
             edges = (y.unsqueeze(1) * w[None,i,:,:]).transpose(2,3)
             res = edges if res == None else torch.cat((res, edges), axis=1)
             
@@ -276,7 +313,7 @@ class VGG16_CIFAR10(nn.Module):
         mask = self.remove_mask[l1]
         mask = mask.to(self.device) 
             
-        w = layer.weight.T * mask
+        w = layer.weight.T
 
         cur_shape = layer.weight.shape[0]*layer.weight.shape[1]
         

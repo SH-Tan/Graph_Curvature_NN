@@ -217,7 +217,7 @@ def community_check_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -249,8 +249,6 @@ def community_check_cnn(args):
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
-    dims = cal_dims(model_dims)
-    
     print(dims)
     
     if not os.path.exists(res_path):
@@ -299,6 +297,14 @@ def community_check_cnn(args):
                     # weights[edge_array!=0] = edge_array[edge_array!=0]
                     weights = output.detach().clone().to(device)  # take absolute values
                     nodes_ori = nodes_ori.detach().clone().to(device) 
+                    
+                    # weights_abs = weights.abs()
+                    # weights_abs = weights_abs[:, sum(edge_dims[0:3]): sum(edge_dims[0:4])]
+                    # # Compute min and max
+                    # w_min = weights_abs.min().item()
+                    # w_max = weights_abs.max().item()
+
+                    # print(f"Layer 4 weights: min = {w_min:.6f}, max = {w_max:.6f}")
                     # edge_array_abs = torch.abs(edge_array)
                     # min_pos = 1e-6
                     # # replace zeros with min_pos
@@ -330,7 +336,7 @@ def community_check_cnn(args):
                     ricci_curvature = graph_curvature_main_torch(
                         dims, weights_inv, device=device, model_dims=model_dims,
                         probability_w=(weights_inv2, weights_inv1), alpha=alpha,
-                        nodes=node_abs, edge_value = edge_array_abs, threshold = 0.8,
+                        nodes=node_abs, edge_value = edge_array_abs, threshold = 0.,
                         # layers_to_process=[2,3,4]
                     )
                 else:

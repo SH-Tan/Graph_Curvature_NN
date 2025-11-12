@@ -47,73 +47,61 @@ transform_test = torchvision.transforms.Compose([
 data_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
 data_test = CIFAR10('./data/cifar10', train=False, download=True, transform=transform_test)
 
-model_dims = {
-    1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
-
-    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
-    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
-    5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
-
-    6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
-    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2
-    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
-
-    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    10: {"name": "fc", "dim": {"out_size": 512}},
-    11: {"name": "fc", "dim": {"out_size": 10}}
-}
-
-
-
-model_dims_small = {
-    1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
-    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 + pool
-
-    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    4: {"name": "fc", "dim": {"out_size": 512}},
-    5: {"name": "fc", "dim": {"out_size": 10}}
-}
-
-
 # model_dims = {
 #     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
-#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 26}},   # After conv1_2 + pool
-#     3: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 20}},   # After conv2_2 + pool
-#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv3_3
+#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 29}}, 
+#     3: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 26}},   # After conv1_2 
     
-#     5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},   # After conv4_1
+#     4: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 23}},  
+#     5: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 20}},   # After conv2_2 
     
-#     6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
-#     7: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
+#     6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 18}},
+#     7: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 16}},
+#     8: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv3_3
+    
+#     9: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},   # After conv4_1
+#     10: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
+#     11: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
 
-#     8: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # conv5_1
-#     9: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
-#     10: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
+#     12: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # conv5_1
+#     13: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
+#     14: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
 
-#     11: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-#     12: {"name": "fc", "dim": {"out_size": 256}},
-#     13: {"name": "fc", "dim": {"out_size": 10}}
+#     15: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 1024
+#     16: {"name": "fc", "dim": {"out_size": 512}},
+#     17: {"name": "fc", "dim": {"out_size": 10}}
 # }
 
 
+model_dims = {
+    1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
-# model_dims_small = {
-#     1: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
-#     2: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
+    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 29}}, 
+    3: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 26}},   # After conv1_2 
+    
+    4: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 23}},  
+    5: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 20}},   # After conv2_2 
+    
+    6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 18}},
+    7: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 16}},
+    8: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv3_3
+    
+    9: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},   # After conv4_1
+    10: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
+    11: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
 
-#     3: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 6}},   # conv5_1
-#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
-#     5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
+    12: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # conv5_1
+    13: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
+    14: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
 
-#     6: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-#     7: {"name": "fc", "dim": {"out_size": 256}},
-#     8: {"name": "fc", "dim": {"out_size": 10}}
-# }
+    15: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 1024
+    16: {"name": "fc", "dim": {"out_size": 512}},
+    17: {"name": "fc", "dim": {"out_size": 10}}
+}
 
 
-
+model_dims_small = model_dims
 
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
@@ -161,20 +149,22 @@ def process_batches_memory_efficient(
     sample_size,
     prefix_dims,
 ):
-    prefix = f"{model_full_n}_{metric}_{dataset}_batch"
-    # prefix = f"{model_full_n}_{metric}_{dataset}_iter1_batch"
+    prefix = f"{model_full_n}_{metric}_{dataset}_label"
     suffix = ".pkl"
-    
-    print(prefix)
 
-    def extract_batch_num(f):
-        match = re.search(r'batch(\d+)', f)
-        return int(match.group(1)) if match else -1
+    # extract label + id from filename
+    def extract_label_id(f):
+        match = re.search(r'label(\d+)_id(\d+)', f)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+        return -1, -1
 
-    all_files = sorted([
+    all_files = [
         f for f in os.listdir(data_path)
         if f.startswith(prefix) and f.endswith(suffix)
-    ], key=extract_batch_num)
+    ]
+    # Sort by label then id
+    all_files = sorted(all_files, key=lambda f: extract_label_id(f)[1])
 
     print(f"Found files: {all_files}")
     
@@ -204,45 +194,45 @@ def process_batches_memory_efficient(
     pos_edge_sets_by_layer = defaultdict(lambda: defaultdict(list))
     
     for f in all_files:
+        label, sample_id = extract_label_id(f)
+        if label not in selected_classes:
+            continue
+        if label_counts[label] >= sample_size:
+            continue
+        
         file_path = os.path.join(data_path, f)
         print(f'file_path: {file_path}')
         
         with open(file_path, 'rb') as file:
             batch_data = pickle.load(file)
-            
-        for l in selected_classes:
-            if label_counts[l] >= sample_size:
-                continue
 
-            new_data = batch_data.get(l, [])
-            available = sample_size - label_counts[l]
-            use_data = new_data[:available]
+        new_data = batch_data
+        # available = sample_size - label_counts[l]
+        use_data = [new_data]
 
-            # print(len(use_data))
+        for ricci in use_data:
+            neg_e, pos_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
 
-            for ricci in use_data:
-                neg_e, pos_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
+            # --- Accumulate per-layer curvatures ---
+            for edge_dict, acc in zip([neg_e, pos_e], [neg_edge_sets_by_layer, pos_edge_sets_by_layer]):
+                for layer, edges in edge_dict.items():
+                    layer_info = model_dims[layer + 2]
 
-                # --- Accumulate per-layer curvatures ---
-                for edge_dict, acc in zip([neg_e, pos_e], [neg_edge_sets_by_layer, pos_edge_sets_by_layer]):
-                    for layer, edges in edge_dict.items():
-                        layer_info = model_dims[layer + 2]
+                    if layer_info["name"] == "cnn":
+                        # CNN: accumulate per weight index
+                        edge_to_weight = cnn_edge_to_weight_map[layer]  # precomputed
+                        for (i, j, curv) in edges:
+                            w_idx = edge_to_weight[(i, j)]  # e.g., (l, out_ch, in_ch, kh, kw)
+                            acc[layer][w_idx].append(curv)
 
-                        if layer_info["name"] == "cnn":
-                            # CNN: accumulate per weight index
-                            edge_to_weight = cnn_edge_to_weight_map[layer]  # precomputed
-                            for (i, j, curv) in edges:
-                                w_idx = edge_to_weight[(i, j)]  # e.g., (l, out_ch, in_ch, kh, kw)
-                                acc[layer][w_idx].append(curv)
+                    elif layer_info["name"] == "fc":
+                        # FC: accumulate per edge
+                        for (i, j, curv) in edges:
+                            acc[layer][(i, j)].append(curv)
 
-                        elif layer_info["name"] == "fc":
-                            # FC: accumulate per edge
-                            for (i, j, curv) in edges:
-                                acc[layer][(i, j)].append(curv)
+            del ricci, neg_e, pos_e
 
-                del ricci, neg_e, pos_e
-
-            label_counts[l] += len(use_data)
+        label_counts[label] += len(use_data)
         del batch_data
         gc.collect()
 
@@ -653,7 +643,7 @@ def cal_parameters(model_dims):
 
 
 
-def remove_edge_cifar_union_perlayer_w(args):
+def remove_edge_cifar_union_perlayer_w_small(args):
     seed = 29
     
     # set random seed
@@ -690,7 +680,7 @@ def remove_edge_cifar_union_perlayer_w(args):
     activation = args.activation
     
     if activation.lower() == "relu":
-        from tools.vgg16_custom_relu_w import VGG16_CIFAR10
+        from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
     elif activation.lower() == "tanh":
         from tools.vgg16_custom_tanh import VGG16_CIFAR10
     
@@ -709,15 +699,15 @@ def remove_edge_cifar_union_perlayer_w(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg16_ori_"
+        model_name = "vgg16_10_ori_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
         model_name = "vgg16_wd_"
         
-    model_name = model_name + activation + ".pth"
+    model_name = model_name + activation + "_fcbn.pth"
         
-    net_H = VGG16_CIFAR10(model_dims, None, device, prefix_dims)
+    net_H = VGG16_CIFAR10_small_BN(model_dims, None, device, prefix_dims)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
@@ -826,9 +816,9 @@ def remove_edge_cifar_union_perlayer_w(args):
             
         
         total = sample_size * len(selected_classes)
-        layer_edge = para_dims[layer-6]
+        layer_edge = para_dims[layer]
 
-        remove_num = list(np.linspace(0, layer_edge, num=6, dtype=int))
+        remove_num = list(np.linspace(0, layer_edge, num=10, dtype=int))
             
         # Build frequency mappings
         neg_freq_map = compute_removal_mapping(neg_summary, total_edges=total)

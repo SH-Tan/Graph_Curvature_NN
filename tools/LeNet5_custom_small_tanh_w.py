@@ -1,85 +1,37 @@
 import torch
 import torch.nn as nn
-import torchvision.transforms as transforms
 import torch.nn.functional as F
 import numpy as np
+from .q_exponential import q_exponential
 
 
 
+class LeNet_custom_v2(nn.Module):
 
-class VGG11_CIFAR10(nn.Module):
-    def __init__(self, model_info, edge_set, device, prefix_dims = [], input_c = 3, num_classes = 10, start_l=1):
-        super().__init__()
-
-        self.normalize = transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), 
-                                              std=(0.2023, 0.1994, 0.2010))
-        self.activation = nn.ReLU(inplace=True)
+    # network structure
+    def __init__(self, model_info, edge_set, device, prefix_dims, input_c = 1):
+        super(LeNet_custom_v2, self).__init__()
+        self.conv1 = nn.Conv2d(input_c, 6, 6, stride=2)
+        self.conv2 = nn.Conv2d(6, 16, 6, stride=2)
+        self.fc1   = nn.Linear(16*4*4, 120)
+        self.fc2   = nn.Linear(120, 84)
+        self.fc3   = nn.Linear(84, 10)
+        self.activation = nn.Tanh()
         self.softmax = nn.Softmax(dim=1)
-
-        # Helper for conv blocks (used for first 10 conv layers)
-        def conv_block(in_c, out_c, num_convs, k=4, p = 0):
-            layers = []
-            for _ in range(num_convs):
-                layers += [
-                    nn.Conv2d(in_c, out_c, kernel_size=k, padding=p),
-                    nn.BatchNorm2d(out_c),
-                    nn.ReLU(inplace=True)
-                ]
-                in_c = out_c
-            # layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
-            return layers
-
-        # First 10 convolutional layers using conv_block (up to conv4_2)
-        self.features = nn.Sequential(
-            *conv_block(input_c, 64, 1, k = 3, p = 1),     # conv1_1, conv1_2 -> 32-4 = 28
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            *conv_block(64, 128, 1, k = 3, p = 1),         # conv2_1, conv2_2 -> 28 - 4 = 24
-            # nn.MaxPool2d(kernel_size=2, stride=2),
-            *conv_block(128, 256, 2, k = 4),        # conv3_1, conv3_2 -> 24 - 4*2 = 16
-            # *conv_block(256, 512, 2),        # conv4_1, conv4_2 -> 16 - 6 = 8
-        )
         
-        self.conv4_1 = nn.Conv2d(256, 256, kernel_size=3, padding=0) # 8
-        
-        self.conv4_2 = nn.Conv2d(256, 256, kernel_size=3, padding=0) # 6
-
-        # Last 3 conv layers (conv5_1, conv5_2) defined explicitly
-        self.conv5_1 = nn.Conv2d(256, 512, kernel_size=3, padding=0) # 4
-        # self.bn5_1 = nn.BatchNorm2d(512)
-
-        self.conv5_2 = nn.Conv2d(512, 256, kernel_size=3, padding=0) # 2
-        # self.bn5_2 = nn.BatchNorm2d(512)
-
-        self.pool5 = nn.MaxPool2d(kernel_size=2, stride=2)  # 2x2 → 1x1
-
-        # Fully connected layers
-        self.fc1 = nn.Linear(256 * 2 * 2, 512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, num_classes)
-
-        self.prefix_dims = prefix_dims
         self.model_info = model_info
-        self.edge_set = edge_set if edge_set != None else list()
+        self.edge_set = edge_set if edge_set != None else set()
         self.cur_total_nodes = 0
         self.device = device
+        self.prefix_dims = prefix_dims
         self.remove_mask = dict()
         self.init_remove_mask()
-
-
-    def num_flat_features(self, x):
-        '''
-        Get the number of features in a batch of tensors `x`.
-        '''
-        size = x.size()[1:]
-        return np.prod(size)
+        
     
-
     def get_layer_info(self, l):
         cur_name = self.model_info[l]["name"]
         cur_dim = self.model_info[l]["dim"]
         cur_size = cur_dim['out_size']
-        cur_padding = cur_dim['padding'] if cur_name == "cnn" else 0
-        cur_pool = cur_dim.get('pool', False)
         
         cur_channel = 1 if (cur_name == "fc") else cur_dim["channel"]
         
@@ -88,10 +40,7 @@ class VGG11_CIFAR10(nn.Module):
         else:
             cur_nodes = cur_size if (cur_name == "fc") else cur_dim["channel"]*(cur_size**2)
             
-        if cur_pool:
-            cur_size *= 2
-
-        return cur_nodes, cur_size, cur_channel, cur_dim, cur_name, cur_padding, cur_pool
+        return cur_nodes, cur_size, cur_channel, cur_dim, cur_name
     
     
     def init_remove_mask(self):
@@ -192,12 +141,52 @@ class VGG11_CIFAR10(nn.Module):
                 print(item_type)
 
         print(f"Removed {remove_num} total connections/weights.")
-                
+    
+    
+
+    def num_flat_features(self, x):
+        '''
+        Get the number of features in a batch of tensors `x`.
+        '''
+        size = x.size()[1:]
+        return np.prod(size)
+    
+        
+    # max Pooling
+    def maxpooling(self, ori, l1, l2):
+        # get l1, l2 info
+        l1_nodes, l1_size, l1_channel, l1_dim, _ = self.get_layer_info(l1)
+        l2_nodes, l2_size, l2_channel, l2_dim, _ = self.get_layer_info(l2)
+        
+        mask = self.remove_mask[l1]
+        mask = mask.to(self.device) 
+        
+        k = l2_dim["kernel"]
+        s = l2_dim["stride"]
+        
+        batch = ori.shape[0]
+        
+        i_unf = F.unfold(ori, (k, k), stride=s) 
+        i_unf = i_unf.view(batch, l1_channel, k*k, -1)
+        
+        res = None
+        for i in range(l2_channel):
+            y = mask[i] * i_unf[:,i,:,:].unsqueeze(1)
+            res = y if res == None else torch.cat((res, y), axis=1)
+            
+        res = res.view(batch*l1_channel, k*k, -1)
+        
+        out = torch.max(res, dim = 1, keepdim=True).values
+
+        out = out.view(batch,l1_channel, l2_size, l2_size)
+
+        return out
+
 
     def CNN(self, ori, kernel, b, l1, l2):
         # get l1, l2 info
-        l1_nodes, l1_size, l1_channel, l1_dim, _, _, _ = self.get_layer_info(l1)
-        l2_nodes, l2_size, l2_channel, l2_dim, _, _, _ = self.get_layer_info(l2)
+        l1_nodes, l1_size, l1_channel, l1_dim, _ = self.get_layer_info(l1)
+        l2_nodes, l2_size, l2_channel, l2_dim, _ = self.get_layer_info(l2)
         
         # load mask
         mask = self.remove_mask[l1].to(self.device)  # shape: [out_ch, in_ch, k, k]
@@ -240,8 +229,7 @@ class VGG11_CIFAR10(nn.Module):
         
         return y
     
-
-
+    
     def forward(self, x):
         '''
         One forward pass through the network.
@@ -249,39 +237,43 @@ class VGG11_CIFAR10(nn.Module):
         Args:
             x: input
         '''
-        x = self.normalize(x)
-
-        x = self.features(x)  # First 11 conv layers (conv1_1 to conv4_1)
+        self.cur_total_nodes = 0
         
-        x = self.activation((self.conv4_1(x)))
+        # first CNN
+        x_cov1 = self.activation(self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2))
         
-        x = self.activation((self.conv4_2(x)))
+        # # first pooloing
+        # x_pool1 = self.maxpooling(x_cov1, 2, 3)
         
-        # third CNN
-        x_cov1 = self.activation((self.CNN(x, self.conv5_1.weight, self.conv5_1.bias.unsqueeze(1), 6,7)))
-        x_cov2 = self.activation((self.CNN(x_cov1, self.conv5_2.weight, self.conv5_2.bias.unsqueeze(1), 7,8)))
-
+        # second CNN
+        x_cov2 = self.activation(self.CNN(x_cov1, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3))
+        
+        # # second pooling
+        # x_pool2 = self.maxpooling(x_cov2, 4, 5)
+        
         # fc
         fc = x_cov2.view(-1, self.num_flat_features(x_cov2))
         
-        fc1 = self.activation(self.linear(fc, self.fc1, 8,9))
+        fc1 = self.activation(self.linear(fc, self.fc1, 3, 4))
         
-        fc2 = self.activation(self.linear(fc1, self.fc2, 9,10))
+        fc2 = self.activation(self.linear(fc1, self.fc2, 4, 5))
         
-        y = self.linear(fc2, self.fc3, 10,11)
+        y = self.linear(fc2, self.fc3, 5, 6)
         
         return y
 
 
+
+    
     # CNN using unfold/fold, calculate edges values
     def CNN_edges(self, ori, kernel, l1, l2):
         # get l1, l2 info
-        l2_nodes, l2_size, l2_channel, l2_dim, _, l2_padding, l2_pool = self.get_layer_info(l2)
+        l1_nodes, l1_size, l1_channel, l1_dim, _ = self.get_layer_info(l1)
+        l2_nodes, l2_size, l2_channel, l2_dim, _ = self.get_layer_info(l2)
         
         s = l2_dim["stride"]
-        p = l2_padding
 
-        ori_unf = F.unfold(ori,(kernel.shape[2],kernel.shape[3]), stride=s, padding = p).transpose(1,2)
+        ori_unf = F.unfold(ori,(kernel.shape[2],kernel.shape[3]), stride=s).transpose(1,2)
         mask = self.remove_mask[l1]
         mask = mask.to(self.device) 
         
@@ -296,36 +288,85 @@ class VGG11_CIFAR10(nn.Module):
             
         dim = res.shape[1]*res.shape[2]*res.shape[3]
         edges_v = res.reshape(-1, dim) # batch * edge_num
+        # edge_v = self.calculate_edge_v(res, w)
 
         return edges_v
     
+    
+    # Pooling
+    def pooling_edges(self, input, l1, l2, k_size = 2, stride = 2):
+        # get l1, l2 info
+        l1_nodes, l1_size, l1_channel, l1_dim, _ = self.get_layer_info(l1)
+        l2_nodes, l2_size, l2_channel, l2_dim, _ = self.get_layer_info(l2)
+        
+        mask = self.remove_mask[l1]
+        mask = mask.to(self.device) 
+        
+        #print(input.shape)
+        batch = input.shape[0]
+        channel = input.shape[1]
 
+        i_unf = F.unfold(input, (k_size, k_size), stride=stride) 
+
+        i_unf = i_unf.view(batch, channel, k_size*k_size, -1)
+        
+        res = None
+        for i in range(l2_channel):
+            y = mask[i] * i_unf[:,i,:,:].unsqueeze(1)
+            res = y if res == None else torch.cat((res, y), axis=1)
+        
+        edges = res.transpose(2,3)
+
+        dim = edges.shape[1]*edges.shape[2]*edges.shape[3]
+        edges = edges.reshape(-1, dim) # batch * edge_num
+
+        return edges
+    
+    
     # fullyconnected
     def fc_edges(self, x_tmp, layer, l1, l2):
         mask = self.remove_mask[l1]
         mask = mask.to(self.device) 
             
         w = layer.weight.T * mask
-
         cur_shape = layer.weight.shape[0]*layer.weight.shape[1]
         
         edge_v = torch.cat([torch.reshape(w * x1[np.newaxis,:].T, (1, cur_shape)) for x1 in x_tmp], axis=0)
         return edge_v
 
-    
-
     # calculate edge weights
     def NN_info_batch(self, x):
-        x = self.normalize(x)
-        x = self.features(x)  # First 11 conv layers (conv1_1 to conv4_1)
-        
-        x = self.activation((self.conv4_1(x)))
-        
         edge_value = None
+        x_tmp = x
+
         weights = None
+        ones_tmp = torch.ones_like(x)
+        nodes = x.view(-1, self.num_flat_features(x))
+        
+        # Take absolute values
+        nodes_abs = torch.abs(nodes)
+
+        # Compute min and max per sample (along nodes)
+        min_vals = nodes_abs.min(dim=1, keepdim=True)[0]  # shape (batch_size, 1)
+        max_vals = nodes_abs.max(dim=1, keepdim=True)[0]  # shape (batch_size, 1)
+
+        # Normalize to [0, 1]
+        nodes = (nodes_abs - min_vals) / (max_vals - min_vals)
+        
+        # first CNN layer
+        k1 = self.conv1.weight
+        edge_v = (self.CNN_edges(x_tmp, k1, 1, 2)).cpu().detach()
+        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
+
+        ones = (self.CNN_edges(ones_tmp, k1, 1, 2)).cpu().detach()
+        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        
+        x = self.activation(self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2))
+        
         x_tmp = x
         ones_tmp = torch.ones_like(x)
-        # nodes = x.view(-1, self.num_flat_features(x))
+        
+        # nodes = torch.cat((nodes, x.view(-1, self.num_flat_features(x))), axis = 1)
         
         x_flat = x.view(-1, self.num_flat_features(x))
 
@@ -333,93 +374,24 @@ class VGG11_CIFAR10(nn.Module):
         x_abs = torch.abs(x_flat)
         min_vals = x_abs.min(dim=1, keepdim=True)[0]
         max_vals = x_abs.max(dim=1, keepdim=True)[0]
-        nodes = (x_abs - min_vals) / (max_vals - min_vals)
-
-        # CNN 4_2
-        k1 = self.conv4_2.weight
-        # mask = valid_mask(x_tmp, kernel_size=cur_kernel, stride=cur_stride, padding=cur_padding)
-        edge_v = (self.CNN_edges(x_tmp, k1, 5,6)).cpu().detach()
-        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
-        # mask_expanded = mask.flatten().repeat_interleave(edges_per_pixel)
-        # edge_valid = edge_v[:, mask_expanded]
-        # edge_value = edge_valid if edge_value == None else torch.cat((edge_value, edge_valid), axis=1)
-
-        ones = (self.CNN_edges(ones_tmp, k1, 5,6)).cpu().detach()
-        # ones_valid = ones[:, mask.flatten()]
-        # weights = ones_valid if weights == None else torch.cat((weights, ones_valid), axis=1)
-        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
-        
-        x_cov3 = self.activation((self.CNN(x, self.conv4_2.weight, self.conv4_2.bias.unsqueeze(1), 5,6)))
-
-        x_tmp = x_cov3
-        ones_tmp = torch.ones_like(x_cov3)
-        
-        # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
-        
-        x_flat = x_cov3.view(-1, self.num_flat_features(x_cov3))
-
-        # Take absolute value and normalize per sample
-        x_abs = torch.abs(x_flat)
-        min_vals = x_abs.min(dim=1, keepdim=True)[0]
-        max_vals = x_abs.max(dim=1, keepdim=True)[0]
-        x_norm = (x_abs - min_vals) / (max_vals - min_vals)
-
-        # Concatenate normalized x to nodes along feature dimension
-        nodes = torch.cat((nodes, x_norm), axis=1)
-        
-        # CNN 5_1
-        k2 = self.conv5_1.weight
-        # mask = valid_mask(x_tmp, kernel_size=cur_kernel, stride=cur_stride, padding=cur_padding)
-        edge_v = (self.CNN_edges(x_tmp, k2, 6,7)).cpu().detach()
-        edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
-        # edge_valid = edge_v[:, mask.flatten()]
-        # edge_value = edge_valid if edge_value == None else torch.cat((edge_value, edge_valid), axis=1)
-
-        ones = (self.CNN_edges(ones_tmp, k2, 6,7)).cpu().detach()
-        # ones_valid = ones[:, mask.flatten()]
-        # weights = ones_valid if weights == None else torch.cat((weights, ones_valid), axis=1)
-        weights = ones if weights == None else torch.cat((weights, ones), axis=1)
-        
-        x_cov4 = self.activation((self.CNN(x_cov3, self.conv5_1.weight, self.conv5_1.bias.unsqueeze(1), 6,7)))
-
-        x_tmp = x_cov4
-        ones_tmp = torch.ones_like(x_cov4)
-        
-        # nodes = torch.cat((nodes, x_cov4.view(-1, self.num_flat_features(x_cov4))), axis = 1)
-        
-        x_flat = x_cov4.view(-1, self.num_flat_features(x_cov4))
-
-        # Take absolute value and normalize per sample
-        x_abs = torch.abs(x_flat)
-        min_vals = x_abs.min(dim=1, keepdim=True)[0]
-        max_vals = x_abs.max(dim=1, keepdim=True)[0]
         x_norm = (x_abs - min_vals) / (max_vals - min_vals)
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
         
         
-        # CNN 5_2        
-        k2 = self.conv5_2.weight
-        # mask = valid_mask(x_tmp, kernel_size=cur_kernel, stride=cur_stride, padding=cur_padding)
-        edge_v = (self.CNN_edges(x_tmp, k2, 7,8)).cpu().detach()
+        # second CNN layer
+        k2 = self.conv2.weight
+        edge_v = (self.CNN_edges(x_tmp, k2, 2, 3)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
-        # edge_valid = edge_v[:, mask.flatten()]
-        # edge_value = edge_valid if edge_value == None else torch.cat((edge_value, edge_valid), axis=1)
-
-        ones = (self.CNN_edges(ones_tmp, k2, 7,8)).cpu().detach()
-        # ones_valid = ones[:, mask.flatten()]
-        # weights = ones_valid if weights == None else torch.cat((weights, ones_valid), axis=1)
+        
+        ones = (self.CNN_edges(ones_tmp, k2, 2, 3)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
-        
-        x_cov5 = self.activation((self.CNN(x_cov4, self.conv5_2.weight, self.conv5_2.bias.unsqueeze(1), 7,8)))
 
-        x_tmp = x_cov5
-        ones_tmp = torch.ones_like(x_cov5)
+        x = self.activation(self.CNN(x, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3))
+        # nodes = torch.cat((nodes, x.view(-1, self.num_flat_features(x))), axis = 1)
         
-        # nodes = torch.cat((nodes, x_cov5.view(-1, self.num_flat_features(x_cov5))), axis = 1)
-        
-        x_flat = x_cov5.view(-1, self.num_flat_features(x_cov5))
+        x_flat = x.view(-1, self.num_flat_features(x))
 
         # Take absolute value and normalize per sample
         x_abs = torch.abs(x_flat)
@@ -432,18 +404,18 @@ class VGG11_CIFAR10(nn.Module):
         
 
         # fully connected
-        x = x_cov5.view(-1, self.num_flat_features(x_cov5)) # batch * input size
+        x = x.view(-1, self.num_flat_features(x)) # batch * input size
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
         # fc1
-        edge_v = (self.fc_edges(x_tmp, self.fc1, 8,9)).cpu().detach()
+        edge_v = (self.fc_edges(x_tmp, self.fc1, 3, 4)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
-        ones = (self.fc_edges(ones_tmp, self.fc1, 8,9)).cpu().detach()
+        ones = (self.fc_edges(ones_tmp, self.fc1, 3, 4)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
-
-        x = self.activation(self.linear(x, self.fc1, 8,9))
+        
+        x = self.activation(self.linear(x, self.fc1, 3, 4))
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
@@ -460,18 +432,20 @@ class VGG11_CIFAR10(nn.Module):
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
         
+        
         # fc2    
-        edge_v = (self.fc_edges(x_tmp, self.fc2, 9,10)).cpu().detach()
+        edge_v = (self.fc_edges(x_tmp, self.fc2, 4, 5)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
-        ones = (self.fc_edges(ones_tmp, self.fc2, 9,10)).cpu().detach()
+        ones = (self.fc_edges(ones_tmp, self.fc2, 4, 5)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
-        x = self.activation(self.linear(x, self.fc2, 9,10))
+        x = self.activation(self.linear(x, self.fc2, 4, 5))
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
         # nodes = torch.cat((nodes, x), axis = 1)
+        
         x_flat = x
 
         # Take absolute value and normalize per sample
@@ -485,15 +459,16 @@ class VGG11_CIFAR10(nn.Module):
         
 
         # fc3
-        edge_v = (self.fc_edges(x_tmp, self.fc3, 10,11)).cpu().detach()
+        edge_v = (self.fc_edges(x_tmp, self.fc3, 5, 6)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
-        ones = (self.fc_edges(ones_tmp, self.fc3, 10,11)).cpu().detach()
+        ones = (self.fc_edges(ones_tmp, self.fc3, 5, 6)).cpu().detach()
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.fc3(x)
         x = self.softmax(x)
         # nodes = torch.cat((nodes, x), axis = 1)
+        
         x_flat = x
 
         # Take absolute value and normalize per sample
@@ -505,15 +480,14 @@ class VGG11_CIFAR10(nn.Module):
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
         
+        
         return edge_value, nodes, weights
     
-
-
-    def normalization_weight_w3(self, nodes, weights, dims, model_dims):
-        device = nodes.device
+    
+    def normalization_weight_w1(self, nodes, weights, dims, model_dims):
         nodes_num = nodes.shape[1]
         prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
-        prefix_dims = torch.cat([torch.tensor([0]), prefix_dims]).to(device)
+        prefix_dims = torch.cat([torch.tensor([0]), prefix_dims]).to(nodes.device)
 
         current_l = 1
         start_col = 0
@@ -532,7 +506,7 @@ class VGG11_CIFAR10(nn.Module):
                 end_col += (dims[current_l-2] * dims[current_l-1])
                 neighbors = torch.arange(prefix_dims[current_l-2], prefix_dims[current_l-1])
                 step = dims[current_l-1]
-                
+            
             layer = model_dims[current_l]
             prev_layer = model_dims[current_l - 1]
             
@@ -549,12 +523,11 @@ class VGG11_CIFAR10(nn.Module):
             if cur_name in ["cnn", "pooling"]:
                 k = cur_dim['kernel']
                 s = cur_dim['stride']
-                p = cur_dim['padding']
                 in_size = pre_dim['out_size']
                 
                 # Generate indices for previous layer's nodes
                 tensor_2d = torch.arange(pre_nodes_num, device=nodes.device).reshape(1, pre_channel, in_size, in_size).float()
-                indices = F.unfold(tensor_2d, (k, k), stride=s, padding = p).transpose(1, 2).int()
+                indices = F.unfold(tensor_2d, (k, k), stride=s).transpose(1, 2).int()
                 step = k ** 2
                 end_col = start_col + step * pre_channel
                 
@@ -562,7 +535,215 @@ class VGG11_CIFAR10(nn.Module):
                 for c in range(cur_channel):
                     for l in range(indices.shape[1]):
                         neighbors = indices[0,l] + prefix_dims[current_l-2] 
-                        in_edges = torch.arange(start_col, end_col, device=device)
+                        in_edges = torch.arange(start_col, end_col, device=nodes.device)
+                        
+                        # Compute weights and normalization
+                        w = nodes[:, neighbors] * weights[:, in_edges]
+                        positive_w = torch.where(w > 0, w, 0)
+
+                        pos_sum = positive_w.sum(dim=1, keepdim=True)
+                        sum = torch.sum(w, axis = 1, keepdim=True) # batch * 1
+                        
+                        positive_s_i = torch.where(sum > 0)[0] # indices
+                        
+                        sub_pos_a1 = weights[positive_s_i][:, in_edges]   
+                        sub_pos_a2 = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
+                                
+                        mask = sub_pos_a1 > 0
+                        values1 = sub_pos_a1 * (sum[positive_s_i] / pos_sum[positive_s_i])
+                        values2 = torch.abs(sub_pos_a2 * (sum[positive_s_i] / pos_sum[positive_s_i]))
+                        
+                        sub_pos_a_inv1 = torch.where(mask, 1./values1, torch.tensor(0.))
+                        sub_pos_a_inv2 = torch.where(mask, 1./values2, torch.tensor(0.))
+                        weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv1
+                        weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
+                    
+                        n += 1
+                        start_col = end_col
+                        end_col = start_col + step*pre_channel
+                end_col = start_col
+            
+            elif cur_name == "fc":
+                in_edges = torch.arange(start_col + (n - prefix_dims[current_l-1]), end_col, step)
+            
+                w = nodes[:, neighbors] * weights[:, in_edges] # batch * neighbors.size()
+                
+                positive_w = torch.where(w > 0, w, torch.zeros_like(w))
+                pos_sum = positive_w.sum(dim=1, keepdim=True) # batch * 1
+                
+                sum = torch.sum(w, axis = 1, keepdim=True) # batch * 1
+                
+                positive_s_i = torch.where(sum > 0)[0] # indices
+                
+                sub_pos_a1 = weights[positive_s_i][:, in_edges]   
+                sub_pos_a2 = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
+                        
+                mask = sub_pos_a1 > 0
+                values1 = sub_pos_a1 * (sum[positive_s_i] / pos_sum[positive_s_i])
+                values2 = torch.abs(sub_pos_a2 * (sum[positive_s_i] / pos_sum[positive_s_i]))
+                
+                sub_pos_a_inv1 = torch.where(mask, 1./values1, torch.tensor(0.))
+                sub_pos_a_inv2 = torch.where(mask, 1./values2, torch.tensor(0.))
+                weights_inv1[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv1
+                weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
+                n += 1
+        
+        return weights_inv1, weights_inv2
+    
+
+    def normalization_weight_w2(self, nodes, weights, dims, model_dims):
+        nodes_num = nodes.shape[1]
+        prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
+        prefix_dims = torch.cat([torch.tensor([0]), prefix_dims]).to(nodes.device)
+
+        current_l = 1
+        start_col = 0
+        end_col = 0
+        
+        weights_inv = torch.zeros_like(weights)
+        
+        n = dims[0]  # Start from the first node of the second layer
+
+        while n < nodes_num:
+            if n >= prefix_dims[current_l]:
+                current_l += 1
+                start_col = end_col
+                
+                end_col += (dims[current_l-2] * dims[current_l-1])
+                neighbors = torch.arange(prefix_dims[current_l-2], prefix_dims[current_l-1])
+                step = dims[current_l-1]
+            
+            layer = model_dims[current_l]
+            prev_layer = model_dims[current_l - 1]
+            
+            # Extract layer details
+            cur_name = layer["name"]
+            cur_dim = layer["dim"]
+            pre_dim = prev_layer["dim"]
+            
+            # Determine channels and dimensions
+            cur_channel = 1 if cur_name == "fc" else cur_dim['channel']
+            pre_channel = 1 if prev_layer["name"] == "fc" else pre_dim['channel']
+            pre_nodes_num = dims[current_l - 2]
+            
+            if cur_name in ["cnn", "pooling"]:
+                k = cur_dim['kernel']
+                s = cur_dim['stride']
+                in_size = pre_dim['out_size']
+                
+                # Generate indices for previous layer's nodes
+                tensor_2d = torch.arange(pre_nodes_num, device=nodes.device).reshape(1, pre_channel, in_size, in_size).float()
+                indices = F.unfold(tensor_2d, (k, k), stride=s).transpose(1, 2).int()
+                step = k ** 2
+                end_col = start_col + step * pre_channel
+                
+                # Process all channels and positions at once
+                for c in range(cur_channel):
+                    for l in range(indices.shape[1]):
+                        neighbors = indices[0,l] + prefix_dims[current_l-2] 
+                        in_edges = torch.arange(start_col, end_col, device=nodes.device)
+                        
+                        # Compute weights and normalization
+                        w = nodes[:, neighbors] * weights[:, in_edges]
+                        positive_w = torch.where(w > 0, w, 0)
+
+                        pos_sum = positive_w.sum(dim=1, keepdim=True)
+                        sum = torch.sum(w, axis = 1, keepdim=True) # batch * 1
+                        
+                        positive_s_i = torch.where(sum > 0)[0] # indices
+                        
+                        sub_pos_a = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
+                                
+                        mask = sub_pos_a > 0
+                        values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
+                        
+                        sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
+    
+                        weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
+                    
+                        n += 1
+                        start_col = end_col
+                        end_col = start_col + step*pre_channel
+                end_col = start_col
+            
+            elif cur_name == "fc":
+                in_edges = torch.arange(start_col + (n - prefix_dims[current_l-1]), end_col, step)
+            
+                w = nodes[:, neighbors] * weights[:, in_edges] # batch * neighbors.size()
+                
+                positive_w = torch.where(w > 0, w, torch.zeros_like(w))
+                pos_sum = positive_w.sum(dim=1, keepdim=True) # batch * 1
+                
+                sum = torch.sum(w, axis = 1, keepdim=True) # batch * 1
+                
+                positive_s_i = torch.where(sum > 0)[0] # indices
+                
+                sub_pos_a = weights[positive_s_i][:, in_edges] * nodes[positive_s_i][:, neighbors]
+                            
+                mask = sub_pos_a > 0
+                values = (sub_pos_a * (sum[positive_s_i] / pos_sum[positive_s_i]))
+                
+                sub_pos_a_inv = torch.where(mask, 1./values, torch.tensor(0.))
+
+                weights_inv[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv
+                n += 1
+        
+        return weights_inv
+    
+    
+    
+    def normalization_weight_w3(self, nodes, weights, dims, model_dims):
+        nodes_num = nodes.shape[1]
+        prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
+        prefix_dims = torch.cat([torch.tensor([0]), prefix_dims]).to(nodes.device)
+
+        current_l = 1
+        start_col = 0
+        end_col = 0
+        
+        weights_inv1 = torch.zeros_like(weights)
+        weights_inv2 = torch.zeros_like(weights)
+        
+        n = dims[0]  # Start from the first node of the second layer
+
+        while n < nodes_num:
+            if n >= prefix_dims[current_l]:
+                current_l += 1
+                start_col = end_col
+                
+                end_col += (dims[current_l-2] * dims[current_l-1])
+                neighbors = torch.arange(prefix_dims[current_l-2], prefix_dims[current_l-1])
+                step = dims[current_l-1]
+            
+            layer = model_dims[current_l]
+            prev_layer = model_dims[current_l - 1]
+            
+            # Extract layer details
+            cur_name = layer["name"]
+            cur_dim = layer["dim"]
+            pre_dim = prev_layer["dim"]
+            
+            # Determine channels and dimensions
+            cur_channel = 1 if cur_name == "fc" else cur_dim['channel']
+            pre_channel = 1 if prev_layer["name"] == "fc" else pre_dim['channel']
+            pre_nodes_num = dims[current_l - 2]
+            
+            if cur_name in ["cnn", "pooling"]:
+                k = cur_dim['kernel']
+                s = cur_dim['stride']
+                in_size = pre_dim['out_size']
+                
+                # Generate indices for previous layer's nodes
+                tensor_2d = torch.arange(pre_nodes_num, device=nodes.device).reshape(1, pre_channel, in_size, in_size).float()
+                indices = F.unfold(tensor_2d, (k, k), stride=s).transpose(1, 2).int()
+                step = k ** 2
+                end_col = start_col + step * pre_channel
+                
+                # Process all channels and positions at once
+                for c in range(cur_channel):
+                    for l in range(indices.shape[1]):
+                        neighbors = indices[0,l] + prefix_dims[current_l-2] 
+                        in_edges = torch.arange(start_col, end_col, device=nodes.device)
                         
                         # Compute weights and normalization
                         w = nodes[:, neighbors] * weights[:, in_edges]
@@ -591,7 +772,7 @@ class VGG11_CIFAR10(nn.Module):
                         # w1
                         final_mask_pos = (sub_pos_a1 >= 0) & (sub_pos != 0)
                         final_mask_neg = (sub_neg_a1 <= 0) & (sub_neg != 0)
-
+                
                         values_pos = torch.abs(sub_pos * (Sum[positive_s_i] / pos_sum[positive_s_i]))
                         values_neg = torch.abs(sub_neg * (Sum[negative_s_i] / neg_sum[negative_s_i]))
                         
@@ -607,7 +788,7 @@ class VGG11_CIFAR10(nn.Module):
                         
                         sub_pos_a_inv2 = torch.where(final_mask_pos, 1./values_pos2, torch.tensor(0.))
                         sub_neg_a_inv2 = torch.where(final_mask_neg, 1./values_neg2, torch.tensor(0.))
-                        
+
                         weights_inv2[torch.tensor(positive_s_i)[:,None], torch.tensor(in_edges)] = sub_pos_a_inv2
                         weights_inv2[torch.tensor(negative_s_i)[:,None], torch.tensor(in_edges)] = sub_neg_a_inv2
                     
@@ -645,7 +826,7 @@ class VGG11_CIFAR10(nn.Module):
                 # w1
                 final_mask_pos = (sub_pos_a1 >= 0) & (sub_pos != 0)
                 final_mask_neg = (sub_neg_a1 <= 0) & (sub_neg != 0)
-                
+
                 values_pos = torch.abs(sub_pos * (Sum[positive_s_i] / pos_sum[positive_s_i]))
                 values_neg = torch.abs(sub_neg * (Sum[negative_s_i] / neg_sum[negative_s_i]))
                 
@@ -671,7 +852,7 @@ class VGG11_CIFAR10(nn.Module):
     
     
     
-    def normalization_weight_w4(self, nodes, weights, dims, model_dims, device='cuda'):
+    def normalization_weight_w4(self, nodes, weights, dims, model_dims, edge_dims, device='cuda'):
         """
         CNN/FC layer-wise normalization using adjacency reconstruction per layer.
         Computes weights_inv1 (1/|w|), weights_inv2 (1/|input nodes|), weights_inv3 (1/|output nodes|).
@@ -714,7 +895,6 @@ class VGG11_CIFAR10(nn.Module):
             if cur_name in ["cnn", "pooling"]:
                 k = cur_dim['kernel']
                 s = cur_dim['stride']
-                p = cur_dim['padding'] if 'padding' in cur_dim else 0
                 in_size = pre_dim['out_size']
                 
                 # Generate indices for previous layer's nodes
@@ -735,11 +915,15 @@ class VGG11_CIFAR10(nn.Module):
                         # min_vals = node_slice.min(dim=1, keepdim=True)[0]
                         # max_vals = node_slice.max(dim=1, keepdim=True)[0]
                         
-                        # node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+                        # if max_vals > min_vals:
+                        #     node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+                        # else:
+                        #     node_slice = node_slice
                         
-                       # Prevent divide-by-zero
-                        weights_inv2[:, in_edges] = 1./(torch.abs(node_slice))
-                        
+                        # nodes[:, neighbors] = node_slice
+
+                        weights_inv2[:, in_edges] = 1.0/torch.abs(node_slice)
+        
                         n += 1
                         start_col = end_col
                         end_col = start_col + step*pre_channel
@@ -750,18 +934,27 @@ class VGG11_CIFAR10(nn.Module):
             
                 # Shape: (batch_size, fan-in)
                 node_slice = torch.abs(nodes[:, neighbors])
+                
+                # min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                # max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                
+                # node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+                
+                # nodes[:, neighbors] = node_slice
 
                 # Prevent divide-by-zero
-                weights_inv2[:, in_edges] = 1./(torch.abs(node_slice))
+                weights_inv2[:, in_edges] = 1.0/torch.abs(node_slice)
                     
                 n += 1
 
         return weights_inv1, weights_inv2
 
+        
     
     
-    # weights regularization 
-    def normalization_weight_w4_old(self, nodes, weights, dims, model_dims):
+    
+    
+    def normalization_weight_w6(self, nodes, weights, dims, model_dims, q):
         nodes_num = nodes.shape[1]
         prefix_dims = torch.cumsum(torch.tensor(dims), dim=0)
         prefix_dims = torch.cat([torch.tensor([0]), prefix_dims]).to(nodes.device)
@@ -770,9 +963,8 @@ class VGG11_CIFAR10(nn.Module):
         start_col = 0
         end_col = 0
         
-        weights_inv1 = torch.zeros_like(weights)
-        weights_inv2 = torch.zeros_like(weights)
-        weights_inv3 = torch.zeros_like(weights)
+        q_exp = q_exponential(q)
+        weights_inv = torch.zeros_like(weights)
         
         n = dims[0]  # Start from the first node of the second layer
 
@@ -812,24 +1004,16 @@ class VGG11_CIFAR10(nn.Module):
                 # Process all channels and positions at once
                 for c in range(cur_channel):
                     for l in range(indices.shape[1]):
-                        neighbors = indices[0,l] + prefix_dims[current_l-2] 
                         in_edges = torch.arange(start_col, end_col, device=nodes.device)
                         
-                        # Compute weights and normalization
-                        # w = nodes[:, neighbors] * weights[:, in_edges]
+                        w = weights[:, in_edges]
+                        mask = (w != 0)
+                        if nodes[:, n].item() <= 0:
+                            weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(-w))
+                        else:
+                            weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(w))
                         
-                        # Shape: (batch_size, fan-in)
-                        node_slice = torch.abs(nodes[:, neighbors])
-                        weight_slice = weights[:, in_edges]
-                        
-                        min_vals = node_slice.min(dim=1, keepdim=True)[0]
-                        max_vals = node_slice.max(dim=1, keepdim=True)[0]
-                        
-                        node_slice = (node_slice - min_vals) / (max_vals - min_vals)
-                        
-                       # Prevent divide-by-zero
-                        weights_inv1[:, in_edges] = 1.0 / (torch.abs(weight_slice))
-                        weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
+                        weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] *= mask
                         
                         n += 1
                         start_col = end_col
@@ -839,86 +1023,15 @@ class VGG11_CIFAR10(nn.Module):
             elif cur_name == "fc":
                 in_edges = torch.arange(start_col + (n - prefix_dims[current_l-1]), end_col, step)
             
-                # Shape: (batch_size, fan-in)
-                node_slice = torch.abs(nodes[:, neighbors])
-                weight_slice = weights[:, in_edges]
+                w = weights[:, in_edges]
+                mask = (w != 0)
+                if nodes[:, n].item() <= 0:
+                    weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(-w))
+                else:
+                    weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] = 1.0/abs(q_exp.q_exponential_series(w))
                 
-                min_vals = node_slice.min(dim=1, keepdim=True)[0]
-                max_vals = node_slice.max(dim=1, keepdim=True)[0]
-                
-                node_slice = (node_slice - min_vals) / (max_vals - min_vals)
-
-                # Prevent divide-by-zero
-                weights_inv1[:, in_edges] = 1.0 / (torch.abs(weight_slice))
-                weights_inv2[:, in_edges] = 1.0 / (torch.abs(node_slice))
-                    
+                weights_inv[torch.arange(weights_inv.shape[0])[:, None], torch.tensor(in_edges)] *= mask
                 n += 1
-                
-                
-                
-        ### ---------- SECOND PASS: outgoing edges ----------
-        n = 0  # restart from first node of input layer
-        current_l = 1
-        start_col = 0
-        end_col = 0
         
-        while n < prefix_dims[-2]:  # go through all nodes except final output layer
-            if n >= prefix_dims[current_l - 1]:
-                # move to next layer's edges
-                start_col = end_col
-            
-                end_col += dims[current_l - 1] * dims[current_l]
-                
-                current_l += 1
-                
-                out_neighbors = torch.arange(prefix_dims[current_l-1], prefix_dims[current_l], device=nodes.device)
-      
-
-            layer = model_dims[current_l]
-            prev_layer = model_dims[current_l - 1]
-            cur_name = layer["name"]
-            cur_dim = layer["dim"]
-            pre_dim = prev_layer["dim"]
-
-            if cur_name in ["cnn", "pooling"]:
-                k = cur_dim['kernel']
-                s = cur_dim['stride']
-                in_size = pre_dim['out_size']
-                pre_channel = 1 if prev_layer["name"] == "fc" else pre_dim['channel']
-                cur_channel = 1 if cur_name == "fc" else cur_dim['channel']
-
-                tensor_2d = torch.arange(pre_dim['out_size']**2 * pre_channel,
-                                        device=nodes.device).reshape(1, pre_channel, in_size, in_size).float()
-                indices = F.unfold(tensor_2d, (k, k), stride=s).transpose(1, 2).int()
-
-                step = k ** 2
-
-                for c in range(cur_channel):
-                    for l in range(indices.shape[1]):
-                        start_col += step * pre_channel
-                end_col = start_col
-                
-                n = prefix_dims[current_l - 1]
-
-            elif cur_name == "fc":
-                tmp = start_col + (n - prefix_dims[current_l - 2])*dims[current_l-1]
-                out_edges = torch.arange(tmp, tmp+dims[current_l-1], 1, device=nodes.device)
-
-                # print(len(out_neighbors), len(out_edges))
-
-                node_slice = torch.abs(nodes[:, out_neighbors])
-                # weights_inv3[:, out_edges] = 1.0 / torch.abs(out_node_slice)
-                
-                # --- Step 1: normalize to [0, 1] ---
-                min_vals = node_slice.min(dim=1, keepdim=True)[0]
-                max_vals = node_slice.max(dim=1, keepdim=True)[0]
-                
-                node_slice = (node_slice - min_vals) / (max_vals - min_vals)
-
-                # --- Step 2: compute weights ---
-                weights_inv3[:, out_edges] = 1.0 / (torch.abs(node_slice))
-
-                n += 1
-
-        
-        return weights_inv1, weights_inv2, weights_inv3
+        return weights_inv
+    

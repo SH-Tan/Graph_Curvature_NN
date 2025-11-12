@@ -434,13 +434,13 @@ class LeNet_custom_v2(nn.Module):
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.fc3(x)
-        x = self.softmax(x)
+        # x = self.softmax(x)
         # nodes = torch.cat((nodes, x), axis = 1)
         
         x_flat = x
 
         # Take absolute value and normalize per sample
-        x_abs = torch.abs(x_flat)
+        x_abs = x_flat
         min_vals = x_abs.min(dim=1, keepdim=True)[0]
         max_vals = x_abs.max(dim=1, keepdim=True)[0]
         x_norm = (x_abs - min_vals) / (max_vals - min_vals)
