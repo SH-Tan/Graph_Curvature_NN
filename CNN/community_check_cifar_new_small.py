@@ -32,6 +32,7 @@ warnings.filterwarnings("ignore")
 
 
 
+
 model_dims = {
     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
@@ -57,6 +58,7 @@ model_dims = {
     16: {"name": "fc", "dim": {"out_size": 512}},
     17: {"name": "fc", "dim": {"out_size": 10}}
 }
+
 
 
 model_dims_small = model_dims

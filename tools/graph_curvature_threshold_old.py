@@ -80,12 +80,12 @@ def out_distribution(model_dims, sp1, device='cuda', thre = 0.5, dist = None):
                 # mask valid edges (not inf)
                 mask = (cur_sp[:, src_idx, :] != 0) # [dst_size]
                 
-                if (i > 0):
-                    prev_layer = model_dims[i]
-                    prev_n = prev_layer["name"]
+                # if (i > 0):
+                #     prev_layer = model_dims[i]
+                #     prev_n = prev_layer["name"]
                     
-                    if prev_n == "input":
-                        mask = (cur_sp[:, src_idx, :] != inf) & (cur_sp[:, src_idx, :] > 0)
+                #     if prev_n == "input":
+                #         mask = (cur_sp[:, src_idx, :] != inf) & (cur_sp[:, src_idx, :] > 0)
 
                 if not torch.any(mask):
                     # print(i,j,src_idx)
@@ -98,7 +98,7 @@ def out_distribution(model_dims, sp1, device='cuda', thre = 0.5, dist = None):
                 global_idx = dst_prefix + valid_idx
                 node_slice = torch.abs(_nodes_value[:, global_idx])  # [B, dst_size] or [1, dst_size]
                 
-                # # --- Step 1: normalize to [0, 1] ---
+                # --- Step 1: normalize to [0, 1] ---
                 # min_vals = node_slice.min(dim=1, keepdim=True)[0]
                 # max_vals = node_slice.max(dim=1, keepdim=True)[0]
                 
@@ -197,7 +197,9 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
             for c in range(cur_ch):
                 for p in range(patches):
                     cur_idx = unfolded[0,p].tolist()
-                    adjacent_m[:, cur_idx, n] = weights[:, weight_idx : end_col]
+                    
+                    w = weights[:, weight_idx : end_col]
+                    adjacent_m[:, cur_idx, n] = w
                     
                     weight_idx = end_col
                     end_col = weight_idx + step*pre_ch
@@ -317,7 +319,7 @@ def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda', thre = 0
 
                 # Copy weights and mask non-top edges
                 top_weights = direct_dist[:, :, col].clone()
-                top_weights[~top_mask] = float('inf')
+                top_weights[~top_mask] = inf
                 
                 # Assign to adjacency matrix
                 adjacent_m[:, :, col] = top_weights
@@ -357,7 +359,7 @@ def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda', thre = 0
                     weight_slice = weights[:, weight_idx:end_col]        # [batch_size, num_edges]
      
                     # Get non-zero indices (since batch_size=1, we can drop batch dimension)
-                    nonzero_mask = weight_slice != 0
+                    nonzero_mask = edge_slice != 0
                     
                     if thre <= 0:
                         adjacent_m[:, cur_idx, n] = weight_slice
@@ -365,6 +367,9 @@ def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda', thre = 0
                     else:
                         # Values of valid edges
                         valid_vals = edge_slice[nonzero_mask]
+                        
+                        if not torch.any(nonzero_mask):
+                            continue
 
                         # Compute quantile threshold among valid entries
                         threshold_val = torch.quantile(valid_vals, thre)
@@ -524,6 +529,30 @@ def process_edge(b, edge):
     
     # if np.isinf(d_np).any():
     #     print(i_layer, np.isinf(d_np).sum(), np.isnan(d_np).sum(), m)
+    
+    # === Debug print section for layer 4 ===
+    # if i_layer == 3 and (sp <= 1./0.36 or sp >= 1./ 0.00001):
+    #     print(_prefix_dims)
+    #     print(f"\nEdge ({i} → {j}), sp = {sp}")
+    #     print("Node values:")
+    #     print("  i node:", _nodes_value[:, i])
+    #     print("  j node:", _nodes_value[:, j])
+        
+    #     # Sort and print top 10 μ
+    #     mu_sorted_idx = np.argsort(mu)[::-1][:10]
+    #     print("\nTop 10 μ values:")
+    #     for rank, idx in enumerate(mu_sorted_idx):
+    #         node_id = in_neigh[idx] if idx < len(in_neigh) else None
+    #         node_val = _nodes_value[:, node_id] if node_id is not None else None
+    #         print(f"  {rank+1}. μ[{idx}] = {mu[idx]:.4f}, node = {node_id}, value = {node_val}")
+
+    #     # Sort and print top 10 ν
+    #     nu_sorted_idx = np.argsort(nu)[::-1][:10]
+    #     print("\nTop 10 ν values:")
+    #     for rank, idx in enumerate(nu_sorted_idx):
+    #         node_id = out_neigh[idx] if idx < len(out_neigh) else None
+    #         node_val = _nodes_value[:, node_id] if node_id is not None else None
+    #         print(f"  {rank+1}. ν[{idx}] = {nu[idx]:.4f}, node = {node_id}, value = {node_val}")
 
     return (b, i, j, 1.0 - m/sp)
 
@@ -637,6 +666,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             mask = (path_sub != float('inf')) & (path_sub != 0)
             
             weights_layer = torch.exp(-(path_sub ** 2)) * mask
+                
             # weights_layer = (1./path_sub) * mask
             sum_weights = weights_layer.sum(dim=2)
             
@@ -650,7 +680,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             dist_next *= mask
      
             distribution_out[layer] = dist_next.cpu().numpy()
- 
+
+
     _distribution_in = distribution_in
     _distribution_out = distribution_out
     _nodes_value = _nodes_value.cpu().numpy()

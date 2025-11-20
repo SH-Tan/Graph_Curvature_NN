@@ -20,7 +20,7 @@ sys.path.append("..")
 
 import tools.utils as utils
 
-
+from tools.graph_curvature_threshold import graph_curvature_main_torch
 
 np.set_printoptions(threshold=np.inf)
 torch.set_printoptions(threshold=torch.inf)
@@ -217,7 +217,7 @@ def community_check_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -244,10 +244,8 @@ def community_check_cnn(args):
     
     if activation.lower() == "relu":
         from tools.LeNet5_custom_small import LeNet_custom_v2
-        from tools.graph_curvature_threshold import graph_curvature_main_torch
     elif activation.lower() == "tanh":
         from tools.LeNet5_custom_small_tanh import LeNet_custom_v2
-        from tools.graph_curvature_threshold_tanh import graph_curvature_main_torch
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -278,82 +276,84 @@ def community_check_cnn(args):
     
     res_l = defaultdict(list)
     # res_l_non = defaultdict(list)
+    
+    res = []
 
-    for l in selected_classes:
-        for (images, labels) in robust_pair[l]:
-            for idx in range(images.shape[0]):
-                if (idx >= sample_size):
-                    print(f'Finish {idx} examples....')
-                    break
-                
-                img = images[idx].to(device)
-                edge_array, nodes_ori, output, node_alpha = net_full.NN_info_batch(img.unsqueeze(0))
-
-                if metric.lower() == "w1":
-                    weights = output.detach().clone().to(device)                   
-                    # weights[edge_array == 0] = 0.
-                
-                elif metric.lower() == "w3" or metric.lower() == "w4":
-                    # output[edge_array!=0] = edge_array[edge_array!=0]
-                    # weights = edge_array.detach().clone().to(device)  # take absolute values
-                    # weights[edge_array!=0] = edge_array[edge_array!=0]
-                    weights = output.detach().clone().to(device)  # take absolute values
-                    nodes_ori = nodes_ori.detach().clone().to(device) 
-                    node_alpha = node_alpha.detach().clone().to(device) 
-                    edge_array = edge_array.detach().clone().to(device) 
-            
-                    # weights_abs = weights.abs()
-                    # weights_abs = weights_abs[:, sum(edge_dims[0:3]): sum(edge_dims[0:4])]
-                    # # Compute min and max
-                    # w_min = weights_abs.min().item()
-                    # w_max = weights_abs.max().item()
-
-                    # print(f"Layer 4 weights: min = {w_min:.6f}, max = {w_max:.6f}")
-                    # edge_array_abs = torch.abs(edge_array)
-                    # min_pos = 1e-6
-                    # # replace zeros with min_pos
-                    # weights = torch.where(edge_array_abs == 0, min_pos, edge_array_abs).to(device)
+    for l in [0]:
+        for thre in [0]:
+            for (images, labels) in robust_pair[l]:
+                for idx in range(images.shape[0]):
+                    if (idx >= sample_size):
+                        print(f'Finish {idx} examples....')
+                        break
                     
-                if metric.lower() == "w1":
-                    weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
-                    weights_inv = weights_inv1.detach()
-                    weights_inv2 = weights_inv2.detach()
-                    ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+                    img = images[idx].to(device)
+                    edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
+
+                    if metric.lower() == "w1":
+                        weights = output.detach().clone().to(device)                   
+                        # weights[edge_array == 0] = 0.
+                    
+                    elif metric.lower() == "w3" or metric.lower() == "w4":
+                        # output[edge_array!=0] = edge_array[edge_array!=0]
+                        # weights = edge_array.detach().clone().to(device)  # take absolute values
+                        # weights[edge_array!=0] = edge_array[edge_array!=0]
+                        weights = output.detach().clone().to(device)  # take absolute values
+                        nodes_ori = nodes_ori.detach().clone().to(device) 
                         
-                elif metric.lower() == "w3":
-                    weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims)
-                    weights_inv = weights_inv1.detach()
-                    weights_inv2 = weights_inv2.detach()
-                    ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
-                    
-                elif metric.lower() == "w4":
-                    weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims, edge_array)
-                    weights_inv = weights_inv1.detach()
-                    weights_inv2 = weights_inv2.detach()
-                    # weights_inv3 = weights_inv3.detach()
-                    node_abs = torch.abs(nodes_ori)
-                    edge_array = edge_array.detach().clone().to(device) 
-                    edge_array_abs = torch.abs(edge_array)
-        
-                    # print(len(weights_inv[0]), len(weights_inv[weights_inv!=np.inf]))
+                        # weights_abs = weights.abs()
+                        # weights_abs = weights_abs[:, sum(edge_dims[0:3]): sum(edge_dims[0:4])]
+                        # # Compute min and max
+                        # w_min = weights_abs.min().item()
+                        # w_max = weights_abs.max().item()
 
-                    ricci_curvature = graph_curvature_main_torch(
-                        dims, weights_inv, device=device, model_dims=model_dims,
-                        probability_w=(weights_inv2, weights_inv1), alpha=alpha,
-                        nodes=node_abs, edge_value = edge_array_abs, threshold = 0.,
-                        nodes_alpha = torch.abs(node_alpha),
-                        # layers_to_process=[2,3,4]
-                    )
-                    # print(ricci_curvature)
-                else:
-                    raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
-                
+                        # print(f"Layer 4 weights: min = {w_min:.6f}, max = {w_max:.6f}")
+                        # edge_array_abs = torch.abs(edge_array)
+                        # min_pos = 1e-6
+                        # # replace zeros with min_pos
+                        # weights = torch.where(edge_array_abs == 0, min_pos, edge_array_abs).to(device)
+                        
+                    if metric.lower() == "w1":
+                        weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
+                        weights_inv = weights_inv1.detach()
+                        weights_inv2 = weights_inv2.detach()
+                        ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+                            
+                    elif metric.lower() == "w3":
+                        weights_inv1, weights_inv2 = net_full.normalization_weight_w3(nodes_ori, weights, dims, model_dims)
+                        weights_inv = weights_inv1.detach()
+                        weights_inv2 = weights_inv2.detach()
+                        ricci_curvature = graph_curvature_main_torch(dims, weights_inv, device=device, model_dims=model_dims, probability_w=weights_inv2, alpha=alpha)
+                        
+                    elif metric.lower() == "w4":
+                        weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims, edge_dims)
+                        weights_inv = weights_inv1.detach()
+                        weights_inv2 = weights_inv2.detach()
+                        # weights_inv3 = weights_inv3.detach()
+                        node_abs = torch.abs(nodes_ori)
+                        edge_array = edge_array.detach().clone().to(device) 
+                        edge_array_abs = torch.abs(edge_array)
+            
+                        # print(len(weights_inv[0]), len(weights_inv[weights_inv!=np.inf]))
+
+                        ricci_curvature = graph_curvature_main_torch(
+                            dims, weights_inv, device=device, model_dims=model_dims,
+                            probability_w=(weights_inv2, weights_inv1), alpha=alpha,
+                            nodes=node_abs, edge_value = edge_array_abs, threshold = thre,
+                            # layers_to_process=[2,3,4]
+                        )
+                        print(ricci_curvature)
+                        res.append(ricci_curvature[0])
+                    else:
+                        raise Exception("Invalid graph metric, metric should be {q_ngr, q_inv, q_exp}!")
+                    
                 res_l[l].append((ricci_curvature, weights_inv.shape[0], dims, nodes_ori.cpu()))
                 
         print(f'Finished label {l}.')
+        print(res)
                     
-    with open(res_path + model_full_n + metric + '_' + dataset + "_res_correct.pkl", 'wb') as file:
-        pickle.dump(res_l, file)
+    # with open(res_path + model_full_n + metric + '_' + dataset + "_res_correct.pkl", 'wb') as file:
+    #     pickle.dump(res_l, file)
     # with open(res_path + model_full_n + metric + '_' + dataset + "_res_misclassified.pkl", 'wb') as file:
     #     pickle.dump(res_l_non, file)
 

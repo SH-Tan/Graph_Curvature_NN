@@ -452,7 +452,7 @@ def remove_edge_cnn_union_w(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -486,7 +486,7 @@ def remove_edge_cnn_union_w(args):
     para_dims = cal_parameters(model_dims)
     
     total_edge = sum(edge_dims)
-    total_para = sum(para_dims)
+    total_para = sum(para_dims) # - para_dims[0]
     
     print(edge_dims)
     print(para_dims)
@@ -630,6 +630,38 @@ def remove_edge_cnn_union_w(args):
     neg_acc_clean = []
     pos_acc_clean = []
     
+    
+    total = sample_size * len(selected_classes)
+    
+    # Compute which layer each edge (i) belongs to
+    layers_i = [
+        np.searchsorted(prefix_dims, i, side='right') - 1
+        if item == "edge" else None
+        for (item, i, j, f, c) in pos_freq_edges_sorted
+    ]
+
+    # Filter: keep all weights, and only edges not in layer 9
+    pos_filtered_edges = [
+        (item, i, j, f, c)
+        for (item, i, j, f, c), layer in zip(pos_freq_edges_sorted, layers_i)
+        if (not ((item == "weight") and (i[0]==0)))
+    ]
+    
+    # Compute which layer each edge (i) belongs to
+    layers_i = [
+        np.searchsorted(prefix_dims, i, side='right') - 1
+        if item == "edge" else None
+        for (item, i, j, f, c) in neg_freq_edges_sorted
+    ]
+
+    # Filter: keep all weights, and only edges not in layer 9
+    neg_filtered_edges = [
+        (item, i, j, f, c)
+        for (item, i, j, f, c), layer in zip(neg_freq_edges_sorted, layers_i)
+        if (not ((item == "weight") and (i[0]==0)))
+    ]
+    
+    
     neg_edges_only = [
         (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in neg_freq_edges_sorted
     ]
@@ -652,8 +684,7 @@ def remove_edge_cnn_union_w(args):
     
     print(neg_remove_num)
     print(pos_remove_num)
-    
-    total = sample_size * len(selected_classes)
+
     
     # Build frequency mappings
     neg_freq_map = compute_removal_mapping(neg_freq_edges_sorted, total_edges=total)

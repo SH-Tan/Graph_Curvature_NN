@@ -305,6 +305,19 @@ class LeNet_custom_v2(nn.Module):
         edge_v = torch.cat([torch.reshape(w * x1[np.newaxis,:].T, (1, cur_shape)) for x1 in x_tmp], axis=0)
         return edge_v
     
+    
+    def w_norm(self, w, alpha=1):
+        # alpha = 0: keep raw weights
+        # alpha = 1: full min-max normalization
+
+        w_abs = torch.abs(w)
+        min_vals = w_abs.min(dim=1, keepdim=True)[0]
+        max_vals = w_abs.max(dim=1, keepdim=True)[0]
+        w_minmax = ((w_abs - min_vals) / (max_vals - min_vals + 1e-6)) + 1e-6
+
+        # Soft mixture
+        return (1 - alpha) * w_abs + alpha * w_minmax
+    
 
     # calculate edge weights
     def NN_info_batch(self, x):
@@ -331,6 +344,7 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.CNN_edges(ones_tmp, k1, 1, 2)).cpu().detach()
+        ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.activation(self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2))
@@ -356,6 +370,7 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
         
         ones = (self.CNN_edges(ones_tmp, k2, 2, 3)).cpu().detach()
+        ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
 
         x = self.activation(self.CNN(x, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3))
@@ -383,6 +398,7 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc1, 3, 4)).cpu().detach()
+        ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.activation(self.linear(x, self.fc1, 3, 4))
@@ -407,6 +423,7 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc2, 4, 5)).cpu().detach()
+        ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.activation(self.linear(x, self.fc2, 4, 5))
@@ -431,6 +448,7 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc3, 5, 6)).cpu().detach()
+        ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.fc3(x)
@@ -448,7 +466,7 @@ class LeNet_custom_v2(nn.Module):
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
         
-        return edge_value, nodes, weights
+        return edge_value, nodes, weights, nodes
     
     
     def normalization_weight_w1(self, nodes, weights, dims, model_dims):

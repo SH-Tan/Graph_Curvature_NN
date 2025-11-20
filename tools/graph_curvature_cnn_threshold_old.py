@@ -26,6 +26,7 @@ _distribution_out = {}
 _alpha = 0.
 _pre_n = 0
 _nodes_value = None
+_layers = 0
 _edge_value = None
 
 
@@ -80,12 +81,12 @@ def out_distribution(model_dims, sp1, device='cuda', thre = 0.5, dist = None):
                 # mask valid edges (not inf)
                 mask = (cur_sp[:, src_idx, :] != 0) # [dst_size]
                 
-                # if (i > 0):
-                #     prev_layer = model_dims[i]
-                #     prev_n = prev_layer["name"]
+                if (i > 0):
+                    prev_layer = model_dims[i]
+                    prev_n = prev_layer["name"]
                     
-                #     if prev_n == "input":
-                #         mask = (cur_sp[:, src_idx, :] != inf) & (cur_sp[:, src_idx, :] > 0)
+                    if prev_n == "input":
+                        mask = (cur_sp[:, src_idx, :] != inf) & (cur_sp[:, src_idx, :] > 0)
 
                 if not torch.any(mask):
                     # print(i,j,src_idx)
@@ -138,19 +139,62 @@ def out_distribution(model_dims, sp1, device='cuda', thre = 0.5, dist = None):
 
     return out_dist_matrices
 
+
+
+
+def min_plus_mult(a, b, chunk_k=256, chunk_p=256):
+    """
+    Fully chunked min-plus matrix multiplication.
+    a: [batch, m, n]
+    b: [batch, n, p]
+    Returns: [batch, m, p]
+    """
+    batch_size, m, n = a.shape
+    _, n2, p = b.shape
+    assert n == n2, "Dimension mismatch"
+
+    device = a.device
+    result = torch.full((batch_size, m, p), float('inf'), device=device)
+
+    for start_k in range(0, n, chunk_k):
+        end_k = min(start_k + chunk_k, n)
+
+        # Preselect the shared chunk
+        a_chunk = a[:, :, start_k:end_k]  # [B, m, chunk_k]
+        b_chunk = b[:, start_k:end_k, :]  # [B, chunk_k, p]
+
+        for start_p in range(0, p, chunk_p):
+            end_p = min(start_p + chunk_p, p)
+
+            # Compute partial block
+            b_sub = b_chunk[:, :, start_p:end_p]  # [B, chunk_k, chunk_p]
+
+            # [B, m, chunk_k, chunk_p]
+            # Add in broadcasted manner
+            partial = (a_chunk.unsqueeze(3) + b_sub.unsqueeze(1)).min(dim=2)[0]  # [B, m, chunk_p]
+
+            # Update the result for this block
+            result[:, :, start_p:end_p] = torch.minimum(result[:, :, start_p:end_p], partial)
+
+    return result
             
 
 
 # For CNN
 def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='cuda'):
     batch_size, weight_num = weights.shape
-    layers = sorted(model_dims.items(), key=lambda x: x[0])
-    num_layers = len(layers)
+    
+    total_layers = len(model_dims) - 1  # transitions
+
     shortest_paths = {}
     inf = torch.tensor(float('inf'), device=device)
     
+    # ---- Determine computation region ----
+    start_layer = max(0, min(_layers) - 1)
+    end_layer = min(total_layers - 1, max(_layers) + 1)
+    
     weight_idx = 0
-    for i in range(num_layers - 1):
+    for i in range(start_layer, end_layer + 1):
         l = i + 1
         current_layer = model_dims[l+1]
         src_size = prefix_dims[i+1] - prefix_dims[i]
@@ -170,6 +214,7 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
             # CNN layer handling
             k = current_layer['dim']['kernel']
             s = current_layer['dim']['stride']
+            # p = current_layer['dim']['padding']
             in_size = model_dims[l]['dim']['out_size']
             pre_ch = model_dims[l]['dim'].get('channel', 1)
             cur_ch = current_layer['dim']['channel']
@@ -197,118 +242,85 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
             for c in range(cur_ch):
                 for p in range(patches):
                     cur_idx = unfolded[0,p].tolist()
-                    
-                    w = weights[:, weight_idx : end_col]
-                    adjacent_m[:, cur_idx, n] = w
+                    adjacent_m[:, cur_idx, n] = weights[:, weight_idx : end_col]
                     
                     weight_idx = end_col
                     end_col = weight_idx + step*pre_ch
                     n += 1
             
             shortest_paths[(i, i+1)] = torch.where(adjacent_m > 0, adjacent_m, inf)
+            
+    def adaptive_chunksize(max_chunk=512):
+        free_mem, total_mem = torch.cuda.mem_get_info()
+        gb_free = free_mem / (1024**3) 
+        if gb_free < 10:
+            return 64, 64
+        elif gb_free < 20:
+            return 128, 128
+        elif gb_free < 30:
+            return 256, 256
+        else:
+            return max_chunk, max_chunk
 
-    def min_plus_mult(a, b):
-        return (a.unsqueeze(3) + b.unsqueeze(1)).min(dim=2)[0]
-
-    # Dynamic programming approach remains the same
-    for d in range(2, num_layers):
-        for i in range(num_layers - d):
+    for d in range(2, end_layer - start_layer + 2):
+        for i in range(start_layer, end_layer - d + 2):
             j = i + d
-            current_min = torch.full((batch_size, prefix_dims[i+1]-prefix_dims[i], 
-                                    prefix_dims[j+1]-prefix_dims[j]), float('inf'), device=device)
-            
-            for k in range(i+1, j):
-                if (i, k) in shortest_paths and (k, j) in shortest_paths:
-                    # if i == 0:
-                    current_min = torch.minimum(current_min, 
-                                            min_plus_mult(shortest_paths[(i, k)], 
-                                                        shortest_paths[(k, j)]))
-                        
-                    # # else:
-                    # A = shortest_paths[(i, k)]
-                    # B = shortest_paths[(k, j)]
+            if j > end_layer + 1:
+                continue
 
-                    # # ---- MASK A by node activity in layer k ----
-                    # dst_start_k = prefix_dims[i]
-                    # dst_end_k   = prefix_dims[i+1]
-                    # dst_idx_k   = torch.arange(dst_start_k, dst_end_k, device=device)
-                    # dst_active_k = (_nodes_value[:, dst_idx_k] > 0).unsqueeze(-1)  # (B,1,size_k)
+            # Loop over possible intermediate k
+            for k in range(i + 1, j):
+                if (i, k) not in shortest_paths or (k, j) not in shortest_paths:
+                    continue
 
-                    # # Mask only the destination slice
-                    # A_slice = A[:, 0:(dst_end_k-dst_start_k), :]  # (B, src_dim, size_k)
+            # Initialize current_min tensor
+            current_min = torch.full(
+                (batch_size,
+                prefix_dims[i + 1] - prefix_dims[i],
+                prefix_dims[j + 1] - prefix_dims[j]),
+                float('inf'),
+                device=device
+            )
 
-                    # A_slice = torch.where(dst_active_k, A_slice, inf)
+            # Adaptive chunk sizes for available memory
+            chunk_k, chunk_p = adaptive_chunksize()
+            print(f"({i}, {j}) -> shape={current_min.shape}, chunk=({chunk_k},{chunk_p})")
 
-                    # # ---- MASK B by node activity in layer j ----
-                    # dst_start_j = prefix_dims[k]
-                    # dst_end_j   = prefix_dims[k+1]
-                    # dst_idx_j   = torch.arange(dst_start_j, dst_end_j, device=device)
-                    
-                    # dst_active_j = (_nodes_value[:, dst_idx_j] > 0).unsqueeze(-1)  # (B,1,size_j)
-                    
-                    # # Mask only the destination slice
-                    # B_slice = B[:, 0:(dst_end_j-dst_start_j), :]  # (B, src_dim, size_k)
+            # Combine intermediate paths
+            for k in range(i + 1, j):
+                if (i, k) not in shortest_paths or (k, j) not in shortest_paths:
+                    continue
 
-                    # B_slice = torch.where(dst_active_j, B_slice, inf)
+                current_min = torch.minimum(
+                    current_min,
+                    min_plus_mult(
+                        shortest_paths[(i, k)],
+                        shortest_paths[(k, j)],
+                        chunk_k=chunk_k,
+                        chunk_p=chunk_p
+                    )
+                )
 
-                    # # B_masked = torch.where(dst_active_j, B, inf)
-
-                    # # ---- Compute masked min-plus multiplication ----
-                    # C = min_plus_mult(A_slice, B_slice)
-
-                    # # ---- Take elementwise minimum ----
-                    # current_min = torch.minimum(current_min, C)
-            
+            # Save computed shortest path for this (i, j)
             shortest_paths[(i, j)] = current_min
             
-    return shortest_paths
-
-
-# For FC
-def layerwise_shortest_path_torch(dims, weights, device='cuda'):
-    batch_size, edge_num = weights.shape
-    num_layers = len(dims)
-    shortest_paths = {}
-
-    weight_idx = 0
-    for i in range(num_layers - 1):
-        src_size, dst_size = dims[i], dims[i+1]
-        direct_dist = weights[:, weight_idx:weight_idx+src_size*dst_size]
-        direct_dist = direct_dist.view(batch_size, src_size, dst_size)
-        inf = torch.tensor(float('inf'), device=device)
-        shortest_paths[(i, i+1)] = torch.where(direct_dist > 0, direct_dist, inf)
-        weight_idx += src_size * dst_size
-
-    def min_plus_mult(a, b):
-        return (a.unsqueeze(3) + b.unsqueeze(1)).min(dim=2)[0]
-
-    for d in range(2, num_layers):
-        for i in range(num_layers - d):
-            j = i + d
-            current_min = torch.full((batch_size, dims[i], dims[j]), float('inf'), device=device)
-            
-            for k in range(i+1, j):
-                if (i, k) in shortest_paths and (k, j) in shortest_paths:
-                    current_min = torch.minimum(current_min, 
-                                              min_plus_mult(shortest_paths[(i, k)], 
-                                                          shortest_paths[(k, j)]))
-            
-            
-            shortest_paths[(i, j)] = current_min
-
     return shortest_paths
 
 
 def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda', thre = 0.5):
     batch_size, weight_num = weights.shape
-    layers = sorted(model_dims.items(), key=lambda x: x[0])
-    num_layers = len(layers)
+    
+    total_layers = len(model_dims) - 1  # transitions
+
     shortest_paths = {}
     inf = torch.tensor(float('inf'), device=device)
     
+    # ---- Determine computation region ----
+    start_layer = max(0, min(_layers) - 1)
+    end_layer = min(total_layers - 1, max(_layers) + 1)
     
     weight_idx = 0
-    for i in range(num_layers - 1):
+    for i in range(start_layer, end_layer + 1):
         l = i + 1
         current_layer = model_dims[l+1]
         src_size = prefix_dims[i+1] - prefix_dims[i]
@@ -318,9 +330,6 @@ def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda', thre = 0
             # FC layer handling
             direct_dist = weights[:, weight_idx:weight_idx+src_size*dst_size]
             direct_dist = direct_dist.view(batch_size, src_size, dst_size)
-            
-            # shortest_paths[(i, i + 1)] = torch.where(direct_dist > 0, direct_dist, inf)
-            # weight_idx += src_size * dst_size
 
             edge_slice = _edge_value[:,weight_idx:weight_idx+src_size*dst_size]  # [batch_size, dst_size]
             edge_slice = edge_slice.view(batch_size, src_size, dst_size)
@@ -385,29 +394,23 @@ def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda', thre = 0
             for c in range(cur_ch):
                 for p in range(patches):
                     cur_idx = unfolded[0, p].tolist()
-                    
                     # Slice edge values and weights
                     edge_slice = _edge_value[:, weight_idx:end_col]       # [batch_size, num_edges]
                     weight_slice = weights[:, weight_idx:end_col]        # [batch_size, num_edges]
-     
+                    
                     # Get non-zero indices (since batch_size=1, we can drop batch dimension)
                     nonzero_mask = edge_slice != 0
                     
                     if thre <= 0:
                         adjacent_m[:, cur_idx, n] = weight_slice
-
                     else:
-                        # Values of valid edges
                         valid_vals = edge_slice[nonzero_mask]
-                        
-                        if not torch.any(nonzero_mask):
-                            continue
 
                         # Compute quantile threshold among valid entries
                         threshold_val = torch.quantile(valid_vals, thre)
                         
                         # Select top edges (>= threshold)
-                        top_mask = (edge_slice >= threshold_val)
+                        top_mask = (edge_slice >= threshold_val) & nonzero_mask
                         
                         # Set all non-top edges to inf explicitly
                         weight_slice[~top_mask] = inf
@@ -422,27 +425,9 @@ def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda', thre = 0
                     n += 1
 
             # Save result
-            shortest_paths[(i, i + 1)] = adjacent_m
+            shortest_paths[(i, i + 1)] = adjacent_m # torch.where(adjacent_m > 0, adjacent_m, inf)
             
     return shortest_paths
-
-
-def fc_adjacent_layer(dims, weights, device='cuda'):
-    batch_size, edge_num = weights.shape
-    num_layers = len(dims)
-    shortest_paths = {}
-
-    weight_idx = 0
-    for i in range(num_layers - 1):
-        src_size, dst_size = dims[i], dims[i+1]
-        direct_dist = weights[:, weight_idx:weight_idx+src_size*dst_size]
-        direct_dist = direct_dist.view(batch_size, src_size, dst_size)
-        inf = torch.tensor(float('inf'), device=device)
-        shortest_paths[(i, i+1)] = torch.where(direct_dist > 0, direct_dist, inf)
-        weight_idx += src_size * dst_size
-        
-    return shortest_paths
-
 
 
 def compute_full_path_matrix(b, in_neigh, out_neigh):
@@ -494,14 +479,9 @@ def process_edge(b, edge):
     if (i_layer, j_layer) not in _sp_dict:
         return (b, i, j, 2.0)
     
-    if ((_nodes_value[:,i] == 0)):
-        return (b, i, j, 1.0)
-    
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
-    
-    # sp *= (1./_nodes_value[:,i])
 
     # In-neighbors distribution
     if i_layer == 0:
@@ -525,7 +505,7 @@ def process_edge(b, edge):
     # out_neigh = [j]
         
     # Out-neighbors distribution
-    if j_layer == len(_dims)-1 or (_nodes_value[:,j] == 0):
+    if j_layer == len(_dims)-1:
         nu = np.array([1.0])
         out_neigh = [j]
     else:
@@ -554,45 +534,12 @@ def process_edge(b, edge):
     if d_np.size == 0 or np.isinf(d_np).all():
         return (b,i, j, 2.0)
     
-    try:
-        m = ot.emd2(mu, nu, d_np)
-    except:
-        print(_nodes_value[:,i],_nodes_value[:,j])
+    m = ot.emd2(mu, nu, d_np)
     
     # if np.isinf(d_np).any():
     #     print(i_layer, np.isinf(d_np).sum(), np.isnan(d_np).sum(), m)
-    
-    # === Debug print section for layer 4 ===
-    # if i_layer == 3 and (sp <= 1./0.36 or sp >= 1./ 0.00001):
-    #     print(_prefix_dims)
-    #     print(f"\nEdge ({i} → {j}), sp = {sp}")
-    #     print("Node values:")
-    #     print("  i node:", _nodes_value[:, i])
-    #     print("  j node:", _nodes_value[:, j])
-        
-    #     # Sort and print top 10 μ
-    #     mu_sorted_idx = np.argsort(mu)[::-1][:10]
-    #     print("\nTop 10 μ values:")
-    #     for rank, idx in enumerate(mu_sorted_idx):
-    #         node_id = in_neigh[idx] if idx < len(in_neigh) else None
-    #         node_val = _nodes_value[:, node_id] if node_id is not None else None
-    #         print(f"  {rank+1}. μ[{idx}] = {mu[idx]:.4f}, node = {node_id}, value = {node_val}")
 
-    #     # Sort and print top 10 ν
-    #     nu_sorted_idx = np.argsort(nu)[::-1][:10]
-    #     print("\nTop 10 ν values:")
-    #     for rank, idx in enumerate(nu_sorted_idx):
-    #         node_id = out_neigh[idx] if idx < len(out_neigh) else None
-    #         node_val = _nodes_value[:, node_id] if node_id is not None else None
-    #         print(f"  {rank+1}. ν[{idx}] = {nu[idx]:.4f}, node = {node_id}, value = {node_val}")
-
-    curv = 1.0 - m/sp
-    
-    # if _nodes_value[:,i] == 0:
-    #     if curv < 0:
-    #         curv = 0
-            
-    return (b, i, j, curv)
+    return (b, i, j, 1.0 - m/sp)
 
 
 
@@ -601,7 +548,7 @@ def _wrap_compute_single_edge(stuff):
     return process_edge(*stuff)
 
 
-def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., pre_n=0, layers_to_process=None, nodes = None, edge_value = None, threshold = 0.5, nodes_alpha = None):
+def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., pre_n=0, layers_to_process=None, nodes = None, edge_value = None, threshold = 0.5):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
@@ -610,6 +557,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     global _alpha
     global _pre_n
     global _nodes_value
+    global _layers
     global _edge_value
     
     _alpha = alpha
@@ -625,41 +573,19 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     _prefix_dims = np.array(prefix_dims)
     
     layers = layers_to_process or list(range(len(dims)-1))
-    inf = torch.tensor(float('inf'), device=device)
+    _layers = layers
 
     # Compute shortest paths
     if model_dims:
         sp_dict = cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='cuda')
-        # _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
         if probability_w != None:
-            sp1 = cnn_adjacent_layer(model_dims, probability_w[0].to(device), prefix_dims, device='cuda', thre = threshold)
+            sp1 = cnn_adjacent_layer(model_dims, probability_w.to(device), prefix_dims, device='cuda', thre = threshold)
             sp2 = out_distribution(model_dims, sp1, device='cuda', thre = threshold, dist = sp_dict)
-            # sp3 = cnn_adjacent_layer(model_dims, probability_w[1].to(device), prefix_dims, device='cuda', thre = threshold)
-    else:
-        sp_dict = layerwise_shortest_path_torch(dims, weights, device)
-        # _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
-        if probability_w != None:
-            probability_w = probability_w.to(device)
-            sp1 = fc_adjacent_layer(dims, probability_w, device)
+
             
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
     
     # print(_sp_dict)
-    
-    # print("sp1")
-    # for (i, j), cur_sp in sorted(sp1.items()):
-    #     print(i, j, cur_sp[:, 0:2, 0:10])
-    #     input()
-        
-    # print("sp2")
-    # for (i, j), cur_sp in sorted(sp2.items()):
-    #     print(i, j, cur_sp[:, 0:2, 0:10])
-    #     input()
-    
-    # print("sp3")
-    # for (i, j), cur_sp in sorted(sp3.items()):
-    #     print(i, j, cur_sp[:, 0:2, 0:10])
-    #     input()
 
     if probability_w != None:
         dis_w_in = sp1
@@ -677,16 +603,15 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     
     # Precompute distributions using dictionary
     distribution_in, distribution_out = {}, {}
-    for layer in range(1, len(dims)):
+    for layer in range(min(_layers), max(_layers)+3):
         if (layer-1, layer) in dis_w_in:
             path_sub = dis_w_in[(layer-1, layer)]
-            # path_sub = torch.where(path_sub > 0, path_sub, inf)
             mask = (path_sub != float('inf')) & (path_sub != 0)
             weights_layer = torch.exp(-(path_sub ** 2)) * mask
             # weights_layer = (1./path_sub) * mask
             sum_weights = weights_layer.sum(dim=1)
 
-            dist_prev = ((1.0 - _alpha) * weights_layer) / sum_weights[:, None, :]
+            dist_prev = ((1.0 - _alpha) * weights_layer) / sum_weights.unsqueeze(1)
             
             indices = torch.where(sum_weights <= EPSILON)[1]
 
@@ -697,18 +622,24 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             
             distribution_in[layer] = dist_prev.cpu().numpy()
             
-    for layer in range(len(dims)-1):
+            # free memory
+            del path_sub, mask, weights_layer, sum_weights, dist_prev
+            torch.cuda.empty_cache()
+            
+    del dis_w_in
+    torch.cuda.empty_cache()
+            
+    for layer in range(min(_layers)-1, max(_layers)+2):
         if (layer, layer+1) in dis_w_out:
             path_sub = dis_w_out[(layer, layer+1)]
-            # path_sub = torch.where(path_sub > 0, path_sub, inf)
+
             mask = (path_sub != float('inf')) & (path_sub != 0)
             
             weights_layer = torch.exp(-(path_sub ** 2)) * mask
-                
             # weights_layer = (1./path_sub) * mask
             sum_weights = weights_layer.sum(dim=2)
             
-            dist_next = ((1.0 - _alpha) * weights_layer) / sum_weights[:, :, None]
+            dist_next = ((1.0 - _alpha) * weights_layer) / sum_weights.unsqueeze(-1)
   
             indices = torch.where(sum_weights <= EPSILON)[1]
 
@@ -718,11 +649,19 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             dist_next *= mask
      
             distribution_out[layer] = dist_next.cpu().numpy()
-
-
+            
+            # free memory
+            del path_sub, mask, weights_layer, sum_weights, dist_next
+            torch.cuda.empty_cache()
+            
+    del dis_w_out
+    torch.cuda.empty_cache()
+ 
     _distribution_in = distribution_in
     _distribution_out = distribution_out
-    _nodes_value = _nodes_value.cpu().numpy()
+    
+    del distribution_in, distribution_out
+    torch.cuda.empty_cache()
 
     # Generate edges from original weights
     edges = []
@@ -744,7 +683,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     del sp_dict
     torch.cuda.empty_cache()
 
-    # print(len(args))
+    print(len(args))
+    
     # Process edges in parallel
     ricci_results = defaultdict(list)
     with get_context('fork').Pool(processes=proc) as pool:
