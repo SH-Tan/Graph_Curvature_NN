@@ -210,6 +210,9 @@ def process_batches_memory_efficient(
     neg_edge_sets_by_layer = defaultdict(lambda: defaultdict(list))
     pos_edge_sets_by_layer = defaultdict(lambda: defaultdict(list))
     
+    neg_weight_sets = []
+    pos_weight_sets = []
+    
     for f in all_files:
         label, sample_id = extract_label_id(f)
         if label not in selected_classes:
@@ -228,7 +231,16 @@ def process_batches_memory_efficient(
         use_data = [new_data]
 
         for ricci in use_data:
-            neg_e, pos_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
+            neg_e, pos_e, cnn_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
+            
+            for layer, edges in cnn_e.items():
+                layer_info = model_dims[layer + 2]
+                if layer_info["name"] == "cnn":
+                    pos_curv_weights, neg_curv_weights = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
+                    # all_weight_sets.append([(w, c, f, pos_f, neg_f) for w, (c, f, pos_f, neg_f) in weight_curv.items()])
+                    neg_weight_sets.append([(w, c, f, z) for w, (c, f, z) in neg_curv_weights.items()])
+                    pos_weight_sets.append([(w, c, f, z) for w, (c, f, z) in pos_curv_weights.items()])
+
 
             # --- Accumulate per-layer curvatures ---
             for edge_dict, acc in zip([neg_e, pos_e], [neg_edge_sets_by_layer, pos_edge_sets_by_layer]):
@@ -236,6 +248,8 @@ def process_batches_memory_efficient(
                     layer_info = model_dims[layer + 2]
 
                     if layer_info["name"] == "cnn":
+                        print("error layer: ", layer)
+                        continue
                         # CNN: accumulate per weight index
                         edge_to_weight = cnn_edge_to_weight_map[layer]  # precomputed
                         for (i, j, curv) in edges:
@@ -257,6 +271,19 @@ def process_batches_memory_efficient(
             break
 
     print("Finished processing all required batches.")
+    
+    
+    # --- Combine weight-level curvature into per-layer accumulators ---
+    for weight_list in neg_weight_sets:
+        for (w, curv, freq, z) in weight_list:
+            layer = w[0]       # first index is layer id
+            neg_edge_sets_by_layer[layer][w].append(curv)
+
+    for weight_list in pos_weight_sets:
+        for (w, curv, freq, z) in weight_list:
+            layer = w[0]
+            pos_edge_sets_by_layer[layer][w].append(curv)
+        
 
     # Negatives
     neg_freq_dict = reduce_and_sort_all(neg_edge_sets_by_layer, sort_desc=False)
@@ -356,37 +383,42 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 
+
 def get_top_c(curvature, b, prefix_dims):
-    neg_e = defaultdict(list)  # i_layer -> list of (i, j, curvature)
+    neg_e = defaultdict(list)
     pos_e = defaultdict(list)
-    zero_e = defaultdict(list)
+    cnn_e = defaultdict(list)
 
-    # Optional: cache for searchsorted results
-    layer_cache = {}
+    # Precompute a fast index-to-layer map
+    def find_layer(index):
+        return np.searchsorted(prefix_dims, index, side='right') - 1
 
-    def get_layer(node_idx):
-        if node_idx not in layer_cache:
-            layer_cache[node_idx] = np.searchsorted(prefix_dims, node_idx, side='right') - 1
-        return layer_cache[node_idx]
+    for batch in range(b):
+        ricci_curv = np.array(curvature)
+        
+        # Filter out large curvature values
+        valid = ricci_curv[ricci_curv[:, 2] <= 1.0]
+        valid[:, :2] = valid[:, :2].astype(int)
+        
+        for i, j, curr in valid:
+            # curr = min(curr, 1.0)  # clip curvature
+            i = int(i)
+            j = int(j)
 
-    # curvature = curvature[0]
-    
-    for i, j, curr in curvature:
-        if curr > 1:
-            continue
+            i_layer = find_layer(i)
+            j_layer = find_layer(j)
+            
+            if i_layer not in [6,7,8]:
+                cnn_e[i_layer].append((i,j,curr))
 
-        i, j = int(i), int(j)
+            # Only keep edges between adjacent layers (excluding input and first hidden)
+            elif j_layer == i_layer + 1:
+                if curr < 0:
+                    neg_e[i_layer].append((i, j, curr))
+                elif curr >= 0:
+                    pos_e[i_layer].append((i, j, curr))
 
-        i_layer = get_layer(i)
-        j_layer = get_layer(j)
-
-        if j_layer == i_layer + 1:
-            if curr < 0:
-                neg_e[i_layer].append((i, j, curr))
-            else:  # curr >= 0
-                pos_e[i_layer].append((i, j, curr))
-
-    return neg_e, pos_e
+    return neg_e, pos_e, cnn_e
 
 
 def cal_dims(model_dims):
@@ -584,47 +616,9 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_perlayer_para.pdf'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_perlayer_para_all.png'), dpi=300)
     plt.close()
 
-
-
-from collections import Counter
-def count_edge_frequency_and_sort(edge_sets, sort_curvature_desc=False):
-    """
-    edge_sets: list of dicts. Each dict maps layer -> list of (i, j, curvature)
-
-    Returns:
-        sorted_edges_by_layer: dict mapping layer -> list of (i, j, freq, avg_curvature), sorted
-    """
-    freq_dict = defaultdict(lambda: defaultdict(int))      # layer -> (i, j) -> count
-    curv_dict = defaultdict(lambda: defaultdict(list))     # layer -> (i, j) -> list of curvatures
-
-    for edge_dict in edge_sets:
-        for layer, edges in edge_dict.items():
-            for (i, j, curv) in edges:
-                key = (i, j)
-                freq_dict[layer][key] += 1
-                curv_dict[layer][key].append(curv)
-
-    sorted_edges_by_layer = dict()
-
-    for layer in freq_dict:
-        edge_stats = []
-        for (i, j), count in freq_dict[layer].items():
-            curv_list = curv_dict[layer][(i, j)]
-            avg_curv = sum(curv_list) / len(curv_list)
-            edge_stats.append((i, j, count, avg_curv))
-
-        # Sort by freq descending, then avg curvature ascending or descending
-        if sort_curvature_desc:
-            edge_stats.sort(key=lambda x: (-x[2], -x[3]))  # freq ↓, curvature ↓
-        else:
-            edge_stats.sort(key=lambda x: (-x[2], x[3]))   # freq ↓, curvature ↑
-
-        sorted_edges_by_layer[layer] = edge_stats
-
-    return sorted_edges_by_layer
 
 
 
@@ -699,8 +693,8 @@ def remove_edge_cifar_union_perlayer_w_small(args):
     if activation.lower() == "relu":
         # from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
         from tools.vgg9_custom_relu import VGG9_CIFAR10
-    elif activation.lower() == "tanh":
-        from tools.vgg16_custom_tanh import VGG16_CIFAR10
+    # elif activation.lower() == "tanh":
+    #     from tools.vgg9_custom_tanh import VGG9_CIFAR10
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -721,7 +715,7 @@ def remove_edge_cifar_union_perlayer_w_small(args):
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
-        model_name = "vgg16_wd_"
+        model_name = "vgg9_10_wd_"
         
     model_name = model_name + activation + "_s2.pth"
         
@@ -739,7 +733,7 @@ def remove_edge_cifar_union_perlayer_w_small(args):
 
     # print(f'Finish read pickle file...')
     
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_perlayer_para.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_perlayer_para_all.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(save_path)

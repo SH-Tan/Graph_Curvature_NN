@@ -27,6 +27,7 @@ _alpha = 0.
 _pre_n = 0
 _nodes_value = None
 _edge_value = None
+_edge_dict = None
 
 
 
@@ -494,14 +495,19 @@ def process_edge(b, edge):
     if (i_layer, j_layer) not in _sp_dict:
         return (b, i, j, 2.0)
     
-    if ((_nodes_value[:,i] == 0)):
-        return (b, i, j, 1.0)
+    node_i = _nodes_value[:,i].item()
+    node_j = _nodes_value[:,j].item()
     
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
+    edge_v = _edge_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
     
-    # sp *= (1./_nodes_value[:,i])
+    if (((i_layer > 0) and (node_i == 0))):
+        return (b, i, j, 1.0)
+    
+    if (((i_layer > 0) and (node_j == 0) and (edge_v >= 0))):
+        return (b, i, j, 1.0)
 
     # In-neighbors distribution
     if i_layer == 0:
@@ -520,12 +526,9 @@ def process_edge(b, edge):
             in_neigh = np.array(range(_prefix_dims[i_layer-1], _prefix_dims[i_layer]))
             in_neigh = list(in_neigh[non_zero]) + [i]
             mu = np.hstack((mu[non_zero], np.array(_alpha)))
-            
-    # nu = np.array([1.0])
-    # out_neigh = [j]
         
     # Out-neighbors distribution
-    if j_layer == len(_dims)-1 or (_nodes_value[:,j] == 0):
+    if j_layer == len(_dims)-1:
         nu = np.array([1.0])
         out_neigh = [j]
     else:
@@ -611,6 +614,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     global _pre_n
     global _nodes_value
     global _edge_value
+    global _edge_dict
     
     _alpha = alpha
     _pre_n = pre_n
@@ -634,7 +638,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
         if probability_w != None:
             sp1 = cnn_adjacent_layer(model_dims, probability_w[0].to(device), prefix_dims, device='cuda', thre = threshold)
             sp2 = out_distribution(model_dims, sp1, device='cuda', thre = threshold, dist = sp_dict)
-            # sp3 = cnn_adjacent_layer(model_dims, probability_w[1].to(device), prefix_dims, device='cuda', thre = threshold)
+            sp3 = cnn_adjacent_layer(model_dims, edge_value, prefix_dims, device='cuda', thre = threshold)
     else:
         sp_dict = layerwise_shortest_path_torch(dims, weights, device)
         # _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
@@ -643,6 +647,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             sp1 = fc_adjacent_layer(dims, probability_w, device)
             
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
+    _edge_dict = {k: v.cpu().numpy() for k, v in sp3.items()}
     
     # print(_sp_dict)
     

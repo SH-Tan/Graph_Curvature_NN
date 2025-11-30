@@ -54,8 +54,6 @@ def aggregate_cnn_weight_curvature(edge_curvatures, edge_to_weight):
         weight_freq_dict: dict[(out_ch,in_ch,kh,kw)] = frequency
     """
     curv_sum = defaultdict(float)
-    pos_freq = defaultdict(int)
-    neg_freq = defaultdict(int)
     freq = defaultdict(int)
 
     for (i, j, c) in edge_curvatures:
@@ -65,32 +63,14 @@ def aggregate_cnn_weight_curvature(edge_curvatures, edge_to_weight):
         w = edge_to_weight[key]
         curv_sum[w] += c
         freq[w] += 1
-        if c >= 0:
-            pos_freq[w] += 1
-        else:
-            neg_freq[w] += 1
 
-    weight_curv = {w: (curv_sum[w], freq[w], pos_freq[w], neg_freq[w]) for w in freq}
+    weight_curv = {w: (curv_sum[w], freq[w]) for w in freq}
 
-    neg_curv_weights = {
-        w: (curv_sum[w], neg_freq[w])
-        for w in weight_curv
-        if curv_sum[w] < 0
-    }
-
-    pos_curv_weights = {
-        w: (curv_sum[w], pos_freq[w])
-        for w in weight_curv
-        if curv_sum[w] >= 0
-    }
-    
-    return pos_curv_weights, neg_curv_weights
+    return weight_curv, freq
 
 
-def count_weight_frequency(weight_sets, model_dims= None, total_example = 1):
+def count_weight_frequency(weight_sets, model_dims= None):
     freq = Counter()
-    pos_freq = Counter()
-    neg_freq = Counter()
     curvature_sum = defaultdict(float)
 
     for weight_set in weight_sets:

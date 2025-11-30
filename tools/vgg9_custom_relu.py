@@ -264,8 +264,35 @@ class VGG9_CIFAR10(nn.Module):
         return y
 
 
+    def w_norm(self, w, alpha=1.0):
+        # alpha = 0: keep raw weights
+        # alpha = 1: full min-max normalization
+
+        w_abs = torch.abs(w)
+        min_vals = w_abs.min(dim=1, keepdim=True)[0]
+        max_vals = w_abs.max(dim=1, keepdim=True)[0]
+        w_minmax = ((w_abs - min_vals) / (max_vals - min_vals + 1e-6)) + 1e-6
+
+        # Soft mixture
+        return (1 - alpha) * w_abs + alpha * w_minmax
+    
+    
+    def channel_norm(self, w, alpha=1.0):
+        # w shape: [B, C, H, W] or [B, 1, H, W]
+
+        w_abs = torch.abs(w)
+
+        # reduce over spatial dims, not channel dim
+        min_vals = w_abs.amin(dim=(2,3), keepdim=True)
+        max_vals = w_abs.amax(dim=(2,3), keepdim=True)
+
+        w_minmax = (w_abs - min_vals) / (max_vals - min_vals + 1e-6) + 1e-6
+
+        return (1 - alpha) * w_abs + alpha * w_minmax
+    
+    
     # CNN using unfold/fold, calculate edges values
-    def CNN_edges(self, ori, kernel, l1, l2):
+    def CNN_edges(self, ori, kernel, l1, l2, norm = 0):
         # get l1, l2 info
         l2_nodes, l2_size, l2_channel, l2_dim, _, l2_padding, l2_pool = self.get_layer_info(l2)
         
@@ -283,6 +310,9 @@ class VGG9_CIFAR10(nn.Module):
         for i in range(l2_channel):
             y = (ori_unf).transpose(1,2)
             edges = (y.unsqueeze(1) * w[None,i,:,:]).transpose(2,3)
+            if norm == 1:
+                edges = self.channel_norm(edges)
+
             res = edges if res == None else torch.cat((res, edges), axis=1)
             
         dim = res.shape[1]*res.shape[2]*res.shape[3]
@@ -315,20 +345,6 @@ class VGG9_CIFAR10(nn.Module):
         
         return x_norm
     
-    
-    def w_norm(self, w, alpha=1.0):
-        # alpha = 0: keep raw weights
-        # alpha = 1: full min-max normalization
-
-        w_abs = torch.abs(w)
-        min_vals = w_abs.min(dim=1, keepdim=True)[0]
-        max_vals = w_abs.max(dim=1, keepdim=True)[0]
-        w_minmax = ((w_abs - min_vals) / (max_vals - min_vals + 1e-6)) + 1e-6
-
-        # Soft mixture
-        return (1 - alpha) * w_abs + alpha * w_minmax
-
-    
 
     # calculate edge weights
     def NN_info_batch(self, x):
@@ -339,7 +355,8 @@ class VGG9_CIFAR10(nn.Module):
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         nodes_before = x.view(-1, self.num_flat_features(x))
-        nodes = self.node_norm(x)
+        # nodes = self.node_norm(x)
+        nodes = x.view(-1, self.num_flat_features(x))
         
         # CNN 1_1
         k1 = self.conv1_1.weight
@@ -348,8 +365,8 @@ class VGG9_CIFAR10(nn.Module):
         edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
         
-        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
-        ones = self.w_norm(ones)
+        ones = (self.CNN_edges(ones_tmp, k1, i,j,norm=1)).cpu().detach()
+        # ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.bn1_1(self.CNN(x, k1, b1.unsqueeze(1),i,j))
@@ -362,8 +379,9 @@ class VGG9_CIFAR10(nn.Module):
         
         # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
 
-        x_norm = self.node_norm(x)
-
+        # x_norm = self.node_norm(x)
+        x_norm = x.view(-1, self.num_flat_features(x))
+        
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
         
@@ -374,8 +392,8 @@ class VGG9_CIFAR10(nn.Module):
         edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
         
-        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
-        ones = self.w_norm(ones)
+        ones = (self.CNN_edges(ones_tmp, k1, i,j,norm=1)).cpu().detach()
+        # ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.bn2_1(self.CNN(x, k1, b1.unsqueeze(1),i,j))
@@ -388,7 +406,8 @@ class VGG9_CIFAR10(nn.Module):
         
         # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
 
-        x_norm = self.node_norm(x)
+        # x_norm = self.node_norm(x)
+        x_norm = x.view(-1, self.num_flat_features(x))
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
@@ -400,8 +419,8 @@ class VGG9_CIFAR10(nn.Module):
         edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
         
-        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
-        ones = self.w_norm(ones)
+        ones = (self.CNN_edges(ones_tmp, k1, i,j,norm=1)).cpu().detach()
+        # ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.bn3_1(self.CNN(x, k1, b1.unsqueeze(1),i,j))
@@ -414,7 +433,8 @@ class VGG9_CIFAR10(nn.Module):
         
         # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
 
-        x_norm = self.node_norm(x)
+        # x_norm = self.node_norm(x)
+        x_norm = x.view(-1, self.num_flat_features(x))
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
@@ -426,8 +446,8 @@ class VGG9_CIFAR10(nn.Module):
         edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
         
-        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
-        ones = self.w_norm(ones)
+        ones = (self.CNN_edges(ones_tmp, k1, i,j,norm=1)).cpu().detach()
+        # ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.bn3_2(self.CNN(x, k1, b1.unsqueeze(1),i,j))
@@ -439,8 +459,9 @@ class VGG9_CIFAR10(nn.Module):
         ones_tmp = torch.ones_like(x)
         
         # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
-
-        x_norm = self.node_norm(x)
+        
+        # x_norm = self.node_norm(x)
+        x_norm = x.view(-1, self.num_flat_features(x))
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
@@ -452,8 +473,8 @@ class VGG9_CIFAR10(nn.Module):
         edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
         
-        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
-        ones = self.w_norm(ones)
+        ones = (self.CNN_edges(ones_tmp, k1, i,j,norm=1)).cpu().detach()
+        # ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.bn4_1(self.CNN(x, k1, b1.unsqueeze(1),i,j))
@@ -465,8 +486,9 @@ class VGG9_CIFAR10(nn.Module):
         ones_tmp = torch.ones_like(x)
         
         # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
-
-        x_norm = self.node_norm(x)
+        
+        # x_norm = self.node_norm(x)
+        x_norm = x.view(-1, self.num_flat_features(x))
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
@@ -478,8 +500,8 @@ class VGG9_CIFAR10(nn.Module):
         edge_v = (self.CNN_edges(x_tmp, k1, i,j)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
         
-        ones = (self.CNN_edges(ones_tmp, k1, i,j)).cpu().detach()
-        ones = self.w_norm(ones)
+        ones = (self.CNN_edges(ones_tmp, k1, i,j,norm=1)).cpu().detach()
+        # ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.bn4_2(self.CNN(x, k1, b1.unsqueeze(1),i,j))
@@ -492,7 +514,8 @@ class VGG9_CIFAR10(nn.Module):
         
         # nodes = torch.cat((nodes, x_cov3.view(-1, self.num_flat_features(x_cov3))), axis = 1)
 
-        x_norm = self.node_norm(x)
+        # x_norm = self.node_norm(x)
+        x_norm = x.view(-1, self.num_flat_features(x))
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
@@ -564,7 +587,6 @@ class VGG9_CIFAR10(nn.Module):
         nodes = torch.cat((nodes, x_norm), axis=1)
         
         return edge_value, nodes, weights, nodes_before
-    
 
 
     def normalization_weight_w3(self, nodes, weights, dims, model_dims):
@@ -790,10 +812,10 @@ class VGG9_CIFAR10(nn.Module):
                         # Shape: (batch_size, fan-in)
                         node_slice = torch.abs(nodes[:, neighbors])
                         
-                        # min_vals = node_slice.min(dim=1, keepdim=True)[0]
-                        # max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                        min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                        max_vals = node_slice.max(dim=1, keepdim=True)[0]
                         
-                        # node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+                        node_slice = (node_slice - min_vals) / (max_vals - min_vals)
                         
                        # Prevent divide-by-zero
                         weights_inv2[:, in_edges] = 1./(torch.abs(node_slice))

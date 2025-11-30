@@ -88,7 +88,7 @@ if __name__=='__main__':
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
                 # remove_edge_cifar_union_perlayer_w(args)
-                remove_edge_cifar_union_perlayer_w_small(args)
+                remove_edge_cifar_union_w_small(args)
                 # remove_w_cifar100(args)
                 # remove_edge_cifar100_union_combined(args)
                 # remove_wadan_cifar(args)

@@ -217,7 +217,7 @@ def community_check_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -333,14 +333,14 @@ def community_check_cnn(args):
                     # weights_inv3 = weights_inv3.detach()
                     node_abs = torch.abs(nodes_ori)
                     edge_array = edge_array.detach().clone().to(device) 
-                    edge_array_abs = torch.abs(edge_array)
+                    # edge_array_abs = torch.abs(edge_array)
         
                     # print(len(weights_inv[0]), len(weights_inv[weights_inv!=np.inf]))
 
                     ricci_curvature = graph_curvature_main_torch(
                         dims, weights_inv, device=device, model_dims=model_dims,
                         probability_w=(weights_inv2, weights_inv1), alpha=alpha,
-                        nodes=node_abs, edge_value = edge_array_abs, threshold = 0.,
+                        nodes=node_abs, edge_value = edge_array, threshold = 0.,
                         nodes_alpha = torch.abs(node_alpha),
                         # layers_to_process=[2,3,4]
                     )

@@ -178,6 +178,7 @@ def test(n, loader, eps, alpha, iters, device):
 def get_top_c(curvature, b, prefix_dims):
     neg_e = defaultdict(list)
     pos_e = defaultdict(list)
+    cnn_e = defaultdict(list)
 
     # Precompute a fast index-to-layer map
     def find_layer(index):
@@ -197,15 +198,18 @@ def get_top_c(curvature, b, prefix_dims):
 
             i_layer = find_layer(i)
             j_layer = find_layer(j)
+            
+            if i_layer in [0,1]:
+                cnn_e[i_layer].append((i,j,curr))
 
             # Only keep edges between adjacent layers (excluding input and first hidden)
-            if j_layer == i_layer + 1:
+            elif j_layer == i_layer + 1:
                 if curr < 0:
                     neg_e[i_layer].append((i, j, curr))
                 elif curr >= 0:
                     pos_e[i_layer].append((i, j, curr))
 
-    return neg_e, pos_e
+    return neg_e, pos_e, cnn_e
 
 
 
@@ -353,7 +357,7 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all_w.pdf'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_w_posum.pdf'), dpi=300)
     plt.close()
     
 
@@ -452,7 +456,7 @@ def remove_edge_cnn_union_w(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -486,7 +490,7 @@ def remove_edge_cnn_union_w(args):
     para_dims = cal_parameters(model_dims)
     
     total_edge = sum(edge_dims)
-    total_para = sum(para_dims) # - para_dims[0]
+    total_para = sum(para_dims) #- para_dims[0]
     
     print(edge_dims)
     print(para_dims)
@@ -517,7 +521,7 @@ def remove_edge_cnn_union_w(args):
     test_cleanacc = test_clean(net_full, test_loader)
     # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)   
 
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_para.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_para_posum.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(save_path)
@@ -570,7 +574,15 @@ def remove_edge_cnn_union_w(args):
             for l in selected_classes:
                 idx = 0
                 for (ricci, batch, dim, node) in res_dict[l]:
-                    neg_e, pos_e = get_top_c(ricci, 1, prefix_dims)
+                    neg_e, pos_e, cnn_e = get_top_c(ricci, 1, prefix_dims)
+                    
+                    for layer, edges in cnn_e.items():
+                        layer_info = model_dims[layer + 2]
+                        if layer_info["name"] == "cnn":
+                            pos_curv_weights, neg_curv_weights = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
+                            # all_weight_sets.append([(w, c, f, pos_f, neg_f) for w, (c, f, pos_f, neg_f) in weight_curv.items()])
+                            neg_weight_sets.append([(w, c, f) for w, (c, f) in neg_curv_weights.items()])
+                            pos_weight_sets.append([(w, c, f) for w, (c, f) in pos_curv_weights.items()])
 
                     # === Aggregate CNN edges → per-weight curvatures ===
                     for layer, edges in neg_e.items():
@@ -597,10 +609,12 @@ def remove_edge_cnn_union_w(args):
 
             neg_freq_fc = count_edge_frequency(neg_edge_sets)
             pos_freq_fc = count_edge_frequency(pos_edge_sets)
+            
+            # all_freq_cnn = count_weight_frequency(all_weight_sets, model_dims)
 
             neg_freq_cnn = count_weight_frequency(neg_weight_sets, model_dims)
             pos_freq_cnn = count_weight_frequency(pos_weight_sets, model_dims)
-            
+
             neg_all = (
                 [("edge", i, j, f, c) for (i, j, f, c) in neg_freq_fc] +
                 [("weight", w, None, f, c) for (w, f, c) in neg_freq_cnn]

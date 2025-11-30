@@ -482,7 +482,7 @@ class LeNet_custom_v2(nn.Module):
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
         alpha = F.tanh(nodes_ori)/(nodes_ori)
-        alpha = torch.where(nodes_ori == 0, 0.0, alpha)
+        alpha = torch.where(nodes_ori == 0, 1.0, alpha)
 
         # print(torch.max(nodes_ori))
         

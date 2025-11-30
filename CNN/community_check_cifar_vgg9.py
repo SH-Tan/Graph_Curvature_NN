@@ -14,12 +14,13 @@ import copy
 import pickle
 import time
 import pandas as pd
+from openpyxl import Workbook
 
 import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature_cnn_threshold import graph_curvature_main_torch
+from tools.graph_curvature_cnn_threshold_opzimized import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -224,7 +225,7 @@ def community_check_cifar_vgg9(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -322,11 +323,11 @@ def community_check_cifar_vgg9(args):
                         with torch.no_grad():
                             net_full.eval()
                             img = images[idx].to(device, non_blocking=True)
-                            edge_array, nodes_ori, output, _ = net_full.NN_info_batch(img.unsqueeze(0))
+                            edge_array, nodes_ori, output, nodes_before = net_full.NN_info_batch(img.unsqueeze(0))
 
                             weights = output.detach().clone().to(device)
                             nodes_ori = nodes_ori.detach().clone().to(device)
-                            # node_before = node_before.detach().clone().to(device)
+                            # node_before = nodes_before.detach().clone().cpu()
                             # edge_array = edge_array.detach().clone().to(device)   # keep same device!
 
                             # mask = (edge_array == 0)
@@ -334,7 +335,7 @@ def community_check_cifar_vgg9(args):
                             
                             edge_array = edge_array.detach().clone().cpu()
                             
-                            del output, img
+                            del output, img, nodes_before
                             torch.cuda.empty_cache()
                             
                             if metric.lower() == "w1":
@@ -365,9 +366,9 @@ def community_check_cifar_vgg9(args):
                                 weights_inv = weights_inv1.detach().cpu()
                                 weights_inv_p = weights_inv2.detach().cpu()
                                 node_abs = torch.abs(nodes_ori)
-                                edge_array_abs = torch.abs(edge_array)
+                                # edge_array_abs = torch.abs(edge_array)
 
-                                del weights, weights_inv1, weights_inv2
+                                del weights, weights_inv1, weights_inv2, nodes_ori
                                 torch.cuda.empty_cache()
 
                                 weight_idx = 0
@@ -387,7 +388,7 @@ def community_check_cifar_vgg9(args):
                                     # Move only the current slice to GPU
                                     w_inv_slice = weights_inv[:, start:end].to(device, non_blocking=True)
                                     w_inv2_slice = weights_inv_p[:, start:end].to(device, non_blocking=True)
-                                    edge_slice = edge_array_abs[:, start:end].to(device, non_blocking=True)
+                                    edge_slice = edge_array[:, start:end].to(device, non_blocking=True)
                                     # edge_slice_noninv = edge_array[:, start:end].to(device, non_blocking=True)
 
                                     # Compute Ricci curvature for current layer(s)
@@ -402,13 +403,28 @@ def community_check_cifar_vgg9(args):
                                         nodes=node_abs,  # stays on CPU, passed as reference
                                         edge_value=edge_slice,
                                         threshold=0.,
-                                        layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key]
+                                        layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key],
                                     )
                                     
+                                    # with pd.ExcelWriter(f"output_{l_key}.xlsx", engine="xlsxwriter") as writer:
+                                    #     for key, arr in _sp_dict.items():
+                                    #         pd.DataFrame(arr[0]).to_excel(
+                                    #             writer, sheet_name=str(key)[:31], index=False, header=False
+                                    #         )
+                                            
+                                    # print("finished")
+                                    # with open(f"output_{l_key}.txt", "w") as f:
+                                    #     for i, (batch_key, triples) in enumerate(ricci_results.items()):
+                                    #         for i, j, curv in triples:
+                                    #             f.write(f"{curv:.6f}\n")
+                                    #         f.write("\n")
+                                            
+                                    # print("finished")
+                                            
                                     for batch_key, triples in ricci_results.items():
                                         combined.extend(triples)   # append all (i, j, val) tuples
                                         
-                                     # Free per-loop tensors
+                                    # Free per-loop tensors
                                     del w_inv_slice, w_inv2_slice, edge_slice, ricci_results
                                     torch.cuda.empty_cache()
                             else:
@@ -424,7 +440,7 @@ def community_check_cifar_vgg9(args):
                             print(f"[Saved] Label {l}, Example {label_progress[l]} → {save_name}")
 
                             # Final cleanup
-                            del edge_array, nodes_ori, node_abs, edge_array_abs, combined
+                            del edge_array, node_abs, combined
                             torch.cuda.empty_cache()
 
                             label_progress[l] += 1
