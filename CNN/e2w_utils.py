@@ -75,7 +75,7 @@ def aggregate_cnn_weight_curvature(edge_curvatures, edge_to_weight):
             curv_sum[w] += c
         freq[w] += 1
         
-        if c > 0:
+        if c >= 0:
             pos_freq[w] += 1
         # elif c == 0:
         #     zero_freq[w] += 1
@@ -93,7 +93,7 @@ def aggregate_cnn_weight_curvature(edge_curvatures, edge_to_weight):
     pos_curv_weights = {
         w: (curv_sum[w]/pos_freq[w], pos_freq[w], zero_freq[w])
         for w in weight_curv
-        if (curv_sum[w] > 0) # and (curv_sum[w]/pos_freq[w] < 1)
+        if (curv_sum[w] >= 0) # and (curv_sum[w]/pos_freq[w] < 1)
     }
     
     return pos_curv_weights, neg_curv_weights

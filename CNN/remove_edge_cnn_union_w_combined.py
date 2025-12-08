@@ -9,11 +9,12 @@ import torch.nn as nn
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import copy
-from .e2w_utils import *
 
 import pickle
 import time
 import pandas as pd
+
+from .e2w_utils_new import *
 
 import sys
 sys.path.append("..")
@@ -52,8 +53,8 @@ nodes_num = 2118
 
 model_dims = {
     1: {"name": "input", "dim": {"channel": 1, "out_size": 28}},
-    2: {"name": "cnn", "dim": {"channel": 6, "kernel": 6, "stride": 2, "out_size": 12, "padding":0}},
-    3: {"name": "cnn", "dim": {"channel": 16, "kernel": 6, "stride": 2, "out_size": 4, "padding":0}},
+    2: {"name": "cnn", "dim": {"channel": 6, "kernel": 6, "stride": 2, "out_size": 12, "padding": 0}},
+    3: {"name": "cnn", "dim": {"channel": 16, "kernel": 6, "stride": 2, "out_size": 4, "padding": 0}},
     4: {"name": "fc", "dim": {"out_size": 120}},
     5: {"name": "fc", "dim": {"out_size": 84}},
     6: {"name": "fc", "dim": {"out_size": 10}}
@@ -148,6 +149,32 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 
+
+# def get_top_c(curvature, b, prefix_dims):
+#     neg_e = set()
+#     pos_e = set()
+    
+#     for batch in range(b):
+#         ricci_curv = np.array(curvature[batch])  # shape (N, 3)
+
+#         # Filter values with valid curvature (<= 1)
+#         valid = ricci_curv[ricci_curv[:, 2] <= 1]
+
+#         # Convert to int for indexing
+#         valid[:, 0:2] = valid[:, 0:2].astype(int)
+
+#         for i, j, curr in valid:
+#             i, j = int(i), int(j)
+#             # i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
+#             if curr < 0:
+#                 neg_e.add((i, j, curr))
+#             elif curr >= 0:
+#                 pos_e.add((i, j, curr))
+
+#     return neg_e, pos_e
+
+
+
 def get_top_c(curvature, b, prefix_dims):
     neg_e = defaultdict(list)
     pos_e = defaultdict(list)
@@ -161,7 +188,7 @@ def get_top_c(curvature, b, prefix_dims):
         ricci_curv = np.array(curvature[batch])
         
         # Filter out large curvature values
-        valid = ricci_curv[ricci_curv[:, 2] <= 1.0]
+        valid = ricci_curv[ricci_curv[:, 2] < 20.0]
         valid[:, :2] = valid[:, :2].astype(int)
         
         for i, j, curr in valid:
@@ -208,62 +235,56 @@ def cal_dims(model_dims):
     return dims
 
 
-
-def plot_frequency_distribution(summary, res_path, mark):
-    """
-    Plot the distribution of edge frequencies from the summary.
-    Each entry in summary is a tuple (_, _, freq, _)
-    """
-    freqs = [freq for (_, _, freq, _) in summary]
-    freq_counter = Counter(freqs)
     
-    # Sort by frequency
-    sorted_freqs = sorted(freq_counter.items(), key=lambda x: x[0])
-    x = [f for f, _ in sorted_freqs]
-    y = [c for _, c in sorted_freqs]
-
-    plt.figure(figsize=(8, 5))
-    plt.bar(x, y, color='skyblue', edgecolor='black')
-    plt.xlabel("Frequency")
-    plt.ylabel("Number of Edges")
-    plt.title("Edge Frequency Distribution")
-    plt.grid(True, linestyle="--", alpha=0.5)
-    plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{mark}_hist_perlayer.pdf'), dpi=300)
-    plt.close()
-
-
-
-def compute_removal_mapping(summary, total_edges):
+def compute_removal_mapping(summary, total_edges=1, reversed=True):
     """
-    Given summary = list of tuples (_, _, freq, _),
-    compute mapping of frequency thresholds to removal counts,
-    with ratio = freq / total_edges.
-
-    Returns list of (count, freq, count_str, ratio_str)
+    Given summary = list of tuples (_, _, freq, _, freq_ratio),
+    build mapping: (count, freq, count_str, ratio_str)
     """
-    freqs = sorted({freq for (_,_, _, freq, _) in summary}, reverse=True)
+
+    freqs = sorted({round(item[4], 1) for item in summary}, reverse=reversed)
+
     mapping = []
     for freq_threshold in freqs:
-        count = sum(1 for (_,_, _, freq, _) in summary if freq >= freq_threshold)
-        ratio = freq_threshold / total_edges
-        mapping.append((count, freq_threshold, str(count), f"{ratio:.2f}"))
+        if reversed:
+            count = sum(1 for item in summary if item[4] >= freq_threshold)
+        else:
+            count = sum(1 for item in summary if item[4] <= freq_threshold)
+
+        mapping.append((count, freq_threshold, str(count), f"{freq_threshold:.2f}"))
+
+    # Ensure sorted by count ascending
+    mapping = sorted(mapping, key=lambda x: x[0])
+
     return mapping
 
-# 2. Match removal counts to closest frequency thresholds
 def match_frequencies(remove_counts, freq_map):
     """
-    For each removal count, find the ratio string from freq_map where count >= remove_count.
-
-    freq_map is a list of tuples (count, freq, ratio_str, ratio_float_str).
-
-    Returns list of strings (ratio_float_str), or 'N/A' if no match found.
+    Always return a label for each removal count by:
+      - Using the smallest ratio if rc < min count
+      - Using the largest ratio if rc > max count
+      - Otherwise the first count >= rc
     """
+
+    # Extract the count and ratio_float_str columns
+    counts = [c for (c, _, _, _) in freq_map]
+    ratios = [ratio for (_, _, _, ratio) in freq_map]
+
     labels = []
     for rc in remove_counts:
-        matched_ratio = next((ratio for (count, _, _, ratio) in freq_map if count >= rc), None)
-        labels.append(matched_ratio if matched_ratio is not None else 'N/A')
+        if rc <= counts[0]:
+            labels.append(ratios[0])
+        elif rc >= counts[-1]:
+            labels.append(ratios[-1])
+        else:
+            # normal case: find the first count >= rc
+            for c, _, _, ratio in freq_map:
+                if c >= rc:
+                    labels.append(ratio)
+                    break
+
     return labels
+
 
     
     
@@ -302,7 +323,6 @@ def plot_curve(
             elif i == len(pos_remove_num)-2:
                 plt.annotate(r, (x, y), textcoords='offset points',
                     xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
-
 
     # Labels and title
     plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
@@ -347,115 +367,33 @@ def plot_curve(
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
-    legend = plt.legend(fontsize=22, loc='best')  # create the legend
+    legend = plt.legend(fontsize=22, loc=5)  # create the legend
     for text in legend.get_texts():
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_perlayer_para_posum_minus.pdf'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_w_posum_combined_min.png'), dpi=300)
     plt.close()
-
-
-
-# def plot_curve(neg_acc_clean, pos_acc_clean, neg_freq_ratios, pos_freq_ratios, neg_freq_thresholds, pos_freq_thresholds, label, save_path):
-#     plt.figure(figsize=(8, 6))
-
-#     plt.plot(neg_freq_ratios, neg_acc_clean, 'r-o', label='Negative Edge Removal')
-#     plt.plot(pos_freq_ratios, pos_acc_clean, 'b-o', label='Positive Edge Removal')
-
-#     for x, y, freq in zip(neg_freq_ratios, neg_acc_clean, neg_freq_thresholds):
-#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, 10),
-#                      ha='center', fontsize=8, color='red')
-
-#     for x, y, freq in zip(pos_freq_ratios, pos_acc_clean, pos_freq_thresholds):
-#         plt.annotate(f"{freq}", (x, y), textcoords="offset points", xytext=(0, -15),
-#                      ha='center', fontsize=8, color='blue')
-
-#     plt.xlabel("Edge Frequency Threshold (ratio × max frequency)")
-#     plt.ylabel("Accuracy")
-#     plt.title(f"Accuracy vs Frequency Ratio for Label {label}")
-#     plt.xticks(neg_freq_ratios)  # or freq_ratios if shared
-#     plt.gca().invert_xaxis()
-#     plt.grid(True)
-#     plt.legend()
-#     plt.tight_layout()
-#     plt.savefig(os.path.join(save_path, f'_fre_curve_label_{label}.png'))
-#     plt.close()
-
+    
 
 
 from collections import Counter
-def count_edge_frequency_and_sort(edge_sets, sort_curvature_desc=False):
-    """
-    edge_sets: list of dicts. Each dict maps layer -> list of (i, j, curvature)
+def count_edge_frequency(edge_sets):
+    freq = Counter()
+    curvature_sum = defaultdict(float)
 
-    Returns:
-        sorted_edges_by_layer: dict mapping layer -> list of (i, j, freq, avg_curvature), sorted
-    """
-    freq_dict = defaultdict(lambda: defaultdict(int))      # layer -> (i, j) -> count
-    curv_dict = defaultdict(lambda: defaultdict(list))     # layer -> (i, j) -> list of curvatures
+    # for edge_set in edge_sets:
+    for i, j, c in edge_sets:
+        key = tuple(sorted((i, j)))  # normalize direction for undirected edges
+        freq[key] += 1
+        curvature_sum[key] += c
 
-    for edge_dict in edge_sets:
-        for layer, edges in edge_dict.items():
-            for (i, j, curv) in edges:
-                key = (i, j)
-                freq_dict[layer][key] += 1
-                curv_dict[layer][key].append(curv)
+    results = []
+    for key in freq:
+        avg_curv = curvature_sum[key] / freq[key]
+        results.append((key[0], key[1], freq[key], avg_curv))
 
-    sorted_edges_by_layer = dict()
-
-    for layer in freq_dict:
-        edge_stats = []
-        for (i, j), count in freq_dict[layer].items():
-            curv_list = curv_dict[layer][(i, j)]
-            avg_curv = sum(curv_list) / len(curv_list)
-            edge_stats.append((i, j, count, avg_curv))
-
-        # Sort by freq descending, then avg curvature ascending or descending
-        if sort_curvature_desc:
-            edge_stats.sort(key=lambda x: (-x[2], -x[3]))  # freq ↓, curvature ↓
-        else:
-            edge_stats.sort(key=lambda x: (-x[2], x[3]))   # freq ↓, curvature ↑
-
-        sorted_edges_by_layer[layer] = edge_stats
-
-    return sorted_edges_by_layer
-
-
-
-def reduce_and_sort_all(edge_acc, sort_desc=False):
-    """
-    Reduce edge_acc to average curvature per edge/weight and frequency,
-    and return a sorted list per layer.
-    
-    For FC: keys are (i,j)
-    For CNN: keys are weight indices (e.g., tuples like (out_ch, in_ch, kh, kw))
-    """
-    layer_sorted = {}
-
-    for layer, items_dict in edge_acc.items():
-        items = []
-
-        for key, curvs in items_dict.items():
-            freq = len(curvs)
-            avg_curv = sum(curvs) / freq
-            # distinguish FC vs CNN by type/length of key
-            if isinstance(key, tuple) and len(key) == 2:
-                # FC edge
-                items.append(("edge", key[0], key[1], freq, avg_curv))
-            else:
-                # CNN weight index
-                items.append(("weight", key, None, freq, avg_curv))
-
-        # Sort by freq descending, then avg curvature ascending or descending
-        if sort_desc:
-            items.sort(key=lambda x: (-x[3], -x[4]))  # freq ↓, curvature ↓
-        else:
-            items.sort(key=lambda x: (-x[3], x[4]))   # freq ↓, curvature ↑
-        layer_sorted[layer] = items
-
-    return layer_sorted
-
+    return results
 
 
 
@@ -519,7 +457,9 @@ def cal_parameters(model_dims):
 
 
 
-def remove_edge_cnn_union_perlayer_w(args):
+
+
+def remove_edge_cnn_union_w_combined(args):
     seed = 29
     
     # set random seed
@@ -539,10 +479,7 @@ def remove_edge_cnn_union_perlayer_w(args):
     train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
     # sep_dataloader = utils.sep_label(test_dataset, selected_classes, bs=5000)
-    
-    eps = [0.03]
-    dims = cal_dims(model_dims)
-    
+
     model_type = args.model_type
     model_pre_name = args.model_name
     res_path = args.mnist_res_path
@@ -563,12 +500,12 @@ def remove_edge_cnn_union_perlayer_w(args):
 
     dims = cal_dims(model_dims)
     prefix_dims = np.cumsum([0] + dims).tolist()
-    edge_dims = cal_edges(model_dims)
     
+    edge_dims = cal_edges(model_dims)
     para_dims = cal_parameters(model_dims)
     
     total_edge = sum(edge_dims)
-    total_para = sum(para_dims)
+    total_para = sum(para_dims) #- para_dims[0]
     
     print(edge_dims)
     print(para_dims)
@@ -597,10 +534,9 @@ def remove_edge_cnn_union_perlayer_w(args):
     remove_num = []
   
     test_cleanacc = test_clean(net_full, test_loader)
-    # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
+    # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)   
 
-    
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_perlayer_para_posum.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_para_combined_min.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(save_path)
@@ -609,47 +545,46 @@ def remove_edge_cnn_union_perlayer_w(args):
         with open(save_path, 'rb') as f:
             data_loaded = pickle.load(f)
             # Access the contents
-            neg_freq_dict = data_loaded.get('neg', [])
-            pos_freq_dict = data_loaded.get('pos', [])
+            neg_freq_edges_sorted = data_loaded.get('neg', [])
+            pos_freq_edges_sorted = data_loaded.get('pos', [])
         print("File loaded successfully!")
     else:
-        correct_suffix_res = dataset + "_res_correct.pkl"
-        res_name = model_full_n + metric + '_' + correct_suffix_res
-
-        with open(data_path + res_name, 'rb') as file:
-            res_dict = pickle.load(file)   
-            
-        # Precompute edge->weight mapping per CNN layer
-        cnn_edge_to_weight_map = {}
-        for layer in range(len(model_dims)-2):  # skip input/output placeholder layers
-            layer_info = model_dims[layer+2]
-            if layer_info["name"] == "cnn":
-                pre_dim = model_dims[layer+1]["dim"]
-                pre_ch = pre_dim["channel"]
-                in_size = pre_dim["out_size"]
-                cur_dim = layer_info["dim"]
-                cur_ch = cur_dim["channel"]
-                kernel = cur_dim["kernel"]
-                stride = cur_dim["stride"]
-                padding = cur_dim["padding"]
-
-                cnn_edge_to_weight_map[layer] = build_cnn_edge_weight_map(
-                    pre_ch, in_size, cur_ch, kernel, stride, padding, layer, prefix_dims
-                )
-                
-        # Prepare storage per layer
-        neg_edge_sets_by_layer = defaultdict(lambda: defaultdict(list))
-        pos_edge_sets_by_layer = defaultdict(lambda: defaultdict(list))
-        
-        neg_weight_sets = []
-        pos_weight_sets = []
-        
+    
         with open(res_path + "edge_cnn_" + ".txt", "a+") as ff:
             ff.write(f'For model {model_name}: \n')
             ff.write(f'The clean accuracy for original model is {test_cleanacc}\n')
             # print(f'Current label {l}: \n')
             # ff.write(f'Current label {l}: \n')
+            
+            correct_suffix_res = dataset + "_res_correct.pkl" 
+            res_name = model_full_n + metric + '_' + correct_suffix_res
 
+            with open(data_path + res_name, 'rb') as file:
+                res_dict = pickle.load(file) 
+
+            neg_weight_sets = []
+            pos_weight_sets = []
+            edge_sets = []
+            
+            # Precompute edge->weight mapping per CNN layer
+            cnn_edge_to_weight_map = {}
+            for layer in range(len(model_dims)-2):  # skip input/output placeholder layers
+                layer_info = model_dims[layer+2]
+                if layer_info["name"] == "cnn":
+                    pre_dim = model_dims[layer+1]["dim"]
+                    pre_ch = pre_dim["channel"]
+                    in_size = pre_dim["out_size"]
+                    cur_dim = layer_info["dim"]
+                    cur_ch = cur_dim["channel"]
+                    kernel = cur_dim["kernel"]
+                    stride = cur_dim["stride"]
+                    padding = cur_dim["padding"]
+
+                    cnn_edge_to_weight_map[layer] = build_cnn_edge_weight_map(
+                        pre_ch, in_size, cur_ch, kernel, stride, padding, layer, prefix_dims
+                    )
+
+            
             for l in selected_classes:
                 idx = 0
                 for (ricci, batch, dim, node) in res_dict[l]:
@@ -660,130 +595,196 @@ def remove_edge_cnn_union_perlayer_w(args):
                         if layer_info["name"] == "cnn":
                             pos_curv_weights, neg_curv_weights = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
                             # all_weight_sets.append([(w, c, f, pos_f, neg_f) for w, (c, f, pos_f, neg_f) in weight_curv.items()])
-                            neg_weight_sets.append([(w, c, f) for w, (c, f, p) in neg_curv_weights.items()])
-                            pos_weight_sets.append([(w, c, f) for w, (c, f, p) in pos_curv_weights.items()])
+                            neg_weight_sets.append([(w, c, f, z) for w, (c, f,z) in neg_curv_weights.items()])
+                            pos_weight_sets.append([(w, c, f, z) for w, (c, f,z) in pos_curv_weights.items()])
 
-                    # --- Accumulate per-layer curvatures ---
-                    for edge_dict, acc in zip([neg_e, pos_e], [neg_edge_sets_by_layer, pos_edge_sets_by_layer]):
-                        for layer, edges in edge_dict.items():
-                            layer_info = model_dims[layer + 2]
+                    # === Aggregate CNN edges → per-weight curvatures ===
+                    for layer, edges in neg_e.items():
+                        layer_info = model_dims[layer + 2]
+                        if layer_info["name"] == "cnn":
+                            weight_curv, freq = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
+                            neg_weight_sets.append([(w, c, f) for w, (c, f) in weight_curv.items()])
+                        else:
+                            # FC layer — keep per-edge
+                            edge_sets.extend(edges)
 
-                            if layer_info["name"] == "cnn":
-                                # CNN: accumulate per weight index
-                                edge_to_weight = cnn_edge_to_weight_map[layer]  # precomputed
-                                for (i, j, curv) in edges:
-                                    w_idx = edge_to_weight[(i, j)]  # e.g., (l, out_ch, in_ch, kh, kw)
-                                    acc[layer][w_idx].append(curv)
+                    for layer, edges in pos_e.items():
+                        layer_info = model_dims[layer + 2]
+                        if layer_info["name"] == "cnn":
+                            weight_curv, freq = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
+                            pos_weight_sets.append([(w, c, f) for w, (c, f) in weight_curv.items()])
+                        else:
+                            edge_sets.extend(edges)
 
-                            elif layer_info["name"] == "fc":
-                                # FC: accumulate per edge
-                                for (i, j, curv) in edges:
-                                    acc[layer][(i, j)].append(curv)
-        
                     idx += 1
                     if idx >= sample_size:
                         break
                     
-            # --- Combine weight-level curvature into per-layer accumulators ---
-            for weight_list in neg_weight_sets:
-                for (w, curv, freq) in weight_list:
-                    layer = w[0]       # first index is layer id
-                    neg_edge_sets_by_layer[layer][w].append(curv)
 
-            for weight_list in pos_weight_sets:
-                for (w, curv, freq) in weight_list:
-                    layer = w[0]
-                    pos_edge_sets_by_layer[layer][w].append(curv)
+            freq_fc = count_edge_frequency(edge_sets)
+            
+            all_weight_sets = pos_weight_sets + neg_weight_sets
 
-            # Negatives
-            neg_freq_dict = reduce_and_sort_all(neg_edge_sets_by_layer, sort_desc=False)
+            freq_cnn = count_weight_frequency(all_weight_sets, model_dims, para_dims)
 
-            # Positives
-            pos_freq_dict = reduce_and_sort_all(pos_edge_sets_by_layer,  sort_desc=True)
+            p_all = (
+                [("edge", i, j, f, c) for (i, j, f, c) in freq_fc] +
+                [("weight", w, None, f, c) for (w, f, c, p) in freq_cnn]
+            )
+
+            neg_freq_edges_sorted = sorted(p_all, key=lambda x: (x[4]))  # by frequency desc, curvature asc
+            pos_freq_edges_sorted = sorted(p_all, key=lambda x: (-x[4])) # by frequency desc, curvature desc
 
             data_to_save = {
-                'neg': neg_freq_dict,
-                'pos': pos_freq_dict
+                'neg': neg_freq_edges_sorted,
+                'pos': pos_freq_edges_sorted
             }
 
             with open(save_path, 'wb') as f:
                 pickle.dump(data_to_save, f)  # use dict to avoid defaultdict issues
-                
-                
-                
-    for layer in sorted(neg_freq_dict.keys() | pos_freq_dict.keys()):
-        neg_acc_clean = []
-        pos_acc_clean = []
-        
-        neg_summary = neg_freq_dict.get(layer, [])
-        pos_summary = pos_freq_dict.get(layer, [])
+
+            ff.write(f'\nIt has {len(neg_freq_edges_sorted)} negative curvature edges, {len(pos_freq_edges_sorted)} positive curvature egdes .. \n')
+            # ff.write(f'The average minimum c is {np.mean(mini_c_list)}, median = {np.median(mini_c_list)}\n\n')
     
-        neg_edges = [
-            (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in neg_summary
-        ]
-        pos_edges = [
-            (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in pos_summary
-        ]
-
-        neg_total = len(neg_edges)
-        pos_total = len(pos_edges)
-
-        neg_remove_num = list(np.linspace(0, neg_total, num=5, dtype=int))
-        pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
+    print(f'It has {len(neg_freq_edges_sorted)} negative curvature parameters, {len(pos_freq_edges_sorted)} positive curvature parameters .. \n')
         
-        print(f"\nLayer {layer}:")
-        print(f"  Negative edges: {neg_total}")
-        print(f"  Positive edges: {pos_total}")
-        print(f"  Neg remove nums: {neg_remove_num}")
-        print(f"  Pos remove nums: {pos_remove_num}")
+    neg_acc_clean = []
+    pos_acc_clean = []
+    
+    
+    total = sample_size * len(selected_classes)
+    
+    # Compute which layer each edge (i) belongs to
+    layers_i = [
+        np.searchsorted(prefix_dims, i, side='right') - 1
+        if item == "edge" else None
+        for (item, i, j, f, c) in pos_freq_edges_sorted
+    ]
 
-        # plot_frequency_distribution(neg_summary,res_path, str(sample_size) + '_' + str(layer) + "_neg" )
-        # plot_frequency_distribution(pos_summary,res_path, str(sample_size) + '_' + str(layer) + "_pos" )
-            
-            
-        total = sample_size * len(selected_classes)
-        layer_edge = para_dims[layer]
-        remove_num = list(np.linspace(0, layer_edge, num=10, dtype=int))
+    # Filter: keep all weights, and only edges not in layer 9
+    pos_filtered_edges = [
+        (item, i, j, f, c)
+        for (item, i, j, f, c), layer in zip(pos_freq_edges_sorted, layers_i)
+        if c >= 0
+    ]
+    
+    # Compute which layer each edge (i) belongs to
+    layers_i = [
+        np.searchsorted(prefix_dims, i, side='right') - 1
+        if item == "edge" else None
+        for (item, i, j, f, c) in neg_freq_edges_sorted
+    ]
+
+    # Filter: keep all weights, and only edges not in layer 9
+    neg_filtered_edges = [
+        (item, i, j, f, c)
+        for (item, i, j, f, c), layer in zip(neg_freq_edges_sorted, layers_i)
+        if c < 0
+    ]
+    
+    
+    neg_edges_only = [
+        (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in neg_freq_edges_sorted
+    ]
+    pos_edges_only = [
+        (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in pos_freq_edges_sorted
+    ]
+  
+    neg_total = len(neg_edges_only)
+    pos_total = len(pos_edges_only)
+    
+    print(f'New pos {pos_total}, neg {neg_total}')
+
+
+    # remove_num = [0, 5000, (int)(len(neg_edges_only)*0.3), (int)(len(neg_edges_only)*0.5), (int)(len(neg_edges_only)*0.7), len(neg_edges_only), (int)(len(pos_edges_only)*0.7), (int)(len(pos_edges_only)*0.9), (int)(len(pos_edges_only))]
+    # Generate uniformly spaced points (including 0 and total) for each list
+    neg_remove_num = list(np.linspace(0, neg_total, num=5, dtype=int))
+    pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
+    
+    # neg parts
+    neg_len = len(neg_filtered_edges)
+
+    # First segment: 3 points from 0 to len(neg_edges)
+    part1 = np.linspace(0, neg_len, num=3, dtype=int)
+
+    # Second segment: 5 points from len(neg_edges) to neg_total
+    part2 = np.linspace(neg_len, neg_total, num=5, dtype=int)
+
+    # Combine, but avoid duplicate at the boundary
+    neg_remove_num = list(part1[:-1]) + list(part2)
+    
+    remove_num = list(np.linspace(0, total_para, num=10, dtype=int))
+    
+    print(neg_remove_num)
+    print(pos_remove_num)
+
+    
+    # Build frequency mappings
+    neg_freq_map = compute_removal_mapping(neg_freq_edges_sorted, reversed=False, total_edges=total)
+    pos_freq_map = compute_removal_mapping(pos_freq_edges_sorted, total_edges=total)
+
+    neg_freq_labels = match_frequencies(neg_remove_num, neg_freq_map)
+    pos_freq_labels = match_frequencies(pos_remove_num, pos_freq_map)
+    
+    # # Step 2: Choose thresholds — you can just use them all or downsample if too many
+    # neg_max_freq = max(freq for (_, _, freq, _) in neg_freq_edges_sorted)
+    # neg_freq_thresholds = [int(r * neg_max_freq) for r in freq_ratios]
+
+    # pos_max_freq = max(freq for (_, _, freq, _) in pos_freq_edges_sorted)
+    # pos_freq_thresholds = [int(r * pos_max_freq) for r in freq_ratios]
+    
+    # # Step 3: For each threshold, count how many edges would be removed
+    # neg_remove_num = [sum(1 for (_, _, freq, _) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
+    # pos_remove_num = [sum(1 for (_, _, freq, _) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
         
-        # Build frequency mappings
-        neg_freq_map = compute_removal_mapping(neg_summary, total_edges=total)
-        pos_freq_map = compute_removal_mapping(pos_summary, total_edges=total)
+        
+    # start remove
+    for index, rem_f in enumerate(neg_remove_num):
+        # ff.write(f'Remove edge number {rem_f}: \n')
 
-        neg_freq_labels = match_frequencies(neg_remove_num, neg_freq_map)
-        pos_freq_labels = match_frequencies(pos_remove_num, pos_freq_map)
+        # remove second layer negative curvature edges
+        net_neg = copy.deepcopy(net_H)
+        net_neg.__build_remove_mask__(neg_edges_only, rem_f)
+        # test acc
+        acc_clean_neg = test_clean(net_neg, test_loader)
+        neg_acc_clean.append(acc_clean_neg)
 
-        # start remove
-        for index, rem_f in enumerate(neg_remove_num):
-            # ff.write(f'Remove edge number {rem_f}: \n')
+    for index, rem_f in enumerate(pos_remove_num):
+        # remove positive curvature edges
+        net_pos = copy.deepcopy(net_H)
+        net_pos.__build_remove_mask__(pos_edges_only, rem_f)
+        # test acc
+        acc_clean_pos = test_clean(net_pos, test_loader)
+        pos_acc_clean.append(acc_clean_pos)
+        
+        
+    # pack into a dictionary
+    data = {
+        "neg_clean_acc": neg_acc_clean,
+        "pos_clean_acc": pos_acc_clean,
+        "neg_remove_num": neg_remove_num,
+        "pos_remove_num": pos_remove_num,
+    }
 
-            # remove second layer negative curvature edges
-            net_neg = copy.deepcopy(net_H)
-            net_neg.__build_remove_mask__(neg_edges, rem_f)
-            # test acc
-            acc_clean_neg = test_clean(net_neg, test_loader)
-            neg_acc_clean.append(acc_clean_neg)
+    # save to pickle file
+    with open(res_path+"results.pkl", "wb") as f:
+        pickle.dump(data, f)
 
-        for index, rem_f in enumerate(pos_remove_num):
-            # remove positive curvature edges
-            net_pos = copy.deepcopy(net_H)
-            net_pos.__build_remove_mask__(pos_edges, rem_f)
-            # test acc
-            acc_clean_pos = test_clean(net_pos, test_loader)
-            pos_acc_clean.append(acc_clean_pos)
-            
-        # Plot
-        plot_curve(
-            neg_clean_acc=neg_acc_clean,
-            pos_clean_acc=pos_acc_clean,
-            neg_remove_num=neg_remove_num,
-            pos_remove_num=pos_remove_num,
-            label=str(sample_size) + '_' + str(layer),
-            res_path=res_path,
-            neg_freq_labels=neg_freq_labels,
-            pos_freq_labels=pos_freq_labels,
-            x_axis = remove_num
-        )  
+    print("Saved variables to results.pkl")
+    
+        
 
-        # plot_curve(neg_acc_clean, pos_acc_clean, neg_remove_num, pos_remove_num, neg_total, pos_total, layer, res_path)
+    # Plot
+    plot_curve(
+        neg_clean_acc=neg_acc_clean,
+        pos_clean_acc=pos_acc_clean,
+        neg_remove_num=neg_remove_num,
+        pos_remove_num=pos_remove_num,
+        label=sample_size,
+        res_path=res_path,
+        neg_freq_labels=neg_freq_labels,
+        pos_freq_labels=pos_freq_labels,
+        x_axis = remove_num
+    )
         # plot_curve(neg_acc_clean, pos_acc_clean, freq_ratios, freq_ratios, neg_remove_num, pos_remove_num, sample_size, res_path)
-            
+                

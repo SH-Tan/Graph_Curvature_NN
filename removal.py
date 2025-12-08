@@ -11,10 +11,10 @@ import argparse
 import sys
 sys.path.append("..")
 
-from CNN.remove_edge_cnn_union_perlayer_w import remove_edge_cnn_union_perlayer_w
-from CNN.remove_edge_cifar_union_w import remove_edge_cifar_union_w
-from CNN.remove_edge_cnn_union_w import remove_edge_cnn_union_w
+from CNN.remove_edge_cnn_union_perlayer_w_combined import remove_edge_cnn_union_perlayer_w_combined
+from CNN.remove_edge_cnn_union_w_combined import remove_edge_cnn_union_w_combined
 from CNN.remove_edge_cifar_union_w_small import remove_edge_cifar_union_w_small
+from CNN.remove_edge_cifar_union_w_small_combined import remove_edge_cifar_union_w_small_combined
 from CNN.remove_edge_cifar100_union import remove_edge_cifar100_union
 from CNN.remove_edge_cifar_union_perlayer_weight import remove_edge_cifar_union_perlayer_w
 from CNN.remove_edge_cifar100_union_perlayer import remove_edge_cifar100_union_perlayer
@@ -24,14 +24,12 @@ from CNN.community_check_cifar import community_check_cifar
 from CNN.community_check_cifar_new import community_check_cifar_new
 from CNN.community_check_cifar_new_small import community_check_cifar_new_small
 from CNN.community_check_cifar_vgg9 import community_check_cifar_vgg9
-from CNN.remove_edge_cifar_union_perlayer_weight_vgg11 import remove_edge_cifar_union_perlayer_w_vgg11
 from CNN.remove_edge_cifar_union_perlayer_weight_small import remove_edge_cifar_union_perlayer_w_small
-from CNN.remove_edge_cifar_union_w_vgg11 import remove_edge_cifar_union_w_vgg11
+from CNN.remove_edge_cifar_union_perlayer_weight_small_combined import remove_edge_cifar_union_perlayer_w_small_combined
 from CNN.community_check_cifar100 import community_check_cifar100
 from Lidar.plot_trajectories import main_lidar
 from Lidar.plot_trajectories_perlayer import main_lidar_perlayer
 from Lidar.remove_weights_fc import remove_w_lidar
-from CNN.community_check_cifar_iter import iterative_edge_removal_and_curvature
 
 import warnings
 
@@ -83,12 +81,14 @@ if __name__=='__main__':
     if args.image:
         if model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
-                remove_edge_cnn_union_w(args)
+                remove_edge_cnn_union_perlayer_w_combined(args)
+                remove_edge_cnn_union_w_combined(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
                 # remove_edge_cifar_union_perlayer_w(args)
-                remove_edge_cifar_union_w_small(args)
+                remove_edge_cifar_union_perlayer_w_small_combined(args)
+                remove_edge_cifar_union_w_small_combined(args)
                 # remove_w_cifar100(args)
                 # remove_edge_cifar100_union_combined(args)
                 # remove_wadan_cifar(args)

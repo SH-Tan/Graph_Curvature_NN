@@ -423,7 +423,7 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para_noz.png'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para.png'), dpi=300)
     plt.close()
     
     
@@ -591,8 +591,8 @@ def process_batches_memory_efficient(
         [("weight", w, None, f, c, z) for (w, f, c, z) in pos_freq_cnn]
     )
 
-    neg_freq_edges_sorted = sorted(neg_all, key=lambda x: (-x[3], -x[5], x[4]))  # by frequency desc, curvature asc
-    pos_freq_edges_sorted = sorted(pos_all, key=lambda x: (-x[3], -x[5], -x[4])) # by frequency desc, curvature desc
+    neg_freq_edges_sorted = sorted(neg_all, key=lambda x: (-x[3], x[4]))  # by frequency desc, curvature asc
+    pos_freq_edges_sorted = sorted(pos_all, key=lambda x: (-x[3], -x[4])) # by frequency desc, curvature desc
 
     return neg_freq_edges_sorted, pos_freq_edges_sorted
 
@@ -640,7 +640,7 @@ def remove_edge_cifar_union_w_small(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -681,7 +681,7 @@ def remove_edge_cifar_union_w_small(args):
     if model_pre_name == 'ori':
         model_name = "vgg9_10_ori_"
     elif model_pre_name == 'adv':
-        model_name = "vgg16_adv_"
+        model_name = "vgg9_10_adv_"
     elif model_pre_name == 'wd':
         model_name = "vgg9_10_wd_"
         
@@ -693,7 +693,7 @@ def remove_edge_cifar_union_w_small(args):
 
     net_full = copy.deepcopy(net_H)
     
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_new_noz.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(model_name)
@@ -762,7 +762,7 @@ def remove_edge_cifar_union_w_small(args):
         (item, i, j, f, c, z)
         for (item, i, j, f, c, z), layer in zip(pos_freq_dict, layers_i)
         # if f == total
-        if (not ((item == "weight") and (i[0] in [0]))) and (not ((item == "edge") and (layer == 8)))
+        if (not ((item == "weight") and (i[0] in [0])))
     ]
     
     # Compute which layer each edge (i) belongs to
@@ -777,7 +777,7 @@ def remove_edge_cifar_union_w_small(args):
         (item, i, j, f, c, z)
         for (item, i, j, f, c, z), layer in zip(neg_freq_dict, layers_i)
         # if f == total
-        if (not ((item == "weight") and (i[0] in [0]))) and (not ((item == "edge") and (layer == 8)))
+        if (not ((item == "weight") and (i[0] in [0])))
     ]
     
     # neg_freq_dict = sorted(neg_freq_dict, key=lambda x: (-(x[3]+x[5]), x[4]))  # by frequency desc, curvature asc

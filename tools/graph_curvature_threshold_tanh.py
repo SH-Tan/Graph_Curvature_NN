@@ -496,25 +496,24 @@ def process_edge(b, edge):
     j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
     
     if j_layer != i_layer + 1:
-        return (b, i, j, 2.0)
+        return (b, i, j, 20.0)
     
     if (i_layer, j_layer) not in _sp_dict:
-        return (b, i, j, 2.0)
+        return (b, i, j, 20.0)
     
-    # if ((i_layer > 0) and (_nodes_value[:,i] == 0)):
+    # if ((i_layer > 0) and (_nodes_value[:,i] <= 0)):
     #     return (b, i, j, 1.0)
     
     target_alpha = _nodes_alpha[:,j].item()
     source_alpha = _nodes_alpha[:,i].item()
-    # if target_alpha >= 0.5:
-    #     target_alpha = 1
-        
-    # if source_alpha >= .5:
-    #     source_alpha = 0
+    
+    # if ((i_layer > 0) and (source_alpha < 0.5)):
+    #     return (b, i, j, 1.0)
     
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
+
     sp = sp/(target_alpha)
 
     # In-neighbors distribution
@@ -533,10 +532,10 @@ def process_edge(b, edge):
             non_zero = np.nonzero(mu)[0]
             in_neigh = np.array(range(_prefix_dims[i_layer-1], _prefix_dims[i_layer]))
             in_neigh = list(in_neigh[non_zero]) + [i]
-            mu = np.hstack((mu[non_zero] * (1-source_alpha), np.array(source_alpha)))
+            mu = np.hstack((mu[non_zero], np.array(_alpha)))
   
     # Out-neighbors distribution
-    if j_layer == len(_dims)-1 or (_nodes_value[:,j] == 0): #  or (_nodes_value[:,j] == 0) or (_nodes_alpha[:,j] < 0.1)
+    if j_layer == len(_dims)-1: #  or (_nodes_value[:,j] == 0) or (_nodes_alpha[:,j] < 0.1)
         nu = np.array([1.0])
         out_neigh = [j]
     else:
@@ -567,10 +566,14 @@ def process_edge(b, edge):
     
     try:
         m = ot.emd2(mu, nu, d_np)
+        curv = 1.0 - m/sp
+        curv /= (1-_alpha)
     except:
-        print(_nodes_value[:,i],_nodes_value[:,j])
+        print(len(mu), len(in_neigh), np.sum(mu))
+        print(mu, source_alpha)
+        input()
 
-    return (b, i, j, 1.0 - m/sp)
+    return (b, i, j, curv)
 
 
 
@@ -580,7 +583,7 @@ def _wrap_compute_single_edge(stuff):
 
 
 def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., pre_n=0, 
-                               layers_to_process=None, nodes = None, edge_value = None, threshold = 0.5, nodes_alpha = None):
+                               layers_to_process=None, nodes = None, edge_value = None, threshold = 0.5, nodes_alpha = None, ub = 1.):
     global _dims 
     global _prefix_dims 
     global _sp_dict 

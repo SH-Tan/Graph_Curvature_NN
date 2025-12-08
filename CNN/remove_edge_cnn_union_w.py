@@ -357,7 +357,7 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all_w_posum.pdf'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_w_posum_minus.pdf'), dpi=300)
     plt.close()
     
 
@@ -456,7 +456,7 @@ def remove_edge_cnn_union_w(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -581,8 +581,8 @@ def remove_edge_cnn_union_w(args):
                         if layer_info["name"] == "cnn":
                             pos_curv_weights, neg_curv_weights = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
                             # all_weight_sets.append([(w, c, f, pos_f, neg_f) for w, (c, f, pos_f, neg_f) in weight_curv.items()])
-                            neg_weight_sets.append([(w, c, f) for w, (c, f) in neg_curv_weights.items()])
-                            pos_weight_sets.append([(w, c, f) for w, (c, f) in pos_curv_weights.items()])
+                            neg_weight_sets.append([(w, c, f,z) for w, (c, f,z) in neg_curv_weights.items()])
+                            pos_weight_sets.append([(w, c, f,z) for w, (c, f,z) in pos_curv_weights.items()])
 
                     # === Aggregate CNN edges → per-weight curvatures ===
                     for layer, edges in neg_e.items():
@@ -612,16 +612,16 @@ def remove_edge_cnn_union_w(args):
             
             # all_freq_cnn = count_weight_frequency(all_weight_sets, model_dims)
 
-            neg_freq_cnn = count_weight_frequency(neg_weight_sets, model_dims)
-            pos_freq_cnn = count_weight_frequency(pos_weight_sets, model_dims)
+            neg_freq_cnn = count_weight_frequency(neg_weight_sets, model_dims, para_dims)
+            pos_freq_cnn = count_weight_frequency(pos_weight_sets, model_dims, para_dims)
 
             neg_all = (
                 [("edge", i, j, f, c) for (i, j, f, c) in neg_freq_fc] +
-                [("weight", w, None, f, c) for (w, f, c) in neg_freq_cnn]
+                [("weight", w, None, f, c) for (w, f, c, p) in neg_freq_cnn]
             )
             pos_all = (
                 [("edge", i, j, f, c) for (i, j, f, c) in pos_freq_fc] +
-                [("weight", w, None, f, c) for (w, f, c) in pos_freq_cnn]
+                [("weight", w, None, f, c) for (w, f, c, p) in pos_freq_cnn]
             )
 
 

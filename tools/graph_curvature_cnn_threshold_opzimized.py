@@ -33,6 +33,7 @@ _layers = 0
 _edge_value = None
 _model_dims = None
 _W_dict = {}
+_upper_bound = 1.
 
 
 def out_distribution(model_dims, sp1, device='cuda', thre = 0.5, dist = None):
@@ -97,10 +98,10 @@ def out_distribution(model_dims, sp1, device='cuda', thre = 0.5, dist = None):
                 node_slice = (_nodes_value[:, global_idx])  # [B, dst_size] or [1, dst_size]
 
                 if thre <= 0:
-                    min_vals = node_slice.min(dim=1, keepdim=True)[0]
-                    max_vals = node_slice.max(dim=1, keepdim=True)[0]
+                    # min_vals = node_slice.min(dim=1, keepdim=True)[0]
+                    # max_vals = node_slice.max(dim=1, keepdim=True)[0]
                     
-                    node_slice = (node_slice - min_vals) / (max_vals - min_vals)
+                    # node_slice = (node_slice - min_vals) / (max_vals - min_vals)
                         
                     # Compute reciprocal, avoid division by zero
                     node_inv = torch.where(node_slice != 0, 1.0 / node_slice, torch.zeros_like(node_slice))
@@ -513,6 +514,7 @@ def compute_W(edge_list):
         i_idx = i - _prefix_dims[i_layer]
         j_idx = j - _prefix_dims[j_layer]
         sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
+        node_j = _nodes_value[:,j].item()
         
         if model_dim_i["name"] != "fc":
             pos_i = i_idx % (i_size**2)
@@ -522,7 +524,9 @@ def compute_W(edge_list):
             i_x = 0
             i_y = i_size
 
+        c = 0
         if model_dim_j["name"] != "fc":
+            c = j_idx // (j_size**2)
             pos_j = j_idx % (j_size**2)
             j_x = pos_j // j_size
             j_y = pos_j % j_size
@@ -530,7 +534,7 @@ def compute_W(edge_list):
             j_x = 0
             j_y = j_size
         
-        key = (i_layer,i_x,i_y,j_x,j_y)
+        key = (i_layer,i_x,i_y,c,j_x,j_y)
         
         # In-neighbors distribution
         if i_layer == 0:
@@ -591,10 +595,10 @@ def process_edge(b, edge):
     j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
     
     if j_layer != i_layer + 1:
-        return (b, i, j, 2.0)
+        return (b, i, j, 20.0)
     
     if (i_layer, j_layer) not in _sp_dict:
-        return (b, i, j, 2.0)
+        return (b, i, j, 20.0)
     
     model_dim_i = _model_dims[i_layer+1]
     model_dim_j = _model_dims[j_layer+1]
@@ -605,12 +609,18 @@ def process_edge(b, edge):
     node_j = _nodes_value[:,j].item()
     node_i = _nodes_value[:,i].item()
     
-    if ((i_layer > 0) and (node_i <= 0)):
-        return (b, i, j, 1.0)
-    
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
+    
+    # max_in = 0
+    # max_out = 0
+    # if (i_layer > 0):
+    #     sp_in = _sp_dict[(i_layer-1, j_layer-1)][b,:,i_idx]
+        
+    # if (j_layer < len(_dims)-1):
+    #     sp_out = _sp_dict[(i_layer+1, j_layer+1)][b,j_idx,:]
+            
     
     if model_dim_i["name"] != "fc":
         pos_i = i_idx % (i_size**2)
@@ -619,8 +629,10 @@ def process_edge(b, edge):
     else:
         i_x = 0
         i_y = i_size
-  
+    
+    c = 0
     if model_dim_j["name"] != "fc":
+        c = j_idx // (j_size**2)
         pos_j = j_idx % (j_size**2)
         j_x = pos_j // j_size
         j_y = pos_j % j_size
@@ -633,7 +645,7 @@ def process_edge(b, edge):
     if (i_layer > 0) and (j_layer < len(_dims)-1) and (key in _W_dict):
         m = _W_dict.get(key)
         curv = 1.0 - m/sp
-
+        curv /= (1-_alpha)
         # if ((i_layer > 0) and (node_i <= 0)):
         #     curv = 1. if curv >= 0 else 0.
         return (b, i, j, curv)
@@ -678,6 +690,12 @@ def process_edge(b, edge):
             out_neigh = list(out_neigh[non_zero]) + [j]
             nu = np.hstack((nu[non_zero], np.array(_alpha)))
 
+    # if (((i_layer > 0) and (node_i <= 0))):
+    #     return (b, i, j, (max_in+max_out)/sp)
+    
+    # if (((j_layer < len(_dims)-1) and (node_j <= 0))):
+    #     return (b, i, j, (max_in+max_out)/sp)
+    
     
     # Get submatrix for neighbors
     assert(in_neigh[-1] == i and out_neigh[-1] == j)
@@ -686,10 +704,13 @@ def process_edge(b, edge):
     d_np[-1, -1] = sp
 
     if d_np.size == 0 or np.isinf(d_np).all():
-        return (b,i, j, 2.0)
+        return (b,i, j, 20.0)
     
     m = ot.emd2(mu, nu, d_np)
     curv = 1.0 - m/sp
+    curv /= (1-_alpha)
+    
+    # print(d_np)
     
     # if ((i_layer > 0) and (node_i <= 0)):
     #     curv = 1. if curv >= 0 else 0.
@@ -705,7 +726,7 @@ def _wrap_compute_single_edge(stuff):
 
 def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, 
                                alpha = 0., pre_n=0, layers_to_process=None, nodes = None, edge_value = None, 
-                               threshold = 0.5):
+                               threshold = 0.5, node_before=None, upb = 1.):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
@@ -717,12 +738,14 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     global _layers
     global _edge_value
     global _model_dims
+    global _upper_bound
     
     _alpha = alpha
     _pre_n = pre_n
     _nodes_value = nodes
     _edge_value = edge_value
     _model_dims = model_dims
+    _upper_bound = upb.item()
 
     weights = weights.to(device)
     batch_size = weights.shape[0]
@@ -850,17 +873,17 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
                 global_src = prefix_dims[layer] + src
                 global_dst = prefix_dims[layer+1] + dst
                 
-                if (layer > 0) and (layer + 1 < len(_dims)-1) and (src < i_size) and (dst < j_size):
+                if (layer > 0) and (layer + 1 < len(_dims)-1) and (src < i_size):
                     edges_w.append((b, (global_src, global_dst)))
      
                 # print(f'{src} - {dst}: {sp_array[b][src][dst]} {_sp_dict[(layer, layer+1)][b][src][dst]} - {global_src}:{global_dst}')
                 edges.append((b, (global_src, global_dst)))
 
-    if (len(edges_w) > 0):       
-        compute_W(edges_w)
+    # if (len(edges_w) > 0):       
+    #     compute_W(edges_w)
 
     args = [(b, edge) for b, edge in edges]
-    # args  = args[:100]
+    # args  = [(0, (3072,22200))]
     
     del sp_dict
     torch.cuda.empty_cache()
@@ -871,16 +894,12 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     ricci_results = defaultdict(list)
     with get_context('fork').Pool(processes=proc) as pool:
         
-        chunksize, extra = divmod(len(args), proc * 4)
-        if extra:
-            chunksize += 1
-
-        results = pool.imap_unordered(_wrap_compute_single_edge, args, chunksize=chunksize)
-        pool.close()
-        pool.join()
+        chunksize = max(500, len(args) // (proc * 2))
+        results = pool.map(_wrap_compute_single_edge, args, chunksize=chunksize)
     
-    for b, i, j, val in results:
-        ricci_results[b].append((i+_pre_n, j+_pre_n, val))
+    # (b, i, j, len(mu), len(nu), m, sp, curv)
+    for b, i, j, curv in results:
+        ricci_results[b].append((i+_pre_n, j+_pre_n, curv))
         
     # for b, l_i, l_o, sp, m, curv in results:
     #     ricci_results[b].append((l_i, l_o, sp, m, curv))

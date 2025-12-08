@@ -28,6 +28,7 @@ _pre_n = 0
 _nodes_value = None
 _edge_value = None
 _edge_dict = None
+_upper_bound = None
 
 
 
@@ -161,6 +162,25 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
             # FC layer handling
             direct_dist = weights[:, weight_idx:weight_idx+src_size*dst_size]
             direct_dist = direct_dist.view(batch_size, src_size, dst_size)
+
+            if i < num_layers - 2:
+                # The absolute index of destination nodes
+                dst_node_start = prefix_dims[i+1]
+                dst_node_end   = prefix_dims[i+2]        # exclusive
+                dst_nodes = slice(dst_node_start, dst_node_end)
+                src_nodes = slice(prefix_dims[i], dst_node_start)
+
+                # _node_alpha has shape [batch_size, total_nodes]
+                target_a = _nodes_value[:, dst_nodes]       # shape [batch, dst_size]
+                source_a = _nodes_value[:, src_nodes]       # shape [batch, dst_size]
+            
+                node_zero_mask = (target_a <= 0)        # [batch, dst]
+                src_pos_mask   = (source_a > 0)       # [batch, src]
+
+                # Broadcast to [batch, src, dst]
+                mask = src_pos_mask.unsqueeze(2) & node_zero_mask.unsqueeze(1)
+
+                direct_dist.masked_fill_(mask, 1e3)
             
             shortest_paths[(i, i+1)] = torch.where(direct_dist > 0, direct_dist, inf)
             weight_idx += src_size * dst_size
@@ -192,6 +212,9 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
 
             step = k**2 
             
+            # Precompute useful values
+            dst_start = prefix_dims[i+1]          # first dst node of this conv layer
+            
             # Create indices matrix
             n = 0
             end_col = weight_idx + step*pre_ch
@@ -199,7 +222,18 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
                 for p in range(patches):
                     cur_idx = unfolded[0,p].tolist()
                     
+                    # Batch x 1
+                    target_a = _nodes_value[:, dst_start + n]  # corresponds to current output node
+                    source_a = _nodes_value[:, cur_idx ]
+                    
                     w = weights[:, weight_idx : end_col]
+           
+                    node_zero_mask = (target_a <= 0).unsqueeze(1) # [batch, 1]
+                    src_pos_mask   = (source_a > 0)               # [batch, src]
+                    mask = src_pos_mask & node_zero_mask          # [batch, src]
+
+                    w = w.masked_fill(mask, 1e3)
+                        
                     adjacent_m[:, cur_idx, n] = w
                     
                     weight_idx = end_col
@@ -490,10 +524,10 @@ def process_edge(b, edge):
     j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
     
     if j_layer != i_layer + 1:
-        return (b, i, j, 2.0)
+        return (b, i, j, 20.0)
     
     if (i_layer, j_layer) not in _sp_dict:
-        return (b, i, j, 2.0)
+        return (b, i, j, 20.0)
     
     node_i = _nodes_value[:,i].item()
     node_j = _nodes_value[:,j].item()
@@ -501,14 +535,13 @@ def process_edge(b, edge):
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
-    edge_v = _edge_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
     
-    if (((i_layer > 0) and (node_i == 0))):
-        return (b, i, j, 1.0)
+    if ((i_layer > 0) and (node_i <= 0)):
+        return (b, i, j, 1.)
     
-    if (((i_layer > 0) and (node_j == 0) and (edge_v >= 0))):
-        return (b, i, j, 1.0)
-
+    # if ((j_layer < len(_dims)-1) and (node_j <= 0)):
+    #     return (b, i, j, 1.)
+    
     # In-neighbors distribution
     if i_layer == 0:
         mu = np.array([1.0])
@@ -528,7 +561,7 @@ def process_edge(b, edge):
             mu = np.hstack((mu[non_zero], np.array(_alpha)))
         
     # Out-neighbors distribution
-    if j_layer == len(_dims)-1:
+    if j_layer == len(_dims)-1: # or (node_j <= 0)
         nu = np.array([1.0])
         out_neigh = [j]
     else:
@@ -555,10 +588,13 @@ def process_edge(b, edge):
     d_np[-1, -1] = sp
 
     if d_np.size == 0 or np.isinf(d_np).all():
-        return (b,i, j, 2.0)
+        return (b,i, j, 20.0)
     
     try:
         m = ot.emd2(mu, nu, d_np)
+        curv = 1.0 - m/sp
+        curv /= (1-_alpha)
+
     except:
         print(_nodes_value[:,i],_nodes_value[:,j])
     
@@ -588,13 +624,6 @@ def process_edge(b, edge):
     #         node_id = out_neigh[idx] if idx < len(out_neigh) else None
     #         node_val = _nodes_value[:, node_id] if node_id is not None else None
     #         print(f"  {rank+1}. ν[{idx}] = {nu[idx]:.4f}, node = {node_id}, value = {node_val}")
-
-    curv = 1.0 - m/sp
-    
-    # if _nodes_value[:,i] == 0:
-    #     if curv < 0:
-    #         curv = 0
-            
     return (b, i, j, curv)
 
 
@@ -604,7 +633,7 @@ def _wrap_compute_single_edge(stuff):
     return process_edge(*stuff)
 
 
-def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., pre_n=0, layers_to_process=None, nodes = None, edge_value = None, threshold = 0.5, nodes_alpha = None):
+def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., pre_n=0, layers_to_process=None, nodes = None, edge_value = None, threshold = 0.5, nodes_alpha = None, ub = 1.):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
@@ -614,13 +643,14 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     global _pre_n
     global _nodes_value
     global _edge_value
-    global _edge_dict
+    global _upper_bound
     
     _alpha = alpha
     _pre_n = pre_n
     _nodes_value = nodes
     _edge_value = edge_value
-
+    _upper_bound = ub
+    
     weights = weights.to(device)
     batch_size = weights.shape[0]
     prefix_dims = np.cumsum([0] + dims).tolist()
@@ -638,7 +668,6 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
         if probability_w != None:
             sp1 = cnn_adjacent_layer(model_dims, probability_w[0].to(device), prefix_dims, device='cuda', thre = threshold)
             sp2 = out_distribution(model_dims, sp1, device='cuda', thre = threshold, dist = sp_dict)
-            sp3 = cnn_adjacent_layer(model_dims, edge_value, prefix_dims, device='cuda', thre = threshold)
     else:
         sp_dict = layerwise_shortest_path_torch(dims, weights, device)
         # _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
@@ -647,24 +676,6 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             sp1 = fc_adjacent_layer(dims, probability_w, device)
             
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
-    _edge_dict = {k: v.cpu().numpy() for k, v in sp3.items()}
-    
-    # print(_sp_dict)
-    
-    # print("sp1")
-    # for (i, j), cur_sp in sorted(sp1.items()):
-    #     print(i, j, cur_sp[:, 0:2, 0:10])
-    #     input()
-        
-    # print("sp2")
-    # for (i, j), cur_sp in sorted(sp2.items()):
-    #     print(i, j, cur_sp[:, 0:2, 0:10])
-    #     input()
-    
-    # print("sp3")
-    # for (i, j), cur_sp in sorted(sp3.items()):
-    #     print(i, j, cur_sp[:, 0:2, 0:10])
-    #     input()
 
     if probability_w != None:
         dis_w_in = sp1

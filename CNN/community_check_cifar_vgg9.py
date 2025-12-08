@@ -225,7 +225,7 @@ def community_check_cifar_vgg9(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -267,7 +267,7 @@ def community_check_cifar_vgg9(args):
     if model_pre_name == 'ori':
         model_name = "vgg9_10_ori_"
     elif model_pre_name == 'adv':
-        model_name = "vgg16_adv_"
+        model_name = "vgg9_10_adv_"
     elif model_pre_name == 'wd':
         model_name = "vgg9_10_wd_"
         
@@ -328,11 +328,7 @@ def community_check_cifar_vgg9(args):
                             weights = output.detach().clone().to(device)
                             nodes_ori = nodes_ori.detach().clone().to(device)
                             # node_before = nodes_before.detach().clone().cpu()
-                            # edge_array = edge_array.detach().clone().to(device)   # keep same device!
-
-                            # mask = (edge_array == 0)
-                            # weights[mask] = 1e-6
-                            
+ 
                             edge_array = edge_array.detach().clone().cpu()
                             
                             del output, img, nodes_before
@@ -370,6 +366,8 @@ def community_check_cifar_vgg9(args):
 
                                 del weights, weights_inv1, weights_inv2, nodes_ori
                                 torch.cuda.empty_cache()
+                                
+                                print(2./torch.min(weights_inv))
 
                                 weight_idx = 0
                                 start = 0
@@ -404,19 +402,15 @@ def community_check_cifar_vgg9(args):
                                         edge_value=edge_slice,
                                         threshold=0.,
                                         layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key],
+                                        upb = 2./torch.min(weights_inv)
                                     )
-                                    
-                                    # with pd.ExcelWriter(f"output_{l_key}.xlsx", engine="xlsxwriter") as writer:
-                                    #     for key, arr in _sp_dict.items():
-                                    #         pd.DataFrame(arr[0]).to_excel(
-                                    #             writer, sheet_name=str(key)[:31], index=False, header=False
-                                    #         )
-                                            
-                                    # print("finished")
-                                    # with open(f"output_{l_key}.txt", "w") as f:
+                     
+                                    # with open(res_path + f"output_{l_key}.txt", "a+") as f:
                                     #     for i, (batch_key, triples) in enumerate(ricci_results.items()):
-                                    #         for i, j, curv in triples:
-                                    #             f.write(f"{curv:.6f}\n")
+                                    #         for i, j, lm, ln, m, sp, curv in triples:
+                                    #             f.write(f'edge {i}-{j}: \n')
+                                    #             f.write(f"in-neighbor number: {lm}, out-neighbor number {ln}\n")
+                                    #             f.write(f"m = {m:.6f}, sp = {sp:.6f}, {curv:.6f}\n")
                                     #         f.write("\n")
                                             
                                     # print("finished")

@@ -217,7 +217,7 @@ def community_check_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -301,18 +301,6 @@ def community_check_cnn(args):
                     nodes_ori = nodes_ori.detach().clone().to(device) 
                     node_alpha = node_alpha.detach().clone().to(device) 
                     edge_array = edge_array.detach().clone().to(device) 
-            
-                    # weights_abs = weights.abs()
-                    # weights_abs = weights_abs[:, sum(edge_dims[0:3]): sum(edge_dims[0:4])]
-                    # # Compute min and max
-                    # w_min = weights_abs.min().item()
-                    # w_max = weights_abs.max().item()
-
-                    # print(f"Layer 4 weights: min = {w_min:.6f}, max = {w_max:.6f}")
-                    # edge_array_abs = torch.abs(edge_array)
-                    # min_pos = 1e-6
-                    # # replace zeros with min_pos
-                    # weights = torch.where(edge_array_abs == 0, min_pos, edge_array_abs).to(device)
                     
                 if metric.lower() == "w1":
                     weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
@@ -334,14 +322,12 @@ def community_check_cnn(args):
                     node_abs = torch.abs(nodes_ori)
                     edge_array = edge_array.detach().clone().to(device) 
                     # edge_array_abs = torch.abs(edge_array)
-        
-                    # print(len(weights_inv[0]), len(weights_inv[weights_inv!=np.inf]))
-
+                    
                     ricci_curvature = graph_curvature_main_torch(
                         dims, weights_inv, device=device, model_dims=model_dims,
                         probability_w=(weights_inv2, weights_inv1), alpha=alpha,
                         nodes=node_abs, edge_value = edge_array, threshold = 0.,
-                        nodes_alpha = torch.abs(node_alpha),
+                        nodes_alpha = torch.abs(node_alpha)
                         # layers_to_process=[2,3,4]
                     )
                     # print(ricci_curvature)

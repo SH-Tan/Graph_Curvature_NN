@@ -305,8 +305,40 @@ class LeNet_custom_v2(nn.Module):
         edge_v = torch.cat([torch.reshape(w * x1[np.newaxis,:].T, (1, cur_shape)) for x1 in x_tmp], axis=0)
         return edge_v
     
+  
+    def is_gaussian_torch(self, x, corr_thresh=0.99):
+        """
+        x: 1D torch.Tensor
+        corr_thresh: threshold for QQ-correlation
+        """
+        x = x.flatten()
+
+        # sort your data
+        x_sorted = torch.sort(x).values
+
+        # theoretical normal quantiles (same as scipy probplot with dist="norm")
+        n = x_sorted.numel()
+        p = torch.linspace(1/(n+1), n/(n+1), n)
+        q_theoretical = torch.distributions.Normal(0, 1).icdf(p)
+
+        # compute Pearson correlation between x_sorted and normal quantiles
+        vx = x_sorted - x_sorted.mean()
+        vq = q_theoretical - q_theoretical.mean()
+
+        corr = (vx * vq).sum() / torch.sqrt((vx**2).sum() * (vq**2).sum())
+
+        return corr.item() > corr_thresh
     
-    def w_norm(self, w, alpha=1):
+    
+    def w_norm_std(self, w, alpha=10):
+
+        w_mean = torch.mean(w)
+        w_std = torch.std(w)
+        w_norm = torch.abs((w)/(alpha*w_std))
+        return w_norm
+    
+    
+    def norm_w_minmax(self, w, alpha=1):
         # alpha = 0: keep raw weights
         # alpha = 1: full min-max normalization
 
@@ -317,6 +349,16 @@ class LeNet_custom_v2(nn.Module):
 
         # Soft mixture
         return (1 - alpha) * w_abs + alpha * w_minmax
+    
+        
+    def norm_gaussian(self, w):
+        is_g = self.is_gaussian_torch(w)
+        
+        if is_g:
+            w_norm = self.norm_w_minmax(w)
+        else:
+            w_norm = self.w_norm_std(w)
+        return w_norm
     
 
     # calculate edge weights
@@ -344,7 +386,7 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.CNN_edges(ones_tmp, k1, 1, 2)).cpu().detach()
-        ones = self.w_norm(ones)
+        # ones = self.norm_w_minmax(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.activation(self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2))
@@ -370,7 +412,7 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
         
         ones = (self.CNN_edges(ones_tmp, k2, 2, 3)).cpu().detach()
-        ones = self.w_norm(ones)
+        # ones = self.norm_w_minmax(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
 
         x = self.activation(self.CNN(x, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3))
@@ -398,7 +440,7 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc1, 3, 4)).cpu().detach()
-        ones = self.w_norm(ones)
+        # ones = self.norm_w_minmax(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.activation(self.linear(x, self.fc1, 3, 4))
@@ -423,7 +465,7 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc2, 4, 5)).cpu().detach()
-        ones = self.w_norm(ones)
+        # ones = self.norm_w_minmax(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.activation(self.linear(x, self.fc2, 4, 5))
@@ -448,7 +490,7 @@ class LeNet_custom_v2(nn.Module):
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc3, 5, 6)).cpu().detach()
-        ones = self.w_norm(ones)
+        # ones = self.norm_w_minmax(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.fc3(x)
