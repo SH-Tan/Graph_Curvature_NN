@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from collections import defaultdict
-
+import numpy as np
 from collections import Counter
 
 def build_cnn_edge_weight_map(in_ch, in_size, out_ch, k, stride, padding, layer, prefix_dim, device="cpu"):
@@ -39,6 +39,16 @@ def build_cnn_edge_weight_map(in_ch, in_size, out_ch, k, stride, padding, layer,
     return edge_to_weight
 
 
+def clipped_median(arr):
+    arr = np.asarray(arr)
+    if len(arr) <= 2:
+        # After removing min & max, nothing remains → return regular median
+        return np.median(arr)
+    
+    sorted_arr = np.sort(arr)
+    trimmed = sorted_arr[1:-1]   # remove smallest and largest
+    return np.mean(trimmed)      # average of the remaining values
+
 
 def aggregate_cnn_weight_curvature(edge_curvatures, edge_to_weight):
     """
@@ -53,7 +63,8 @@ def aggregate_cnn_weight_curvature(edge_curvatures, edge_to_weight):
         weight_curv_dict: dict[(out_ch,in_ch,kh,kw)] = avg_curvature
         weight_freq_dict: dict[(out_ch,in_ch,kh,kw)] = frequency
     """
-    curv_sum = defaultdict(float)
+    curv_sum_neg = defaultdict(list)
+    curv_sum_pos = defaultdict(list)
     pos_freq = defaultdict(int)
     neg_freq = defaultdict(int)
     zero_freq = defaultdict(int)
@@ -64,15 +75,11 @@ def aggregate_cnn_weight_curvature(edge_curvatures, edge_to_weight):
         if key not in edge_to_weight:
             continue
         w = edge_to_weight[key]
-        if ((curv_sum[w] < 0) or (c < 0)):
-            if curv_sum[w] >= 0:
-                curv_sum[w] = c
-            elif c >= 0:
-                continue
-            else:
-                curv_sum[w] += c
-        elif c > 0:
-            curv_sum[w] += c
+        if c < 0:
+            curv_sum_neg[w].append(c)
+        else:
+            curv_sum_pos[w].append(c)
+            
         freq[w] += 1
         
         if c >= 0:
@@ -82,19 +89,31 @@ def aggregate_cnn_weight_curvature(edge_curvatures, edge_to_weight):
         else:
             neg_freq[w] += 1
 
-    weight_curv = {w: (curv_sum[w], freq[w], pos_freq[w], neg_freq[w], zero_freq[w]) for w in freq}
+    # weight_curv = dict()
+    neg_curv_weights = dict()
+    pos_curv_weights = dict()
     
-    neg_curv_weights = {
-        w: (curv_sum[w]/neg_freq[w], neg_freq[w], zero_freq[w])
-        for w in weight_curv
-        if curv_sum[w] < 0
-    }
+    for w in freq:
+        negs = curv_sum_neg[w]
+        poss = curv_sum_pos[w]
 
-    pos_curv_weights = {
-        w: (curv_sum[w]/pos_freq[w], pos_freq[w], zero_freq[w])
-        for w in weight_curv
-        if (curv_sum[w] >= 0) # and (curv_sum[w]/pos_freq[w] < 1)
-    }
+        if len(curv_sum_neg[w]) > 0:
+            neg_curv_weights[w] = (np.min(negs), neg_freq[w], zero_freq[w])
+        elif len(poss) > 0:
+            pos_curv_weights[w] = (np.min(poss), pos_freq[w], zero_freq[w])
+    # weight_curv = {w: (curv_sum[w], freq[w], pos_freq[w], neg_freq[w], zero_freq[w]) for w in freq}
+    
+    # neg_curv_weights = {
+    #     w: (curv_sum[w]/neg_freq[w], neg_freq[w], zero_freq[w])
+    #     for w in weight_curv
+    #     if curv_sum[w] < 0
+    # }
+
+    # pos_curv_weights = {
+    #     w: (curv_sum[w]/pos_freq[w], pos_freq[w], zero_freq[w])
+    #     for w in weight_curv
+    #     if (curv_sum[w] >= 0) # and (curv_sum[w]/pos_freq[w] < 1)
+    # }
     
     return pos_curv_weights, neg_curv_weights
 

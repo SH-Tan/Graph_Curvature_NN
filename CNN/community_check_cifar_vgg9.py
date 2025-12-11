@@ -19,7 +19,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature_cnn_threshold import graph_curvature_main_torch
+from tools.graph_curvature_cnn_threshold_optimized import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -35,35 +35,35 @@ warnings.filterwarnings("ignore")
 model_dims = {
     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
-    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
-    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv2_2 + pool
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 4, "stride": 1, "padding":0, "out_size": 10}},   # After conv3_3
+    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 2, "stride": 2, "padding":0, "out_size": 16}}, 
+    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv1_2 
     
-    5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_1
+    4: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},  
+    5: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 2, "padding":0, "out_size": 5}},   # After conv2_2 
     
-    6: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # After conv4_2
+    6: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 3}},
+    7: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 1}},
 
-    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":0, "out_size": 4}},   # conv5_1
-    8: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_2 
-
-    9: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-    10: {"name": "fc", "dim": {"out_size": 256}},
-    11: {"name": "fc", "dim": {"out_size": 10}}
+    8: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 1024
+    9: {"name": "fc", "dim": {"out_size": 128}},
+    10: {"name": "fc", "dim": {"out_size": 10}}
 }
 
 
+model_dims_small = model_dims
 
-model_dims_small = {
-    1: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_1
-    2: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # After conv4_2
+# model_dims_small = {
+#     1: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
+#     2: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
 
-    3: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":0, "out_size": 4}},   # conv5_1
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_2 
+#     3: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 6}},   # conv5_1
+#     4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
+#     5: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
 
-    5: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
-    6: {"name": "fc", "dim": {"out_size": 256}},
-    7: {"name": "fc", "dim": {"out_size": 10}}
-}
+#     6: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 2048
+#     7: {"name": "fc", "dim": {"out_size": 256}},
+#     8: {"name": "fc", "dim": {"out_size": 10}}
+# }
 
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
 
@@ -210,7 +210,7 @@ def cal_edges(model_dims):
 
 
 
-def community_check_cifar_vgg11(args):
+def community_check_cifar_vgg9(args):
     seed = 29
     
     # set random seed
@@ -253,24 +253,24 @@ def community_check_cifar_vgg11(args):
     model_full_n = model_type.lower() + model_pre_name.lower()
     
     if activation.lower() == "relu":
-        from tools.vgg11_custom_relu import VGG11_CIFAR10
+        from tools.vgg9_custom_relu import VGG9_CIFAR10
     elif activation.lower() == "tanh":
-        from tools.vgg16_custom_tanh import VGG16_CIFAR10
+        from tools.vgg9_custom_tanh import VGG9_CIFAR10
 
     if not os.path.exists(res_path):
         os.makedirs(res_path)
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg11_10_ori_"
+        model_name = "vgg9_10_ori_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
         model_name = "vgg16_10_wd_"
         
-    model_name = model_name + activation + ".pth"
+    model_name = model_name + activation + "_s2.pth"
     
-    net_H = VGG11_CIFAR10(model_dims, None, device)
+    net_H = VGG9_CIFAR10(model_dims, None, device)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
@@ -320,34 +320,23 @@ def community_check_cifar_vgg11(args):
                         with torch.no_grad():
                             net_full.eval()
                             img = images[idx].to(device, non_blocking=True)
-                            edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
+                            edge_array, nodes_ori, output, node_before, node_alpha = net_full.NN_info_batch(img.unsqueeze(0))
 
-                            weights = output.detach().to(device)
+                            weights = output.detach().cpu().to(device) 
                             nodes_ori = nodes_ori.detach().clone().to(device) 
-                            # nodes_ori = nodes_ori.detach().clone().to(device)
-                            del output
+                            edge_array = edge_array.detach().clone().cpu()
+                            node_alpha = node_alpha.detach().clone().cpu()
+                            node_before = node_before.detach().clone().cpu()
                             
-                            # normalized_weights = []
-                            # start = 0
-
-                            # for num_edges in edge_dims:
-                            #     end = start + num_edges
-                            #     w = weights[:, start:end]
-                            #     if w.numel() == 0:
-                            #         normalized_weights.append(w)
-                            #         continue
-
-                            #     w = w.abs()
-                            #     w_min, w_max = w.min(), w.max()
-                            #     if (w_max - w_min) > 0:
-                            #         w_norm = (w - w_min) / (w_max - w_min)
-                            #     else:
-                            #         w_norm = torch.zeros_like(w)
-                            #     normalized_weights.append(w_norm)
-                            #     start = end
-
-                            # weights = torch.cat(normalized_weights, dim=1)
-                                
+                            # a = nodes_ori[:,3072:-1280]
+                            # b = node_alpha[:,3072:-1280]
+                            # a[b < 0.5] = 0
+                            # nodes_ori[:,3072:-1280] = a
+                            # nodes_ori[node_alpha <= 0.5] = 0.
+                            
+                            del output, img
+                            torch.cuda.empty_cache()
+                            
                             if metric.lower() == "w1":
                                 weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims_small)
                                 weights_inv = weights_inv1.detach()
@@ -371,52 +360,86 @@ def community_check_cifar_vgg11(args):
                                 )
                             elif metric.lower() == "w4":
                                 weights_inv1, weights_inv2= net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
-                                weights_inv = weights_inv1.detach()
-                                weights_inv2 = weights_inv2.detach()
+                                
+                                # Move back to CPU immediately to save GPU RAM
+                                weights_inv = weights_inv1.detach().cpu()
+                                weights_inv_p = weights_inv2.detach().cpu()
                                 node_abs = torch.abs(nodes_ori)
-                                edge_array = edge_array.detach().clone().to(device) 
                                 edge_array_abs = torch.abs(edge_array)
+
+                                del weights, weights_inv1, weights_inv2
+                                torch.cuda.empty_cache()
 
                                 weight_idx = 0
                                 start = 0
                                 combined = []
-                                for l_key in [1, 2, [3, 4, 5]]:  # loop variable is l_key
+                                for l_key in [0,1,2,3,4,5,[6,7,8]]:  # loop variable is l_key
+                                    print(f'Current label {l} - l_key {l_key}.....')
                                     # Determine weight index slice
                                     weight_idx = min(l_key) - 1 if isinstance(l_key, list) else l_key - 1
+                                    weight_idx = max(0, weight_idx)
                                     start = np.sum(edge_dims[0:weight_idx]) if weight_idx > 0 else 0
 
                                     # Determine number of edges to include
                                     num_edges = len(l_key) if isinstance(l_key, list) else 1
                                     end = start + np.sum(edge_dims[weight_idx: weight_idx + num_edges + 2])
+                                    
+                                    # Move only the current slice to GPU
+                                    w_inv_slice = weights_inv[:, start:end].to(device, non_blocking=True)
+                                    w_inv2_slice = weights_inv_p[:, start:end].to(device, non_blocking=True)
+                                    edge_slice = edge_array[:, start:end].to(device, non_blocking=True)
 
-                                    # Compute Ricci curvature
+                                    # Compute Ricci curvature for current layer(s)
                                     ricci_results = graph_curvature_main_torch(
                                         dims,
-                                        weights_inv[:, start:end],
+                                        w_inv_slice,
                                         device=device,
                                         model_dims=model_dims_small,
-                                        probability_w=weights_inv2[:, start:end],
+                                        probability_w=w_inv2_slice,
                                         alpha=alpha,
                                         pre_n=(np.sum(dims_full) - np.sum(dims)),
-                                        nodes=node_abs, edge_value = edge_array_abs[:, start:end], threshold = 0.,
-                                        layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key]
+                                        nodes=node_abs,  # stays on CPU, passed as reference
+                                        edge_value=edge_slice,
+                                        threshold=0.,
+                                        layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key],
+                                        nodes_alpha = abs(node_alpha),
                                     )
+                                    
+                                    # with open(res_path + f"output_{l_key}.txt", "a+") as f:
+                                    #     for i, (batch_key, triples) in enumerate(ricci_results.items()):
+                                    #         for i, j, lm, ln, m, sp, curv in triples:
+                                    #             f.write(f'edge {i}-{j}: \n')
+                                    #             f.write(f"in-neighbor number: {lm}, out-neighbor number {ln}\n")
+                                    #             f.write(f"m = {m:.6f}, sp = {sp:.6f}, {curv:.6f}\n")
+                                    #         f.write("\n")
+                                            
+                                    # print("finished")
+                                            
                                     
                                     for batch_key, triples in ricci_results.items():
                                         combined.extend(triples)   # append all (i, j, val) tuples
+                                        
+                                     # Free per-loop tensors
+                                    del w_inv_slice, w_inv2_slice, edge_slice, ricci_results
+                                    torch.cuda.empty_cache()
                             else:
                                 raise Exception("Invalid graph metric, should be {w1, w3, w4}!")
 
-                            res_l[l].append(combined)
-            
-                            # GPU memory cleanup
-                            del img, edge_array, nodes_ori
-                            del weights, weights_inv1, weights_inv2, weights_inv
+                            # === Save one sample per file ===
+                            save_name = f"{model_full_n}_{metric}_{dataset}_label{l}_id{label_progress[l]}_round{round_id}.pkl"
+                            save_path = os.path.join(res_path, save_name)
+
+                            with open(save_path, 'wb') as f:
+                                pickle.dump(combined, f)
+
+                            print(f"[Saved] Label {l}, Example {label_progress[l]} → {save_name}")
+
+                            # Final cleanup
+                            del edge_array, nodes_ori, node_abs, edge_array_abs, combined, node_before, node_alpha
                             torch.cuda.empty_cache()
 
                             label_progress[l] += 1
                             current_count += 1
-                            # print("Finish one..")
 
             except StopIteration:
                 finished_labels.add(l)
@@ -424,16 +447,4 @@ def community_check_cifar_vgg11(args):
 
         # === Check if all labels have collected 10 new samples ===
         if all(len(res_l[l]) == 10 for l in selected_classes if label_progress[l] < sample_size) or finished_l >= len(selected_classes):
-            save_name = f"{model_full_n}_{metric}_{dataset}_batch{round_id}.pkl"
-            save_path = os.path.join(res_path, save_name)
-
-            with open(save_path, 'wb') as f:
-                pickle.dump(dict(res_l), f)  # use dict to avoid defaultdict issues
-
-            print(f"[Saved] Batch {round_id}: 1 examples per label saved to {save_name}")
-
-            # Clear all buffers
-            for l in selected_classes:
-                res_l[l].clear()
-
             round_id += 1

@@ -11,49 +11,22 @@ import argparse
 import sys
 sys.path.append("..")
 
-from pgd.remove_edge_fc import remove_edge_fc
-from pgd.remove_edge_fc_perE import remove_edge_fc_perE
-from pgd.remove_edge_fc_perE_vec import remove_edge_fc_perE_vec
-from pgd.remove_edge_fc_perE_alllabel import remove_edge_fc_perE_alllabels
-from pgd.remove_edge_fc_union import remove_edge_fc_union
-from pgd.remove_edge_fc_union_pgd import remove_edge_fc_union_pgd
-from pgd.remove_edge_union_fcold import remove_edge_fc_union_old
-from pgd.remove_weights_fc import remove_w_fc
-from pgd.remove_edge_fc_union_perlayer import remove_edge_fc_union_perlayer
-from pgd.remove_edge_fc_perlayer_old import remove_edge_fc_union_perlayer_old
-from CNN.remove_edge_cnn_union import remove_edge_cnn_union
-from CNN.remove_edge_cnn_union_combined import remove_edge_cnn_union_combined
-from CNN.remove_weights_cnn import remove_w_cnn
-from CNN.remove_edge_cnn_union_perlayer import remove_edge_cnn_union_perlayer
-from CNN.remove_edge_cnn_union_perlayer_w import remove_edge_cnn_union_perlayer_w
-from CNN.remove_edge_cifar_union import remove_edge_cifar_union
-from CNN.remove_edge_cifar_union_w import remove_edge_cifar_union_w
 from CNN.remove_edge_cnn_union_w import remove_edge_cnn_union_w
 from CNN.remove_edge_cifar_union_w_small import remove_edge_cifar_union_w_small
-from CNN.remove_edge_cifar_union_combined import remove_edge_cifar_union_combined
+from CNN.remove_edge_cifar_union_w_small_combined import remove_edge_cifar_union_w_small_combined
 from CNN.remove_edge_cifar100_union import remove_edge_cifar100_union
-from CNN.remove_edge_cifar100_union_combined import remove_edge_cifar100_union_combined
-from CNN.remove_edge_cifar_union_perlayer import remove_edge_cifar_union_perlayer
 from CNN.remove_edge_cifar_union_perlayer_weight import remove_edge_cifar_union_perlayer_w
 from CNN.remove_edge_cifar100_union_perlayer import remove_edge_cifar100_union_perlayer
-from CNN.remove_weights_cifar import remove_w_cifar
-from CNN.remove_weights_cifar100 import remove_w_cifar100
 from pgd.community_check_fc import community_check_fc
 from CNN.community_check_cnn import community_check_cnn
 from CNN.community_check_cifar import community_check_cifar
-from CNN.community_check_cifar_new import community_check_cifar_new
-from CNN.community_check_cifar_new_small import community_check_cifar_new_small
-from CNN.community_check_cifar_vgg11 import community_check_cifar_vgg11
-from CNN.remove_edge_cifar_union_perlayer_weight_vgg11 import remove_edge_cifar_union_perlayer_w_vgg11
+from CNN.community_check_cifar_vgg9 import community_check_cifar_vgg9
 from CNN.remove_edge_cifar_union_perlayer_weight_small import remove_edge_cifar_union_perlayer_w_small
-from CNN.remove_edge_cifar_union_w_vgg11 import remove_edge_cifar_union_w_vgg11
+from CNN.remove_edge_cifar_union_perlayer_weight_small_combined import remove_edge_cifar_union_perlayer_w_small_combined
 from CNN.community_check_cifar100 import community_check_cifar100
 from Lidar.plot_trajectories import main_lidar
 from Lidar.plot_trajectories_perlayer import main_lidar_perlayer
 from Lidar.remove_weights_fc import remove_w_lidar
-from CNN.community_check_imagenet import community_check_imagenet
-from CNN.community_check_cifar_iter import iterative_edge_removal_and_curvature
-from CNN.remove_wadan_cifar import remove_wadan_cifar
 
 import warnings
 
@@ -103,29 +76,24 @@ if __name__=='__main__':
     model_type = args.model_type
     
     if args.image:
-        if model_type.lower() == "fc":
-            if args.edge:
-                remove_edge_fc_union(args)
-            if args.community:
-                community_check_fc(args)
-        elif model_type.lower() == "cnn":
+        if model_type.lower() == "cnn":
             if args.edge and args.dataset.lower() == "mnist":
                 remove_edge_cnn_union_w(args)
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
                 # remove_edge_cifar_union_perlayer_w(args)
-                remove_edge_cifar_union_perlayer_w_small(args)
+                remove_edge_cifar_union_perlayer_w_small_combined(args)
+                remove_edge_cifar_union_w_small_combined(args)
                 # remove_w_cifar100(args)
                 # remove_edge_cifar100_union_combined(args)
                 # remove_wadan_cifar(args)
                 # remove_edge_cifar_union_w_vgg11(args)
             if args.community and args.dataset.lower() == "cifar":
-                community_check_cifar_new_small(args)
+                # community_check_cifar_new_small(args)
+                community_check_cifar_vgg9(args)
                 # community_check_cifar100(args)
                 # iterative_edge_removal_and_curvature(args)
-            if args.community and args.dataset.lower() == "imagenet":
-                community_check_imagenet(args)
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
     

@@ -277,7 +277,7 @@ def community_check_cifar_new_small(args):
     elif model_pre_name == 'wd':
         model_name = "vgg16_10_wd_"
         
-    model_name = model_name + activation + "_differw_bigger.pth"
+    model_name = model_name + activation + "_differw.pth"
     
     net_H = VGG16_CIFAR10_small_BN(model_dims, None, device)
     net_H.load_state_dict(torch.load(model_path + model_name))
