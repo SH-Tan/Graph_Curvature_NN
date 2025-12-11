@@ -369,6 +369,7 @@ class LeNet_custom_v2(nn.Module):
         weights = None
         ones_tmp = torch.ones_like(x)
         nodes = x.view(-1, self.num_flat_features(x))
+        nodes_ori = x.view(-1, self.num_flat_features(x))
         
         # Take absolute values
         nodes_abs = torch.abs(nodes)
@@ -389,7 +390,10 @@ class LeNet_custom_v2(nn.Module):
         # ones = self.norm_w_minmax(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
-        x = self.activation(self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2))
+        x = self.CNN(x, self.conv1.weight, self.conv1.bias.unsqueeze(1), 1, 2)
+        nodes_ori = torch.cat((nodes_ori, x.view(-1, self.num_flat_features(x))), axis = 1)
+        
+        x = self.activation(x)
         
         x_tmp = x
         ones_tmp = torch.ones_like(x)
@@ -415,8 +419,10 @@ class LeNet_custom_v2(nn.Module):
         # ones = self.norm_w_minmax(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
 
-        x = self.activation(self.CNN(x, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3))
-        # nodes = torch.cat((nodes, x.view(-1, self.num_flat_features(x))), axis = 1)
+        x = self.CNN(x, self.conv2.weight, self.conv2.bias.unsqueeze(1), 2, 3)
+        nodes_ori = torch.cat((nodes_ori, x.view(-1, self.num_flat_features(x))), axis = 1)
+
+        x = self.activation(x)
         
         x_flat = x.view(-1, self.num_flat_features(x))
 
@@ -443,7 +449,10 @@ class LeNet_custom_v2(nn.Module):
         # ones = self.norm_w_minmax(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
-        x = self.activation(self.linear(x, self.fc1, 3, 4))
+        x = self.linear(x, self.fc1, 3, 4)
+        nodes_ori = torch.cat((nodes_ori, x.view(-1, self.num_flat_features(x))), axis = 1)
+        
+        x = self.activation(x)
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
@@ -468,7 +477,10 @@ class LeNet_custom_v2(nn.Module):
         # ones = self.norm_w_minmax(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
-        x = self.activation(self.linear(x, self.fc2, 4, 5))
+        x = self.linear(x, self.fc2, 4, 5)
+        nodes_ori = torch.cat((nodes_ori, x.view(-1, self.num_flat_features(x))), axis = 1)
+        
+        x = self.activation(x)
         x_tmp = x
         ones_tmp = torch.ones_like(x)
         
@@ -494,6 +506,7 @@ class LeNet_custom_v2(nn.Module):
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
         
         x = self.fc3(x)
+        nodes_ori = torch.cat((nodes_ori, x.view(-1, self.num_flat_features(x))), axis = 1)
         # x = self.softmax(x)
         # nodes = torch.cat((nodes, x), axis = 1)
         

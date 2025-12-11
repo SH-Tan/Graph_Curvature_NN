@@ -236,6 +236,10 @@ def get_top_c(curvature, b, prefix_dims):
             i_layer = find_layer(i)
             j_layer = find_layer(j)
             
+            if ((i_layer > 0) and (i_layer < 8)):
+                if (abs(curr - 1.00000) < 1e-6):
+                    curr = 2.0
+            
             if i_layer not in [6,7,8]:
                 cnn_e[i_layer].append((i,j,curr))
 
@@ -441,37 +445,25 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para_combined_min.png'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para_combined_min2.png'), dpi=300)
     plt.close()
     
     
-def count_edge_frequency(edge_sets, para_dims, prefix_dims):
+from collections import Counter
+def count_edge_frequency(edge_sets):
     freq = Counter()
-    zero_freq = Counter()
-    curvature_sum = defaultdict(float)
-    layer_dim_map = {}   # store para_dims for each edge
+    curvature_sum = defaultdict(list)
 
     # for edge_set in edge_sets:
     for i, j, c in edge_sets:
-        # Normalize undirected edge direction efficiently
-        key = (min(i, j), max(i, j))
-        
-        # Record the para_dims for this edge only once
-        if i not in layer_dim_map:
-            i_layer = np.searchsorted(prefix_dims, i, side='right') - 1
-            layer_dim_map[i] = para_dims[i_layer]
-            
-        if c == 0:
-            zero_freq[key] += 1
-        else:
-            freq[key] += 1
-        curvature_sum[key] += c
+        key = tuple(sorted((i, j)))  # normalize direction for undirected edges
+        freq[key] += 1
+        curvature_sum[key].append(c)
 
-    # Use list comprehension for speed and clarity
-    results = [
-        (i, j, count, curvature_sum[(i, j)] / count, layer_dim_map[i])
-        for (i, j), count in freq.items()
-    ]
+    results = []
+    for key in freq:
+        avg_curv = np.min(curvature_sum[key])
+        results.append((key[0], key[1], freq[key], avg_curv))
 
     return results
 
@@ -594,7 +586,7 @@ def process_batches_memory_efficient(
     print("Finished processing all required batches.")
     
 
-    freq_fc = count_edge_frequency(edge_sets, para_dims, prefix_dims)
+    freq_fc = count_edge_frequency(edge_sets)
     
     all_weight_sets = pos_weight_sets + neg_weight_sets
 
@@ -602,7 +594,7 @@ def process_batches_memory_efficient(
     
 
     p_all = (
-        [("edge", i, j, f, c) for (i, j, f, c, p) in freq_fc] +
+        [("edge", i, j, f, c) for (i, j, f, c) in freq_fc] +
         [("weight", w, None, f, c) for (w, f, c, p) in freq_cnn]
     )
 
@@ -708,7 +700,7 @@ def remove_edge_cifar_union_w_small_combined(args):
 
     net_full = copy.deepcopy(net_H)
     
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min2.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(model_name)

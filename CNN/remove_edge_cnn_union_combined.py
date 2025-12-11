@@ -393,7 +393,7 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all_combined.pdf'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_combined_min1.pdf'), dpi=300)
     plt.close()
     
 
@@ -543,7 +543,7 @@ def remove_edge_cnn_union_combined(args):
     test_cleanacc = test_clean(net_full, test_loader)
     # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)   
 
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min1.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(save_path)

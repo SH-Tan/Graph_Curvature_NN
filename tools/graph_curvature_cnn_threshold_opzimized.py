@@ -613,13 +613,11 @@ def process_edge(b, edge):
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
     
-    # max_in = 0
-    # max_out = 0
-    # if (i_layer > 0):
-    #     sp_in = _sp_dict[(i_layer-1, j_layer-1)][b,:,i_idx]
-        
-    # if (j_layer < len(_dims)-1):
-    #     sp_out = _sp_dict[(i_layer+1, j_layer+1)][b,j_idx,:]
+    # if ((j_layer < len(_dims)-1) and (node_j <= 0)):
+    #     return (b, i, j, 1.)
+    
+    # if ((i_layer > 0) and (node_i <= 0)):
+    #     return (b, i, j, 1.)
             
     
     if model_dim_i["name"] != "fc":
@@ -690,12 +688,6 @@ def process_edge(b, edge):
             out_neigh = list(out_neigh[non_zero]) + [j]
             nu = np.hstack((nu[non_zero], np.array(_alpha)))
 
-    # if (((i_layer > 0) and (node_i <= 0))):
-    #     return (b, i, j, (max_in+max_out)/sp)
-    
-    # if (((j_layer < len(_dims)-1) and (node_j <= 0))):
-    #     return (b, i, j, (max_in+max_out)/sp)
-    
     
     # Get submatrix for neighbors
     assert(in_neigh[-1] == i and out_neigh[-1] == j)
@@ -709,6 +701,9 @@ def process_edge(b, edge):
     m = ot.emd2(mu, nu, d_np)
     curv = 1.0 - m/sp
     curv /= (1-_alpha)
+    
+    if ((i_layer > 0) and (sp == 1e6)):
+        print(i_layer, curv)
     
     # print(d_np)
     
@@ -801,7 +796,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             
             indices = torch.where(sum_weights <= EPSILON)[1]
 
-            mask1 = (path_sub[:,:,indices] != float('inf'))
+            mask1 = (path_sub[:,:,indices] != float('inf')) & (path_sub[:,:,indices] != 0)
             dist_prev[:,:,indices] = -1
             dist_prev[:,:,indices] *= mask1
             dist_prev *= mask
@@ -829,7 +824,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
   
             indices = torch.where(sum_weights <= EPSILON)[1]
 
-            mask1 = (path_sub[:,indices,:] != float('inf'))
+            mask1 = (path_sub[:,indices,:] != float('inf')) & (path_sub[:,indices,:] != 0)
             dist_next[:,indices,:] = -1
             dist_next[:,indices,:] *= mask1
             dist_next *= mask

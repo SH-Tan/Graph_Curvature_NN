@@ -172,6 +172,10 @@ def get_top_c(curvature, b, prefix_dims):
             i_layer = find_layer(i)
             j_layer = find_layer(j)
             
+            if ((i_layer > 0) and (i_layer < 4)):
+                if (abs(curr - 1.00000) < 1e-6):
+                    curr = 2.0
+            
             if i_layer in [0,1]:
                 cnn_e[i_layer].append((i,j,curr))
 
@@ -370,7 +374,7 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_perlayer_para_combined_min.png'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_perlayer_para_combined_min2.png'), dpi=300)
     plt.close()
 
 
@@ -456,7 +460,8 @@ def reduce_and_sort_all(edge_acc, sort_desc=False):
 
         for key, curvs in items_dict.items():
             freq = len(curvs)
-            avg_curv = sum(curvs) / freq
+            # avg_curv = sum(curvs) / freq
+            avg_curv = np.min(curvs)
             # distinguish FC vs CNN by type/length of key
             if isinstance(key, tuple) and len(key) == 2:
                 # FC edge
@@ -618,7 +623,7 @@ def remove_edge_cnn_union_perlayer_w_combined(args):
     # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)
 
     
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_perlayer_para_combined_min.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_perlayer_para_combined_min2.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(save_path)

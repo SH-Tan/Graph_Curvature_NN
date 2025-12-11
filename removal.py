@@ -27,6 +27,8 @@ from CNN.community_check_cifar_vgg9 import community_check_cifar_vgg9
 from CNN.remove_edge_cifar_union_perlayer_weight_small import remove_edge_cifar_union_perlayer_w_small
 from CNN.remove_edge_cifar_union_perlayer_weight_small_combined import remove_edge_cifar_union_perlayer_w_small_combined
 from CNN.community_check_cifar100 import community_check_cifar100
+from CNN.remove_edge_cifar100_union_combined import remove_edge_cifar100_union_combined
+from CNN.remove_edge_cifar100_union_perlayer_combined import remove_edge_cifar100_perlayer_w_small_combined
 from Lidar.plot_trajectories import main_lidar
 from Lidar.plot_trajectories_perlayer import main_lidar_perlayer
 from Lidar.remove_weights_fc import remove_w_lidar
@@ -90,13 +92,14 @@ if __name__=='__main__':
                 remove_edge_cifar_union_perlayer_w_small_combined(args)
                 remove_edge_cifar_union_w_small_combined(args)
                 # remove_w_cifar100(args)
+                # remove_edge_cifar100_perlayer_w_small_combined(args)
                 # remove_edge_cifar100_union_combined(args)
                 # remove_wadan_cifar(args)
                 # remove_edge_cifar_union_w_vgg11(args)
             if args.community and args.dataset.lower() == "cifar":
                 # community_check_cifar_new_small(args)
-                community_check_cifar_vgg9(args)
-                # community_check_cifar100(args)
+                # community_check_cifar_vgg9(args)
+                community_check_cifar100(args)
                 # iterative_edge_removal_and_curvature(args)
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")

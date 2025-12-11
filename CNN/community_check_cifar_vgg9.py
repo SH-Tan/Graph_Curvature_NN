@@ -31,9 +31,6 @@ import warnings
 # Ignore all warnings
 warnings.filterwarnings("ignore")
 
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-
-
 
 model_dims = {
     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
@@ -328,6 +325,8 @@ def community_check_cifar_vgg9(args):
                             weights = output.detach().clone().to(device)
                             nodes_ori = nodes_ori.detach().clone().to(device)
                             # node_before = nodes_before.detach().clone().cpu()
+                            
+                            weights[edge_array == 0] = 1e6
  
                             edge_array = edge_array.detach().clone().cpu()
                             
@@ -367,8 +366,6 @@ def community_check_cifar_vgg9(args):
                                 del weights, weights_inv1, weights_inv2, nodes_ori
                                 torch.cuda.empty_cache()
                                 
-                                print(2./torch.min(weights_inv))
-
                                 weight_idx = 0
                                 start = 0
                                 combined = []

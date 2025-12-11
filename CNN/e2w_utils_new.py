@@ -123,20 +123,20 @@ def count_weight_frequency(weight_sets, model_dims= None, para_dims=None):
     pos_freq = Counter()
     neg_freq = Counter()
     zero_freq = Counter()
-    curvature_sum = defaultdict(float)
+    curvature_sum = defaultdict(list)
 
     for weight_set in weight_sets:
         for w, c, f, p in weight_set:
             freq[w] += f
             zero_freq[w] += 1
-            curvature_sum[w] += c
+            curvature_sum[w].append(c)
 
     results = []
     for w in freq:
         l, _, _, _, _ = w
         layer_info = model_dims[l + 2]
         out_s = layer_info["dim"]["out_size"]
-        avg_c = curvature_sum[w] / zero_freq[w]
+        avg_c = np.min(curvature_sum[w])
         # if not ((avg_c == 1) and (freq[w] < (out_s**2))):
         results.append((w, freq[w]/(out_s**2), avg_c, para_dims[l]))
     return results

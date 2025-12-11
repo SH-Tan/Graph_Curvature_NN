@@ -217,7 +217,7 @@ def community_check_cnn(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -301,7 +301,7 @@ def community_check_cnn(args):
                     nodes_ori = nodes_ori.detach().clone().to(device) 
                     node_alpha = node_alpha.detach().clone().to(device) 
                     edge_array = edge_array.detach().clone().to(device) 
-                    
+
                 if metric.lower() == "w1":
                     weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims)
                     weights_inv = weights_inv1.detach()

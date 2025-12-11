@@ -1,5 +1,5 @@
 import torch
-from torchvision.datasets.cifar import CIFAR10
+from torchvision.datasets.cifar import CIFAR100
 import torchvision.transforms as transforms
 import torchvision
 import numpy as np
@@ -11,14 +11,13 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import copy
 import time
-import torch.nn.functional as F
-
-from .e2w_utils_new import *
 
 import re
 import gc
 import pickle
 import pandas as pd
+
+from .e2w_utils_new import *
 
 import sys
 sys.path.append("..")
@@ -44,62 +43,8 @@ transform_test = torchvision.transforms.Compose([
     # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
-data_train = CIFAR10('./data/cifar10', train=True, download=True, transform=transform_train)
-data_test = CIFAR10('./data/cifar10', train=False, download=True, transform=transform_test)
-
-# model_dims = {
-#     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
-
-#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 29}}, 
-#     3: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 26}},   # After conv1_2 
-    
-#     4: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 23}},  
-#     5: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 20}},   # After conv2_2 
-    
-#     6: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 18}},
-#     7: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 16}},
-#     8: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv3_3
-    
-#     9: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},   # After conv4_1
-#     10: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
-#     11: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
-
-#     12: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # conv5_1
-#     13: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
-#     14: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
-
-#     15: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 1024
-#     16: {"name": "fc", "dim": {"out_size": 512}},
-#     17: {"name": "fc", "dim": {"out_size": 10}}
-# }
-
-
-
-# model_dims = {
-#     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
-
-#     2: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 29}}, 
-#     3: {"name": "cnn", "dim": {"channel": 64, "kernel": 4, "stride": 1, "padding":0, "out_size": 26}},   # After conv1_2 
-    
-#     4: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 23}},  
-#     5: {"name": "cnn", "dim": {"channel": 128, "kernel": 4, "stride": 1, "padding":0, "out_size": 20}},   # After conv2_2 
-    
-#     6: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 18}},
-#     7: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 16}},
-#     8: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv3_3
-    
-#     9: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},   # After conv4_1
-#     10: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 10}},   # After conv4_2
-#     11: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 8}},   # After conv4_3
-
-#     12: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 6}},   # conv5_1
-#     13: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 4}},   # conv5_2 
-#     14: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":0, "pool":False, "out_size": 2}},   # conv5_3 
-
-#     15: {"name": "fc", "dim": {"out_size": 256}},  # Flatten(512×2×2) → 1024
-#     16: {"name": "fc", "dim": {"out_size": 512}},
-#     17: {"name": "fc", "dim": {"out_size": 10}}
-# }
+data_train = CIFAR100('./data/cifar10', train=True, download=True, transform=transform_train)
+data_test = CIFAR100('./data/cifar10', train=False, download=True, transform=transform_test)
 
 model_dims = {
     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
@@ -120,9 +65,7 @@ model_dims = {
 
 model_dims_small = model_dims
 
-
-selected_classes = [0,1,2,3,4,5,6,7,8,9]
-
+selected_classes = list(range(100))
 
 def reduce_and_sort_all(edge_acc, sort_desc=False):
     """
@@ -636,7 +579,7 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_perlayer_para_combined_min2.png'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_perlayer_para_combined_min.png'), dpi=300)
     plt.close()
 
 
@@ -674,7 +617,7 @@ def cal_parameters(model_dims):
 
 
 
-def remove_edge_cifar_union_perlayer_w_small_combined(args):
+def remove_edge_cifar100_perlayer_w_small_combined(args):
     seed = 29
     
     # set random seed
@@ -731,7 +674,7 @@ def remove_edge_cifar_union_perlayer_w_small_combined(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg9_10_ori_"
+        model_name = "vgg9_100_"
     elif model_pre_name == 'adv':
         model_name = "vgg9_10_adv_"
     elif model_pre_name == 'wd':
@@ -739,7 +682,7 @@ def remove_edge_cifar_union_perlayer_w_small_combined(args):
         
     model_name = model_name + activation + "_s2.pth"
         
-    net_H = VGG9_CIFAR10(model_dims, None, device, prefix_dims)
+    net_H = VGG9_CIFAR10(model_dims, None, device, prefix_dims, num_classes=100)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
@@ -753,7 +696,7 @@ def remove_edge_cifar_union_perlayer_w_small_combined(args):
 
     # print(f'Finish read pickle file...')
     
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_perlayer_para_combined_min2.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_perlayer_para_combined_min.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(save_path)

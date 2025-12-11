@@ -19,7 +19,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature import graph_curvature_main_torch
+from tools.graph_curvature_cnn_threshold_opzimized import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -35,30 +35,22 @@ warnings.filterwarnings("ignore")
 model_dims = {
     1: {"name": "input", "dim": {"channel": 3, "out_size": 32}},   # Input image
 
-    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 3, "stride": 1, "padding":1, "out_size": 16}},   # After conv1_2 + pool
-    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":1, "out_size": 8}},   # After conv2_2 + pool
-    4: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":1, "out_size": 4}},   # After conv3_3 + pool
-    5: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # After conv4_3 + pool
+    2: {"name": "cnn", "dim": {"channel": 64, "kernel": 2, "stride": 2, "padding":0, "out_size": 16}}, 
+    3: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 14}},   # After conv1_2 
+    
+    4: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 1, "padding":0, "out_size": 12}},  
+    5: {"name": "cnn", "dim": {"channel": 128, "kernel": 3, "stride": 2, "padding":0, "out_size": 5}},   # After conv2_2 
+    
+    6: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 3}},
+    7: {"name": "cnn", "dim": {"channel": 256, "kernel": 3, "stride": 1, "padding":0, "out_size": 1}},
 
-    6: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 2}},   # conv5_1
-    7: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "pool":True, "out_size": 1}},   # conv5_2 + pool
-    8: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3 
-
-    9: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    10: {"name": "fc", "dim": {"out_size": 512}},
-    11: {"name": "fc", "dim": {"out_size": 100}}
+    8: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 1024
+    9: {"name": "fc", "dim": {"out_size": 128}},
+    10: {"name": "fc", "dim": {"out_size": 100}}
 }
 
 
-
-model_dims_small = {
-    1: {"name": "cnn", "dim": {"channel": 512, "kernel": 3, "stride": 1, "padding":1, "out_size": 1}},   # conv5_2
-    2: {"name": "cnn", "dim": {"channel": 512, "kernel": 1, "stride": 1, "padding":0, "pool":False, "out_size": 1}},   # conv5_3
-
-    3: {"name": "fc", "dim": {"out_size": 1024}},  # Flatten(512×1×1) → 1024
-    4: {"name": "fc", "dim": {"out_size": 512}},
-    5: {"name": "fc", "dim": {"out_size": 100}}
-}
+model_dims_small = model_dims
 
 selected_classes = list(range(100))
 # selected_classes = [0]
@@ -218,7 +210,7 @@ def community_check_cifar100(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -249,7 +241,7 @@ def community_check_cifar100(args):
     model_full_n = model_type.lower() + model_pre_name.lower()
     
     if activation.lower() == "relu":
-        from tools.vgg16_custom_relu import VGG16_CIFAR10
+        from tools.vgg9_custom_relu import VGG9_CIFAR10
     elif activation.lower() == "tanh":
         from tools.vgg16_custom_tanh import VGG16_CIFAR10
 
@@ -258,15 +250,15 @@ def community_check_cifar100(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg16_100_ori_"
+        model_name = "vgg9_100_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
         model_name = "vgg16_wd_"
         
-    model_name = model_name + activation + ".pth"
+    model_name = model_name + activation + "_s2.pth"
     
-    net_H = VGG16_CIFAR10(model_dims, None, device, num_classes=100)
+    net_H = VGG9_CIFAR10(model_dims, None, device, num_classes=100)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
@@ -286,7 +278,6 @@ def community_check_cifar100(args):
     data_iterators = {l: iter(robust_pair[l]) for l in selected_classes}
     finished_labels = set()
     round_id = 1  # Track how many full batches have been saved
-
 
     while len(finished_labels) < len(selected_classes):
         finished_l = 0
@@ -311,29 +302,22 @@ def community_check_cifar100(args):
                         if current_count >= num_needed:
                             break
 
-                        if (label_progress[l] % 10 == 0):
+                        if (label_progress[l] % 1 == 0):
                             print(f'Label {l}: finish {label_progress[l]} examples...')
 
                         with torch.no_grad():
                             net_full.eval()
                             img = images[idx].to(device, non_blocking=True)
-                            edge_array, nodes_ori, output = net_full.NN_info_batch(img.unsqueeze(0))
+                            edge_array, nodes_ori, output, nodes_before = net_full.NN_info_batch(img.unsqueeze(0))
 
-                            weights = output.detach().to(device)
-                            del output
+                            weights = output.detach().clone().to(device)
+                            nodes_ori = nodes_ori.detach().clone().to(device)
+                            # node_before = nodes_before.detach().clone().cpu()
+ 
+                            edge_array = edge_array.detach().clone().cpu()
                             
-                            # offset = 0
-                            # for i, size in enumerate(edge_dims, 1):
-                            #     layer_weights = weights[:,offset:offset + size]
-                            #     print(f"Layer {i}:")
-                            #     print(f"  Range: [{offset}, {offset + size})")
-                            #     print(f"  Min: {layer_weights.min():.6f}")
-                            #     print(f"  Max: {layer_weights.max():.6f}")
-                            #     print(f"  Mean: {layer_weights.mean():.6f}")
-                            #     print(f"  Var: {layer_weights.var():.6e}")
-                            #     offset += size
-                            
-                            # print(len(weights[0]), len(weights[weights!=0]))
+                            del output, img, nodes_before
+                            torch.cuda.empty_cache()
                             
                             if metric.lower() == "w1":
                                 weights_inv1, weights_inv2 = net_full.normalization_weight_w1(nodes_ori, weights, dims, model_dims_small)
@@ -357,28 +341,83 @@ def community_check_cifar100(args):
                                     layers_to_process=[1,2,3]
                                 )
                             elif metric.lower() == "w4":
-                                weights_inv1, weights_inv2, weights_inv3 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
-                                weights_inv = weights_inv1.detach()
-                                weights_inv2 = weights_inv2.detach()
-                                weights_inv3 = weights_inv3.detach()
+                                weights_inv1, weights_inv2= net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
                                 
-                                # print(len(weights_inv[0]), len(weights_inv[weights_inv!=np.inf]))
+                                # Move back to CPU immediately to save GPU RAM
+                                weights_inv = weights_inv1.detach().cpu()
+                                weights_inv_p = weights_inv2.detach().cpu()
+                                node_abs = torch.abs(nodes_ori)
+                                # edge_array_abs = torch.abs(edge_array)
 
-                                ricci_curvature = graph_curvature_main_torch(
-                                    dims, weights_inv, device=device,
-                                    model_dims=model_dims_small,
-                                    probability_w=(weights_inv2, weights_inv3), alpha=alpha,
-                                    pre_n=(np.sum(dims_full) - np.sum(dims)),
-                                    layers_to_process=[1,2,3]
-                                )
+                                del weights, weights_inv1, weights_inv2, nodes_ori
+                                torch.cuda.empty_cache()
+                                
+                                weight_idx = 0
+                                start = 0
+                                combined = []
+                                for l_key in [0,1,2,3,4,5,[6,7,8]]:  # loop variable is l_key
+                                    print(f'Current label {l} - l_key {l_key}.....')
+                                    # Determine weight index slice
+                                    weight_idx = min(l_key) - 1 if isinstance(l_key, list) else l_key - 1
+                                    weight_idx = max(0, weight_idx)
+                                    start = np.sum(edge_dims[0:weight_idx]) if weight_idx > 0 else 0
+
+                                    # Determine number of edges to include
+                                    num_edges = len(l_key) if isinstance(l_key, list) else 1
+                                    end = start + np.sum(edge_dims[weight_idx: weight_idx + num_edges + 2])
+                                    
+                                    # Move only the current slice to GPU
+                                    w_inv_slice = weights_inv[:, start:end].to(device, non_blocking=True)
+                                    w_inv2_slice = weights_inv_p[:, start:end].to(device, non_blocking=True)
+                                    edge_slice = edge_array[:, start:end].to(device, non_blocking=True)
+                                    # edge_slice_noninv = edge_array[:, start:end].to(device, non_blocking=True)
+
+                                    # Compute Ricci curvature for current layer(s)
+                                    ricci_results = graph_curvature_main_torch(
+                                        dims,
+                                        w_inv_slice,
+                                        device=device,
+                                        model_dims=model_dims_small,
+                                        probability_w=w_inv2_slice,
+                                        alpha=alpha,
+                                        pre_n=(np.sum(dims_full) - np.sum(dims)),
+                                        nodes=node_abs,  # stays on CPU, passed as reference
+                                        edge_value=edge_slice,
+                                        threshold=0.,
+                                        layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key],
+                                        upb = 2./torch.min(weights_inv)
+                                    )
+                     
+                                    # with open(res_path + f"output_{l_key}.txt", "a+") as f:
+                                    #     for i, (batch_key, triples) in enumerate(ricci_results.items()):
+                                    #         for i, j, lm, ln, m, sp, curv in triples:
+                                    #             f.write(f'edge {i}-{j}: \n')
+                                    #             f.write(f"in-neighbor number: {lm}, out-neighbor number {ln}\n")
+                                    #             f.write(f"m = {m:.6f}, sp = {sp:.6f}, {curv:.6f}\n")
+                                    #         f.write("\n")
+                                            
+                                    # print("finished")
+                                            
+                                    for batch_key, triples in ricci_results.items():
+                                        combined.extend(triples)   # append all (i, j, val) tuples
+                                        
+                                    # Free per-loop tensors
+                                    del w_inv_slice, w_inv2_slice, edge_slice, ricci_results
+                                    torch.cuda.empty_cache()
                             else:
                                 raise Exception("Invalid graph metric, should be {w1, w3, w4}!")
 
-                            res_l[l].append(ricci_curvature)
+                            # === Save one sample per file ===
+                            save_name = f"{model_full_n}_{metric}_{dataset}_label{l}_id{label_progress[l]}_round{round_id}.pkl"
+                            save_path = os.path.join(res_path, save_name)
 
-                            # GPU memory cleanup
-                            del img, edge_array, nodes_ori
-                            del weights, weights_inv1, weights_inv2, weights_inv
+                            with open(save_path, 'wb') as f:
+                                pickle.dump(combined, f)
+
+                            print(f"[Saved] Label {l}, Example {label_progress[l]} → {save_name}")
+
+                            # Final cleanup
+                            del edge_array, node_abs, combined
                             torch.cuda.empty_cache()
 
                             label_progress[l] += 1
@@ -389,17 +428,5 @@ def community_check_cifar100(args):
                 continue
 
         # === Check if all labels have collected 10 new samples ===
-        if all(len(res_l[l]) >= 1 for l in selected_classes if label_progress[l] < sample_size) or finished_l >= len(selected_classes):
-            save_name = f"{model_full_n}_{metric}_{dataset}_batch{round_id}.pkl"
-            save_path = os.path.join(res_path, save_name)
-
-            with open(save_path, 'wb') as f:
-                pickle.dump(dict(res_l), f)  # use dict to avoid defaultdict issues
-
-            print(f"[Saved] Batch {round_id}: 10 examples per label saved to {save_name}")
-
-            # Clear all buffers
-            for l in selected_classes:
-                res_l[l].clear()
-
+        if all(len(res_l[l]) == 100 for l in selected_classes if label_progress[l] < sample_size) or finished_l >= len(selected_classes):
             round_id += 1

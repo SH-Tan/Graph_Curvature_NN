@@ -29,6 +29,7 @@ _nodes_value = None
 _edge_value = None
 _edge_dict = None
 _upper_bound = None
+_nodes_alpha = None
 
 
 
@@ -75,7 +76,7 @@ def out_distribution(model_dims, sp1, device='cuda', thre = 0.5, dist = None):
                 top_mask = (weight_v >= threshold) & valid_mask
                 
                 # --- assign normalized inverse node values ---
-                inv_vals = torch.where(top_mask, 1.0 / (node_slice), inf)
+                inv_vals = torch.where(top_mask, 1./(node_slice), inf)
                 out_matrix[:, src_idx, :] = inv_vals
                 
             else:
@@ -112,7 +113,7 @@ def out_distribution(model_dims, sp1, device='cuda', thre = 0.5, dist = None):
 
                 if thre <= 0:
                     # Compute reciprocal, avoid division by zero
-                    node_inv = torch.where(node_slice != 0, 1.0 / node_slice, torch.zeros_like(node_slice))
+                    node_inv = torch.where(node_slice != 0, 1./node_slice, torch.zeros_like(node_slice))
 
                     # assign node value to all valid incoming edges
                     out_matrix[:, src_idx, valid_idx]= node_inv
@@ -536,11 +537,13 @@ def process_edge(b, edge):
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
     
-    if ((i_layer > 0) and (node_i <= 0)):
-        return (b, i, j, 1.)
     
     # if ((j_layer < len(_dims)-1) and (node_j <= 0)):
     #     return (b, i, j, 1.)
+    
+    # if ((i_layer > 0) and (node_i <= 0)):
+    #     return (b, i, j, 1.)
+    
     
     # In-neighbors distribution
     if i_layer == 0:
@@ -595,35 +598,10 @@ def process_edge(b, edge):
         curv = 1.0 - m/sp
         curv /= (1-_alpha)
 
-    except:
-        print(_nodes_value[:,i],_nodes_value[:,j])
+    except Exception as e:
+        print("Error in EMD computation:", e)
+        print(i_layer, i,j)
     
-    # if np.isinf(d_np).any():
-    #     print(i_layer, np.isinf(d_np).sum(), np.isnan(d_np).sum(), m)
-    
-    # === Debug print section for layer 4 ===
-    # if i_layer == 3 and (sp <= 1./0.36 or sp >= 1./ 0.00001):
-    #     print(_prefix_dims)
-    #     print(f"\nEdge ({i} → {j}), sp = {sp}")
-    #     print("Node values:")
-    #     print("  i node:", _nodes_value[:, i])
-    #     print("  j node:", _nodes_value[:, j])
-        
-    #     # Sort and print top 10 μ
-    #     mu_sorted_idx = np.argsort(mu)[::-1][:10]
-    #     print("\nTop 10 μ values:")
-    #     for rank, idx in enumerate(mu_sorted_idx):
-    #         node_id = in_neigh[idx] if idx < len(in_neigh) else None
-    #         node_val = _nodes_value[:, node_id] if node_id is not None else None
-    #         print(f"  {rank+1}. μ[{idx}] = {mu[idx]:.4f}, node = {node_id}, value = {node_val}")
-
-    #     # Sort and print top 10 ν
-    #     nu_sorted_idx = np.argsort(nu)[::-1][:10]
-    #     print("\nTop 10 ν values:")
-    #     for rank, idx in enumerate(nu_sorted_idx):
-    #         node_id = out_neigh[idx] if idx < len(out_neigh) else None
-    #         node_val = _nodes_value[:, node_id] if node_id is not None else None
-    #         print(f"  {rank+1}. ν[{idx}] = {nu[idx]:.4f}, node = {node_id}, value = {node_val}")
     return (b, i, j, curv)
 
 
@@ -633,7 +611,8 @@ def _wrap_compute_single_edge(stuff):
     return process_edge(*stuff)
 
 
-def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., pre_n=0, layers_to_process=None, nodes = None, edge_value = None, threshold = 0.5, nodes_alpha = None, ub = 1.):
+def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, alpha = 0., 
+                               pre_n=0, layers_to_process=None, nodes = None, edge_value = None, threshold = 0.5, nodes_alpha = None, ub = 1.):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
@@ -644,6 +623,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     global _nodes_value
     global _edge_value
     global _upper_bound
+    global _nodes_alpha
     
     _alpha = alpha
     _pre_n = pre_n
@@ -698,42 +678,41 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             path_sub = dis_w_in[(layer-1, layer)]
             # path_sub = torch.where(path_sub > 0, path_sub, inf)
             mask = (path_sub != float('inf')) & (path_sub != 0)
-            weights_layer = torch.exp(-(path_sub ** 2)) * mask
-            # weights_layer = (1./path_sub) * mask
+            # weights_layer = torch.exp(-(path_sub ** 2)) * mask
+            weights_layer = torch.where(mask, torch.exp(-(path_sub ** 2)), torch.zeros_like(path_sub))
             sum_weights = weights_layer.sum(dim=1)
 
             dist_prev = ((1.0 - _alpha) * weights_layer) / sum_weights[:, None, :]
-            
+
             indices = torch.where(sum_weights <= EPSILON)[1]
 
-            mask1 = (path_sub[:,:,indices] != float('inf'))
+            mask1 = (path_sub[:,:,indices] != float('inf')) & (path_sub[:,:,indices] != 0)
             dist_prev[:,:,indices] = -1
             dist_prev[:,:,indices] *= mask1
             dist_prev *= mask
             
-            distribution_in[layer] = dist_prev.cpu().numpy()
+            distribution_in[layer] = np.abs(dist_prev.cpu().numpy())
+ 
             
     for layer in range(len(dims)-1):
         if (layer, layer+1) in dis_w_out:
             path_sub = dis_w_out[(layer, layer+1)]
-            # path_sub = torch.where(path_sub > 0, path_sub, inf)
             mask = (path_sub != float('inf')) & (path_sub != 0)
             
-            weights_layer = torch.exp(-(path_sub ** 2)) * mask
-                
-            # weights_layer = (1./path_sub) * mask
+            weights_layer = torch.where(mask, torch.exp(-(path_sub ** 2)), torch.zeros_like(path_sub))
+
             sum_weights = weights_layer.sum(dim=2)
-            
+ 
             dist_next = ((1.0 - _alpha) * weights_layer) / sum_weights[:, :, None]
   
             indices = torch.where(sum_weights <= EPSILON)[1]
 
-            mask1 = (path_sub[:,indices,:] != float('inf'))
+            mask1 = (path_sub[:,indices,:] != float('inf')) & (path_sub[:,indices,:] != 0)
             dist_next[:,indices,:] = -1
             dist_next[:,indices,:] *= mask1
             dist_next *= mask
      
-            distribution_out[layer] = dist_next.cpu().numpy()
+            distribution_out[layer] = np.abs(dist_next.cpu().numpy())
 
 
     _distribution_in = distribution_in
