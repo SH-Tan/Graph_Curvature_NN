@@ -39,82 +39,51 @@ def build_cnn_edge_weight_map(in_ch, in_size, out_ch, k, stride, padding, layer,
     return edge_to_weight
 
 
-def clipped_median(arr):
-    arr = np.asarray(arr)
-    if len(arr) <= 2:
-        # After removing min & max, nothing remains → return regular median
-        return np.median(arr)
-    
-    sorted_arr = np.sort(arr)
-    trimmed = sorted_arr[1:-1]   # remove smallest and largest
-    return np.mean(trimmed)      # average of the remaining values
-
 
 def aggregate_cnn_weight_curvature(edge_curvatures, edge_to_weight):
     """
     Aggregate per-edge curvature into average curvature per CNN kernel weight.
     Separate positive and negative curvature averages.
-
-    Args:
-        edge_curvatures (list[tuple[int,int,float]]): (i, j, curvature)
-        edge_to_weight (dict): (i,j) -> (out_ch,in_ch,kh,kw)
-
-    Returns:
-        weight_curv_dict: dict[(out_ch,in_ch,kh,kw)] = avg_curvature
-        weight_freq_dict: dict[(out_ch,in_ch,kh,kw)] = frequency
     """
-    curv_sum_neg = defaultdict(list)
-    curv_sum_pos = defaultdict(list)
-    pos_freq = defaultdict(int)
-    neg_freq = defaultdict(int)
-    zero_freq = defaultdict(int)
+
+    # Store the minimum curvature for each weight
+    min_curv = {}
+    pos_cnt = defaultdict(int)
+    neg_cnt = defaultdict(int)
     freq = defaultdict(int)
 
-    for (i, j, c) in edge_curvatures:
-        key = tuple(sorted((i, j)))
-        if key not in edge_to_weight:
+    for i, j, c in edge_curvatures:
+
+        # Fastest possible normalized key
+        key = (i, j) if i < j else (j, i)
+
+        # Skip if edge not linked to any weight
+        w = edge_to_weight.get(key)
+        if w is None:
             continue
-        w = edge_to_weight[key]
-        if c < 0:
-            curv_sum_neg[w].append(c)
-        else:
-            curv_sum_pos[w].append(c)
-            
+
+        # Track minimum curvature
+        if (w not in min_curv) or (c < min_curv[w]):
+            min_curv[w] = c
+
+        # Frequency tracking
         freq[w] += 1
-        
         if c >= 0:
-            pos_freq[w] += 1
-        # elif c == 0:
-        #     zero_freq[w] += 1
+            pos_cnt[w] += 1
         else:
-            neg_freq[w] += 1
+            neg_cnt[w] += 1
 
-    # weight_curv = dict()
-    neg_curv_weights = dict()
-    pos_curv_weights = dict()
-    
+    # Separate positive/negative weights
+    pos_curv_weights = {}
+    neg_curv_weights = {}
+
     for w in freq:
-        negs = curv_sum_neg[w]
-        poss = curv_sum_pos[w]
+        cmin = min_curv[w]
+        if cmin < 0:
+            neg_curv_weights[w] = (cmin, neg_cnt[w], 0)
+        else:
+            pos_curv_weights[w] = (cmin, pos_cnt[w], 0)
 
-        if len(curv_sum_neg[w]) > 0:
-            neg_curv_weights[w] = (np.min(negs), neg_freq[w], zero_freq[w])
-        elif len(poss) > 0:
-            pos_curv_weights[w] = (np.min(poss), pos_freq[w], zero_freq[w])
-    # weight_curv = {w: (curv_sum[w], freq[w], pos_freq[w], neg_freq[w], zero_freq[w]) for w in freq}
-    
-    # neg_curv_weights = {
-    #     w: (curv_sum[w]/neg_freq[w], neg_freq[w], zero_freq[w])
-    #     for w in weight_curv
-    #     if curv_sum[w] < 0
-    # }
-
-    # pos_curv_weights = {
-    #     w: (curv_sum[w]/pos_freq[w], pos_freq[w], zero_freq[w])
-    #     for w in weight_curv
-    #     if (curv_sum[w] >= 0) # and (curv_sum[w]/pos_freq[w] < 1)
-    # }
-    
     return pos_curv_weights, neg_curv_weights
 
 
@@ -140,6 +109,21 @@ def count_weight_frequency(weight_sets, model_dims= None, para_dims=None):
         # if not ((avg_c == 1) and (freq[w] < (out_s**2))):
         results.append((w, freq[w]/(out_s**2), avg_c, para_dims[l]))
     return results
+
+
+def cnn_results(min_cnn, count_cnn, model_dims, para_dims):
+    out = []
+
+    for w, cmin in min_cnn.items():
+        l = w[0]  # layer index
+        layer_info = model_dims[l + 2]
+        out_size = layer_info["dim"]["out_size"]
+
+        norm_freq = count_cnn[w] / (out_size**2)
+
+        out.append((w, norm_freq, cmin, para_dims[l]))
+
+    return out
 
 
 

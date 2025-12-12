@@ -60,7 +60,7 @@ model_dims = {
 
     8: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 1024
     9: {"name": "fc", "dim": {"out_size": 128}},
-    10: {"name": "fc", "dim": {"out_size": 10}}
+    10: {"name": "fc", "dim": {"out_size": 100}}
 }
 
 model_dims_small = model_dims
@@ -68,35 +68,26 @@ model_dims_small = model_dims
 selected_classes = list(range(100))
 
 def reduce_and_sort_all(edge_acc, sort_desc=False):
-    """
-    Reduce edge_acc to average curvature per edge/weight and frequency,
-    and return a sorted list per layer.
-    
-    For FC: keys are (i,j)
-    For CNN: keys are weight indices (e.g., tuples like (out_ch, in_ch, kh, kw))
-    """
     layer_sorted = {}
 
-    for layer, items_dict in edge_acc.items():
+    for layer, item_dict in edge_acc.items():
         items = []
 
-        for key, curvs in items_dict.items():
-            freq = len(curvs)
-            # avg_curv = sum(curvs) / freq
-            avg_curv = np.min(curvs)
-            # distinguish FC vs CNN by type/length of key
-            if isinstance(key, tuple) and len(key) == 2:
-                # FC edge
-                items.append(("edge", key[0], key[1], freq, avg_curv))
-            else:
-                # CNN weight index
-                items.append(("weight", key, None, freq, avg_curv))
+        for key, curvs in item_dict.items():
+            freq = 1
+            # avg_curv = np.min(curvs)  # or np.mean if needed later
 
-        # Sort by freq descending, then avg curvature ascending or descending
+            if isinstance(key, tuple) and len(key) == 2:
+                items.append(("edge", key[0], key[1], freq, curvs))
+            else:
+                items.append(("weight", key, None, freq, curvs))
+
+        # Sort on curvature only (freq no longer incorrectly in comparator)
         if sort_desc:
-            items.sort(key=lambda x: (-x[4]))  # freq ↓, curvature ↓
+            items.sort(key=lambda x: x[-1], reverse=True)
         else:
-            items.sort(key=lambda x: (x[4]))   # freq ↓, curvature ↑
+            items.sort(key=lambda x: x[-1])
+
         layer_sorted[layer] = items
 
     return layer_sorted
@@ -151,11 +142,8 @@ def process_batches_memory_efficient(
     label_counts = {l: 0 for l in selected_classes}
     
     # Prepare storage per layer
-    edge_sets_by_layer = defaultdict(lambda: defaultdict(list))
-    
-    neg_weight_sets = []
-    pos_weight_sets = []
-    
+    edge_sets_by_layer = defaultdict(lambda: defaultdict(lambda: np.inf))
+
     for f in all_files:
         label, sample_id = extract_label_id(f)
         if label not in selected_classes:
@@ -167,62 +155,53 @@ def process_batches_memory_efficient(
         print(f'file_path: {file_path}')
         
         with open(file_path, 'rb') as file:
-            batch_data = pickle.load(file)
+            ricci_batch = pickle.load(file)
 
-        new_data = batch_data
-        # available = sample_size - label_counts[l]
-        use_data = [new_data]
+        neg_e, pos_e, cnn_e = get_top_c(ricci_batch, b=1, prefix_dims=prefix_dims)
+        
+        # ---- Directly accumulate CNN curvature (remove giant pos/neg_weight_sets) ----
+        for layer, edges in cnn_e.items():
+            layer_info = model_dims[layer + 2]
+            if layer_info["name"] == "cnn":
+                pos_w, neg_w = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
 
-        for ricci in use_data:
-            neg_e, pos_e, cnn_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
-            
-            for layer, edges in cnn_e.items():
+                # Update min curvature directly, no list
+                for w, (c, _, _) in pos_w.items():
+                    if c < edge_sets_by_layer[layer][w]:
+                        edge_sets_by_layer[layer][w] = c
+
+                for w, (c, _, _) in neg_w.items():
+                    if c < edge_sets_by_layer[layer][w]:
+                        edge_sets_by_layer[layer][w] = c
+
+
+        # --- Accumulate per-layer curvatures ---
+        for edge_dict in [neg_e, pos_e]:
+            for layer, edges in edge_dict.items():
                 layer_info = model_dims[layer + 2]
+
                 if layer_info["name"] == "cnn":
-                    pos_curv_weights, neg_curv_weights = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
-                    # print(len(pos_curv_weights), len(neg_curv_weights))
-                    # all_weight_sets.append([(w, c, f, pos_f, neg_f) for w, (c, f, pos_f, neg_f) in weight_curv.items()])
-                    neg_weight_sets.append([(w, c, f, z) for w, (c, f, z) in neg_curv_weights.items()])
-                    pos_weight_sets.append([(w, c, f, z) for w, (c, f, z) in pos_curv_weights.items()])
-                    # print(len(neg_weight_sets), len(pos_weight_sets))
+                    # CNN: accumulate per weight index
+                    edge_to_weight = cnn_edge_to_weight_map[layer]  # precomputed
+                    for (i, j, curv) in edges:
+                        w_idx = edge_to_weight[(i, j)]  # e.g., (l, out_ch, in_ch, kh, kw)
+                        edge_sets_by_layer[layer][w_idx].append(curv)
 
-            # --- Accumulate per-layer curvatures ---
-            for edge_dict in [neg_e, pos_e]:
-                for layer, edges in edge_dict.items():
-                    layer_info = model_dims[layer + 2]
-
-                    if layer_info["name"] == "cnn":
-                        # CNN: accumulate per weight index
-                        edge_to_weight = cnn_edge_to_weight_map[layer]  # precomputed
-                        for (i, j, curv) in edges:
-                            w_idx = edge_to_weight[(i, j)]  # e.g., (l, out_ch, in_ch, kh, kw)
-                            edge_sets_by_layer[layer][w_idx].append(curv)
-
-                    elif layer_info["name"] == "fc":
-                        # FC: accumulate per edge
-                        for (i, j, curv) in edges:
-                            edge_sets_by_layer[layer][(i, j)].append(curv)
-
-            del ricci, neg_e, pos_e
-
-        label_counts[label] += len(use_data)
-        del batch_data
+                elif layer_info["name"] == "fc":
+                    for (i, j, curv) in edges:
+                        key = (i, j)
+                        if curv < edge_sets_by_layer[layer][key]:
+                            edge_sets_by_layer[layer][key] = curv
+                            
+        del ricci_batch, neg_e, pos_e, cnn_e
         gc.collect()
+
+        label_counts[label] += 1
 
         if all(label_counts[l] >= sample_size for l in selected_classes):
             break
 
     print("Finished processing all required batches.")
-    
-    
-    # --- Combine weight-level curvature into per-layer accumulators ---
-    all_weight_sets = pos_weight_sets + neg_weight_sets
-    
-    # --- Combine weight-level curvature into per-layer accumulators ---
-    for weight_list in all_weight_sets:
-        for (w, curv, freq, z) in weight_list:
-            layer = w[0]       # first index is layer id
-            edge_sets_by_layer[layer][w].append(curv)
 
     # Negatives
     neg_freq_dict = reduce_and_sort_all(edge_sets_by_layer, sort_desc=False)

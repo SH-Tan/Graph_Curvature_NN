@@ -701,14 +701,6 @@ def process_edge(b, edge):
     m = ot.emd2(mu, nu, d_np)
     curv = 1.0 - m/sp
     curv /= (1-_alpha)
-    
-    if ((i_layer > 0) and (sp == 1e6)):
-        print(i_layer, curv)
-    
-    # print(d_np)
-    
-    # if ((i_layer > 0) and (node_i <= 0)):
-    #     curv = 1. if curv >= 0 else 0.
 
     return (b, i, j, curv)
 

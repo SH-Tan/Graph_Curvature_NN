@@ -62,7 +62,7 @@ model_dims = {
 
     8: {"name": "fc", "dim": {"out_size": 512}},  # Flatten(512×2×2) → 1024
     9: {"name": "fc", "dim": {"out_size": 128}},
-    10: {"name": "fc", "dim": {"out_size": 10}}
+    10: {"name": "fc", "dim": {"out_size": 100}}
 }
 
 
@@ -161,38 +161,45 @@ def get_top_c(curvature, b, prefix_dims):
     pos_e = defaultdict(list)
     cnn_e = defaultdict(list)
 
-    # Precompute a fast index-to-layer map
-    def find_layer(index):
-        return np.searchsorted(prefix_dims, index, side='right') - 1
+    # Convert once
+    curv = np.asarray(curvature)
+    edges = curv.copy()
+    edges[:, :2] = edges[:, :2].astype(int)
 
-    for batch in range(b):
-        ricci_curv = np.array(curvature)
-        
-        # Filter out large curvature values
-        valid = ricci_curv
-        valid[:, :2] = valid[:, :2].astype(int)
-        
-        for i, j, curr in valid:
-            # curr = min(curr, 1.0)  # clip curvature
-            i = int(i)
-            j = int(j)
+    # ----- PRECOMPUTE LAYER OF EACH UNIQUE NODE -----
+    i_nodes = edges[:, 0].astype(int)
+    j_nodes = edges[:, 1].astype(int)
+    unique_nodes = np.unique(np.concatenate([i_nodes, j_nodes]))
 
-            i_layer = find_layer(i)
-            j_layer = find_layer(j)
-            
-            if ((i_layer > 0) and (i_layer < 8)):
-                if (abs(curr - 1.00000) < 1e-6):
-                    curr = 2.0
-            
-            if i_layer not in [6,7,8]:
-                cnn_e[i_layer].append((i,j,curr))
+    # Compute layer for each unique node only once
+    unique_layers = np.searchsorted(prefix_dims, unique_nodes, side="right") - 1
 
-            # Only keep edges between adjacent layers (excluding input and first hidden)
-            elif j_layer == i_layer + 1:
-                if curr < 0:
-                    neg_e[i_layer].append((i, j, curr))
-                elif curr >= 0:
-                    pos_e[i_layer].append((i, j, curr))
+    # Convert to a dictionary or array lookup
+    node_to_layer = dict(zip(unique_nodes, unique_layers))
+
+    # ----- PROCESS EDGES -----
+    for i, j, curr in edges:
+        i = int(i)
+        j = int(j)
+
+        i_layer = node_to_layer[i]
+        j_layer = node_to_layer[j]
+
+        # Adjust curvature only for some layers
+        if 0 < i_layer < 8 and abs(curr - 1.0) < 1e-6:
+            curr = 2.0
+
+        # CNN edges (non-FC)
+        if i_layer not in (6, 7, 8):
+            cnn_e[i_layer].append((i, j, curr))
+            continue
+
+        # FC edges only between adjacent layers
+        if j_layer == i_layer + 1:
+            if curr < 0:
+                neg_e[i_layer].append((i, j, curr))
+            else:
+                pos_e[i_layer].append((i, j, curr))
 
     return neg_e, pos_e, cnn_e
 
@@ -335,7 +342,7 @@ def compute_removal_mapping(summary, total_edges=1, reversed=True):
     build mapping: (count, freq, count_str, ratio_str)
     """
 
-    freqs = sorted({round(item[4], 2) for item in summary}, reverse=reversed)
+    freqs = sorted({round(item[4], 1) for item in summary}, reverse=reversed)
 
     mapping = []
     for freq_threshold in freqs:
@@ -493,6 +500,11 @@ def count_edge_frequency(edge_sets):
     return results
 
 
+def fc_results(min_fc, count_fc):
+    out = []
+    for (i, j), cmin in min_fc.items():
+        out.append((i, j, count_fc[(i,j)], cmin))
+    return out
 
 
 
@@ -545,9 +557,11 @@ def process_batches_memory_efficient(
             )
 
     label_counts = {l: 0 for l in selected_classes}
-    neg_weight_sets = []
-    pos_weight_sets = []
-    edge_sets = []
+    min_fc = defaultdict(lambda: float("inf"))
+    count_fc = Counter()
+
+    min_cnn = defaultdict(lambda: float("inf"))
+    count_cnn = Counter()
 
     for f in all_files:
         label, sample_id = extract_label_id(f)
@@ -562,49 +576,45 @@ def process_batches_memory_efficient(
         with open(file_path, 'rb') as file:
             batch_data = pickle.load(file)
 
-        new_data = batch_data
-        # available = sample_size - label_counts[l]
-        use_data = [new_data]
+        neg_e, pos_e, cnn_e = get_top_c(batch_data, b=1, prefix_dims=prefix_dims)
+        
+        for layer, edges in cnn_e.items():
+            layer_info = model_dims[layer + 2]
+            if layer_info["name"] == "cnn":
+                pos_w, neg_w = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
+                # Positive curvature weights
+                for w, (c, f, z) in pos_w.items():
+                    if c < min_cnn[w]:
+                        min_cnn[w] = c
+                    count_cnn[w] += f
 
-        for ricci in use_data:
-            neg_e, pos_e, cnn_e = get_top_c(ricci, b=1, prefix_dims=prefix_dims)
-            
-            for layer, edges in cnn_e.items():
-                layer_info = model_dims[layer + 2]
-                if layer_info["name"] == "cnn":
-                    pos_curv_weights, neg_curv_weights = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
-                    # all_weight_sets.append([(w, c, f, pos_f, neg_f) for w, (c, f, pos_f, neg_f) in weight_curv.items()])
-                    neg_weight_sets.append([(w, c, f, para_dims[w[0]]) for w, (c, f, z) in neg_curv_weights.items()])
-                    pos_weight_sets.append([(w, c, f, para_dims[w[0]]) for w, (c, f, z) in pos_curv_weights.items()])
+                # Negative curvature weights
+                for w, (c, f, z) in neg_w.items():
+                    if c < min_cnn[w]:
+                        min_cnn[w] = c
+                    count_cnn[w] += f
 
-         
-            # === Aggregate CNN edges → per-weight curvatures ===
-            for layer, edge in neg_e.items():
+        
+        # --- FC edges (direct edge curvature) ---
+        for edge_dict in (neg_e, pos_e):
+            for layer, edges in edge_dict.items():
                 layer_info = model_dims[layer + 2]
+
                 if layer_info["name"] == "cnn":
-                    print("ERROR!!")
                     continue
-                    weight_curv, freq = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
-                    neg_weight_sets.append([(w, c, f) for w, (c, f) in weight_curv.items()])
-                else:
-                    # FC layer — keep per-edge
-                    edge_sets.extend(edge)
 
-            for layer, edge in pos_e.items():
-                layer_info = model_dims[layer + 2]
-                if layer_info["name"] == "cnn":
-                    print("ERROR!!")
-                    continue
-                    weight_curv, freq = aggregate_cnn_weight_curvature(edges, cnn_edge_to_weight_map[layer])
-                    pos_weight_sets.append([(w, c, f) for w, (c, f) in weight_curv.items()])
-                else:
-                    edge_sets.extend(edge)
-            del ricci, neg_e, pos_e
+                for (i, j, c) in edges:
+                    key = tuple(sorted((i, j)))
+                    if c < min_fc[key]:
+                        min_fc[key] = c
+                    count_fc[key] += 1
+                    
+        label_counts[label] += 1
 
-        label_counts[label] += len(use_data)
-
-        del batch_data
+        # Cleanup
+        del batch_data, neg_e, pos_e, cnn_e
         gc.collect()
+
 
         if all(label_counts[l] >= sample_size for l in selected_classes):
             break
@@ -612,15 +622,11 @@ def process_batches_memory_efficient(
     print("Finished processing all required batches.")
     
 
-    freq_fc = count_edge_frequency(edge_sets)
+    freq_fc = fc_results(min_fc, count_fc)
+    freq_cnn = cnn_results(min_cnn, count_cnn, model_dims, para_dims)
     
-    all_weight_sets = pos_weight_sets + neg_weight_sets
-
-    freq_cnn = count_weight_frequency(all_weight_sets, model_dims, para_dims)
-    
-
     p_all = (
-        [("edge", i, j, f, c) for (i, j, f, c, p) in freq_fc] +
+        [("edge", i, j, f, c) for (i, j, f, c) in freq_fc] +
         [("weight", w, None, f, c) for (w, f, c, p) in freq_cnn]
     )
 

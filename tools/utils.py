@@ -135,6 +135,8 @@ def get_new_data(l1, data_train, data_test, train_bs = 128, test_bs = 2000, vali
     train_i1 = torch.tensor([i for i, (_, label) in enumerate(data_train) if label in l1])
     test_i1 = torch.tensor([i for i, (_, label) in enumerate(data_test) if label in l1])
     
+    # valid_num = min(valid_num, 0.1*len(train_i1))
+    
     train_index = torch.randperm(len(train_i1))
     valid_dataset = torch.utils.data.Subset(data_train, train_i1[train_index[0:valid_num]])
     train_dataset = torch.utils.data.Subset(data_train, train_i1[train_index[valid_num:,]])
