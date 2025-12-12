@@ -98,8 +98,8 @@ if __name__=='__main__':
                 # remove_edge_cifar_union_w_vgg11(args)
             if args.community and args.dataset.lower() == "cifar":
                 # community_check_cifar_new_small(args)
-                # community_check_cifar_vgg9(args)
-                community_check_cifar100(args)
+                community_check_cifar_vgg9(args)
+                # community_check_cifar100(args)
                 # iterative_edge_removal_and_curvature(args)
         else:
             raise Exception("Invalid model type, model type should be {fc, fc_linear, cnn}!")
