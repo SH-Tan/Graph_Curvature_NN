@@ -613,11 +613,11 @@ def process_edge(b, edge):
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
     
-    # if ((j_layer < len(_dims)-1) and (node_j <= 0)):
-    #     return (b, i, j, 1.)
+    if ((j_layer < len(_dims)-1) and (node_j <= 0)):
+        return (b, i, j, 1.)
     
-    # if ((i_layer > 0) and (node_i <= 0)):
-    #     return (b, i, j, 1.)
+    if ((i_layer > 0) and (node_i <= 0)):
+        return (b, i, j, 1.)
             
     
     if model_dim_i["name"] != "fc":
