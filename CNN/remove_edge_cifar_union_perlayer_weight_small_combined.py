@@ -380,44 +380,50 @@ def test(n, loader, eps, alpha, iters, device):
 
 
 
-
 def get_top_c(curvature, b, prefix_dims):
     neg_e = defaultdict(list)
     pos_e = defaultdict(list)
     cnn_e = defaultdict(list)
 
-    # Precompute a fast index-to-layer map
-    def find_layer(index):
-        return np.searchsorted(prefix_dims, index, side='right') - 1
+    # Convert once
+    curv = np.asarray(curvature)
+    edges = curv.copy()
+    edges[:, :2] = edges[:, :2].astype(int)
 
-    for batch in range(b):
-        ricci_curv = np.array(curvature)
-        
-        # Filter out large curvature values
-        valid = ricci_curv
-        valid[:, :2] = valid[:, :2].astype(int)
-        
-        for i, j, curr in valid:
-            # curr = min(curr, 1.0)  # clip curvature
-            i = int(i)
-            j = int(j)
+    # ----- PRECOMPUTE LAYER OF EACH UNIQUE NODE -----
+    i_nodes = edges[:, 0].astype(int)
+    j_nodes = edges[:, 1].astype(int)
+    unique_nodes = np.unique(np.concatenate([i_nodes, j_nodes]))
 
-            i_layer = find_layer(i)
-            j_layer = find_layer(j)
-            
-            if ((i_layer > 0) and (i_layer < 8)):
-                if (abs(curr - 1.00000) < 1e-6):
-                    curr = 2.0
-            
-            if i_layer not in [6,7,8]:
-                cnn_e[i_layer].append((i,j,curr))
+    # Compute layer for each unique node only once
+    unique_layers = np.searchsorted(prefix_dims, unique_nodes, side="right") - 1
 
-            # Only keep edges between adjacent layers (excluding input and first hidden)
-            elif j_layer == i_layer + 1:
-                if curr < 0:
-                    neg_e[i_layer].append((i, j, curr))
-                elif curr >= 0:
-                    pos_e[i_layer].append((i, j, curr))
+    # Convert to a dictionary or array lookup
+    node_to_layer = dict(zip(unique_nodes, unique_layers))
+
+    # ----- PROCESS EDGES -----
+    for i, j, curr in edges:
+        i = int(i)
+        j = int(j)
+
+        i_layer = node_to_layer[i]
+        j_layer = node_to_layer[j]
+
+        # Adjust curvature only for some layers
+        if 0 < i_layer < 8 and abs(curr - 1.0) < 1e-6:
+            curr = 2.0
+
+        # CNN edges (non-FC)
+        if i_layer not in (6, 7, 8):
+            cnn_e[i_layer].append((i, j, curr))
+            continue
+
+        # FC edges only between adjacent layers
+        elif j_layer == i_layer + 1:
+            if curr < 0:
+                neg_e[i_layer].append((i, j, curr))
+            else:
+                pos_e[i_layer].append((i, j, curr))
 
     return neg_e, pos_e, cnn_e
 

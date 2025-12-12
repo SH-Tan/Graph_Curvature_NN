@@ -195,7 +195,7 @@ def get_top_c(curvature, b, prefix_dims):
             continue
 
         # FC edges only between adjacent layers
-        if j_layer == i_layer + 1:
+        elif j_layer == i_layer + 1:
             if curr < 0:
                 neg_e[i_layer].append((i, j, curr))
             else:
@@ -838,9 +838,7 @@ def remove_edge_cifar100_union_combined(args):
         for (item, i, j, f, c), layer in zip(neg_freq_dict, layers_i)
         if c < 0
     ]
-    
-    
-    
+
     # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
     # pos_edges_only = [
     #     (i, j)

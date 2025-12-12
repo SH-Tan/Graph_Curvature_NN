@@ -170,7 +170,7 @@ class VGG9_CIFAR10(nn.Module):
                     else:
                         print(i, j, l1, l2, mask_tensor.shape)
                 else:
-                    print(i, j, l1, l2, self.model_info[l2+1]["name"])
+                    print(i, j, l1, l2)
                 continue
             else:
                 print(item_type)
