@@ -32,6 +32,7 @@ from CNN.remove_edge_cifar100_union_perlayer_combined import remove_edge_cifar10
 from Lidar.plot_trajectories import main_lidar
 from Lidar.plot_trajectories_perlayer import main_lidar_perlayer
 from Lidar.remove_weights_fc import remove_w_lidar
+from CNN.process_and_save import process_data
 
 import warnings
 
@@ -88,12 +89,13 @@ if __name__=='__main__':
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
+                process_data(args)
                 # remove_edge_cifar_union_perlayer_w(args)
                 # remove_edge_cifar_union_perlayer_w_small_combined(args)
                 # remove_edge_cifar_union_w_small_combined(args)
                 # remove_w_cifar100(args)
                 # remove_edge_cifar100_perlayer_w_small_combined(args)
-                remove_edge_cifar100_union_combined(args)
+                # remove_edge_cifar100_union_combined(args)
                 # remove_wadan_cifar(args)
                 # remove_edge_cifar_union_w_vgg11(args)
             if args.community and args.dataset.lower() == "cifar":
