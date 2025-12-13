@@ -676,8 +676,8 @@ def remove_edge_cifar_union_w_small_combined(args):
     if activation.lower() == "relu":
         # from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
         from tools.vgg9_custom_relu import VGG9_CIFAR10
-    # elif activation.lower() == "tanh":
-    #     from tools.vgg9_custom_tanh import VGG9_CIFAR10
+    elif activation.lower() == "tanh":
+        from tools.vgg9_custom_tanh import VGG9_CIFAR10
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -703,7 +703,7 @@ def remove_edge_cifar_union_w_small_combined(args):
 
     net_full = copy.deepcopy(net_H)
     
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min2.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_l5.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(model_name)
