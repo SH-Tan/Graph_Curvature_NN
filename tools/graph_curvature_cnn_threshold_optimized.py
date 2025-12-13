@@ -594,10 +594,10 @@ def process_edge(b, edge):
     j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
     
     if j_layer != i_layer + 1:
-        return (b, i, j, 2.0)
+        return (b, i, j, 20.0)
     
     if (i_layer, j_layer) not in _sp_dict:
-        return (b, i, j, 2.0)
+        return (b, i, j, 20.0)
     
     model_dim_i = _model_dims[i_layer+1]
     model_dim_j = _model_dims[j_layer+1]
@@ -610,14 +610,14 @@ def process_edge(b, edge):
     
     target_a = _nodes_alpha[:,j].item()
     
-    if (((i_layer > 0) and (node_i == 0))):
-        return (b, i, j, 1.0)
+    # if (((i_layer > 0) and (node_i == 0))):
+    #     return (b, i, j, 1.0)
     
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
     
-    # sp /= target_a
+    sp /= target_a
     
     if model_dim_i["name"] != "fc":
         pos_i = i_idx % (i_size**2)
@@ -697,7 +697,7 @@ def process_edge(b, edge):
     d_np[-1, -1] = sp
 
     if d_np.size == 0 or np.isinf(d_np).all():
-        return (b,i, j, 2.0)
+        return (b,i, j, 20.0)
     
     try:
         m = ot.emd2(mu, nu, d_np)

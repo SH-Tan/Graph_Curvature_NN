@@ -222,7 +222,7 @@ def community_check_cifar_vgg9(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -266,7 +266,7 @@ def community_check_cifar_vgg9(args):
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
-        model_name = "vgg16_10_wd_"
+        model_name = "vgg9_10_wd_"
         
     model_name = model_name + activation + "_s2.pth"
     
