@@ -342,7 +342,7 @@ class VGG9_CIFAR10(nn.Module):
         max_vals = x_abs.max(dim=1, keepdim=True)[0]
         x_norm = (x_abs - min_vals) / (max_vals - min_vals)
         
-        return x_norm
+        return x_flat
     
 
     # calculate edge weights

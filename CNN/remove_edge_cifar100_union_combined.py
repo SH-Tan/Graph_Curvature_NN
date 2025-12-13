@@ -173,6 +173,7 @@ def get_top_c(curvature, b, prefix_dims):
 
     # Compute layer for each unique node only once
     unique_layers = np.searchsorted(prefix_dims, unique_nodes, side="right") - 1
+    # print(np.unique(unique_layers))
 
     # Convert to a dictionary or array lookup
     node_to_layer = dict(zip(unique_nodes, unique_layers))
@@ -186,7 +187,7 @@ def get_top_c(curvature, b, prefix_dims):
         j_layer = node_to_layer[j]
 
         # Adjust curvature only for some layers
-        if 0 < i_layer < 8 and abs(curr - 1.0) < 1e-6:
+        if (0 < i_layer < 8) and (abs(curr - 1.0) < 1e-6):
             curr = 2.0
 
         # CNN edges (non-FC)
@@ -401,37 +402,33 @@ def plot_curve(
 
     # Plot lines
     plt.plot(neg_remove_num, neg_clean_acc, label='Negative edges removed first',
-             marker='o', linestyle='--', linewidth=3., markersize=13, color=neg_color)
+             marker='o', linestyle='--', linewidth=3.5, markersize=13, color=neg_color)
 
     plt.plot(pos_remove_num, pos_clean_acc, label='Positive edges removed first',
-             marker='x', linestyle='-', linewidth=3., markersize=13, color=pos_color)
+             marker='x', linestyle='-', linewidth=3.5, markersize=13, color=pos_color)
 
     # Annotate frequencies BELOW points
     if neg_freq_labels:
         for i, (x, y, r) in enumerate(zip(neg_remove_num, neg_clean_acc, neg_freq_labels)):
             if (i % 1 == 0):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                            xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
+                            xytext=(-10, 5), ha='center', va='bottom', fontsize=22, color='#000000')
     flag = 0
     
     if pos_freq_labels:
         for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
             if (i % 5 == 0) or (i == len(pos_remove_num)-1):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+                    xytext=(0, 15), ha='center', va='bottom', fontsize=22, color=pos_color)
                 
-            elif i == len(pos_remove_num)-2:
-                plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
-                
-            elif (r < pos_freq_labels[0]) and (~flag):
-                plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
-                flag = 1
+            # elif (r < 0) and (~flag):
+            #     plt.annotate(r, (x, y), textcoords='offset points',
+            #         xytext=(0, 15), ha='center', fontsize=28, color=pos_color)
+            #     flag = 1
 
     # Labels and title
-    plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
-    plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
+    plt.xlabel('Number of Edges Removed', fontsize=31, fontweight='semibold')
+    plt.ylabel('Accuracy', fontsize=31, fontweight='semibold')
     
     # plt.title('Accuracy vs. Edge Removal Count', fontsize=28, fontweight='semibold')
     plt.ylim(0.0, 1.0)
@@ -450,7 +447,7 @@ def plot_curve(
         mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
 
         # Set the ticks and the scaled mantissa labels
-        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=22, fontweight='semibold')
+        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=26, fontweight='semibold')
 
         # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
         ax.annotate(
@@ -463,21 +460,21 @@ def plot_curve(
     else:
         plt.xticks(fontsize=22, fontweight='semibold')
         ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
-        ax.xaxis.get_offset_text().set_fontsize(20)
+        ax.xaxis.get_offset_text().set_fontsize(24)
         ax.xaxis.get_offset_text().set_fontweight('semibold')
 
     # Ticks
-    plt.xticks(fontsize=22, fontweight='semibold')
-    plt.yticks(fontsize=22, fontweight='semibold')
+    plt.xticks(fontsize=24, fontweight='semibold')
+    plt.yticks(fontsize=26, fontweight='semibold')
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
-    legend = plt.legend(fontsize=22, loc=0)  # create the legend
+    legend = plt.legend(fontsize=24, loc=0)  # create the legend
     for text in legend.get_texts():
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para_combined_min1.png'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para_combined_min2.png'), dpi=300)
     plt.close()
     
     
@@ -555,7 +552,7 @@ def process_batches_memory_efficient(
             cnn_edge_to_weight_map[layer] = build_cnn_edge_weight_map(
                 pre_ch, in_size, cur_ch, kernel, stride, padding, layer, prefix_dims
             )
-
+    # selected_classes = [0]
     label_counts = {l: 0 for l in selected_classes}
     min_fc = defaultdict(lambda: float("inf"))
     count_fc = Counter()
@@ -724,7 +721,7 @@ def remove_edge_cifar100_union_combined(args):
         
     model_name = model_name + activation + "_s2.pth"
     
-    net_H = VGG9_CIFAR10(model_dims, None, device, num_classes=100)
+    net_H = VGG9_CIFAR10(model_dims, None, device, prefix_dims, num_classes = 100)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
 
@@ -739,6 +736,7 @@ def remove_edge_cifar100_union_combined(args):
 
     total_para = sum(para_dims) # - sum(para_dims[0:2]) # - sum(para_dims[:11]) # - sum(para_dims[-3:])
     
+    print(prefix_dims)
     print(para_dims)
     print(total_para)
     
@@ -886,26 +884,28 @@ def remove_edge_cifar100_union_combined(args):
     part1 = np.linspace(0, neg_len, num=3, dtype=int)
 
     # Second segment: 5 points from len(neg_edges) to neg_total
-    part2 = np.linspace(neg_len, neg_total, num=3, dtype=int)
+    part2 = np.linspace(neg_len, neg_total, num=5, dtype=int)
 
     # Combine, but avoid duplicate at the boundary
     neg_remove_num = list(part1[:-1]) + list(part2)
     
-    # define split points
-    split1 = int(0.3 * pos_total)
-    split2 = int(0.8 * pos_total)
+    # # define split points
+    # split1 = int(0.3 * pos_total)
+    # split2 = int(0.8 * pos_total)
 
-    # stage 1: first 40% (coarse)
-    part1 = np.linspace(0, split1, num=5, dtype=int)
+    # # stage 1: first 40% (coarse)
+    # part1 = np.linspace(0, split1, num=5, dtype=int)
 
-    # stage 2: next 40% (medium)
-    part2 = np.linspace(split1, split2, num=10, dtype=int)
+    # # stage 2: next 40% (medium)
+    # part2 = np.linspace(split1, split2, num=7, dtype=int)
 
-    # stage 3: last 20% (fine)
-    part3 = np.linspace(split2, pos_total, num=8, dtype=int)
+    # # stage 3: last 20% (fine)
+    # part3 = np.linspace(split2, pos_total, num=3, dtype=int)
 
-    # combine, removing duplicates at boundaries
-    pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
+    # # combine, removing duplicates at boundaries
+    # pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
+    
+    pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
         
     remove_num = list(np.linspace(0, total_para, num=10, dtype=int))
 

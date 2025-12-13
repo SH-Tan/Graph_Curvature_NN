@@ -306,31 +306,33 @@ def plot_curve(
 
     # Plot lines
     plt.plot(neg_remove_num, neg_clean_acc, label='Negative edges removed first',
-             marker='o', linestyle='--', linewidth=3., markersize=13, color=neg_color)
+             marker='o', linestyle='--', linewidth=3.5, markersize=13, color=neg_color)
 
     plt.plot(pos_remove_num, pos_clean_acc, label='Positive edges removed first',
-             marker='x', linestyle='-', linewidth=3., markersize=13, color=pos_color)
+             marker='x', linestyle='-', linewidth=3.5, markersize=13, color=pos_color)
 
     # Annotate frequencies BELOW points
     if neg_freq_labels:
         for i, (x, y, r) in enumerate(zip(neg_remove_num, neg_clean_acc, neg_freq_labels)):
             if (i % 1 == 0):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                            xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
-
+                            xytext=(-10, -25), ha='left', fontsize=22, color='#000000')
+    flag = 0
+    
     if pos_freq_labels:
         for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
-            if ((i+1) % 5 == 0 or (i == len(pos_remove_num)-2)):
+            if (i % 5 == 0) or (i == len(pos_remove_num)-1):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+                    xytext=(0, -15), ha='center', fontsize=22, color=pos_color)
                 
-            elif i == len(pos_remove_num)-2:
-                plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
+            # elif (r < 0) and (~flag):
+            #     plt.annotate(r, (x, y), textcoords='offset points',
+            #         xytext=(0, 15), ha='center', fontsize=28, color=pos_color)
+            #     flag = 1
 
     # Labels and title
-    plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
-    plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
+    plt.xlabel('Number of Edges Removed', fontsize=31, fontweight='semibold')
+    plt.ylabel('Accuracy', fontsize=31, fontweight='semibold')
     
     # plt.title('Accuracy vs. Edge Removal Count', fontsize=28, fontweight='semibold')
     plt.ylim(0.0, 1.0)
@@ -349,7 +351,7 @@ def plot_curve(
         mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
 
         # Set the ticks and the scaled mantissa labels
-        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=22, fontweight='semibold')
+        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=26, fontweight='semibold')
 
         # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
         ax.annotate(
@@ -362,23 +364,22 @@ def plot_curve(
     else:
         plt.xticks(fontsize=22, fontweight='semibold')
         ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
-        ax.xaxis.get_offset_text().set_fontsize(20)
+        ax.xaxis.get_offset_text().set_fontsize(24)
         ax.xaxis.get_offset_text().set_fontweight('semibold')
-        
+
     # Ticks
-    plt.xticks(fontsize=22, fontweight='semibold')
-    plt.yticks(fontsize=22, fontweight='semibold')
+    plt.xticks(fontsize=24, fontweight='semibold')
+    plt.yticks(fontsize=26, fontweight='semibold')
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
-    legend = plt.legend(fontsize=22, loc=5)  # create the legend
+    legend = plt.legend(fontsize=24, loc=0)  # create the legend
     for text in legend.get_texts():
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all_w_posum_combined_min2.png'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para_combined_min2.png'), dpi=300)
     plt.close()
-    
 
 
 from collections import Counter
@@ -475,7 +476,7 @@ def remove_edge_cnn_union_w_combined(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -540,7 +541,7 @@ def remove_edge_cnn_union_w_combined(args):
     test_cleanacc = test_clean(net_full, test_loader)
     # succ_pair, robust_pair = test(net_H, sep_dataloader, eps=e, alpha=2/255, iters=40, device=device)   
 
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_para_combined_min2.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_para_combined_min1.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(save_path)
@@ -698,15 +699,16 @@ def remove_edge_cnn_union_w_combined(args):
     pos_total = len(pos_edges_only)
     
     print(f'New pos {pos_total}, neg {neg_total}')
-
-
-    # remove_num = [0, 5000, (int)(len(neg_edges_only)*0.3), (int)(len(neg_edges_only)*0.5), (int)(len(neg_edges_only)*0.7), len(neg_edges_only), (int)(len(pos_edges_only)*0.7), (int)(len(pos_edges_only)*0.9), (int)(len(pos_edges_only))]
-    # Generate uniformly spaced points (including 0 and total) for each list
-    neg_remove_num = list(np.linspace(0, neg_total, num=5, dtype=int))
-    pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
     
+    # Filter: keep all weights, and only edges not in layer 9
+    neg_edges = [
+        (item, i, j, f, c)
+        for (item, i, j, f, c), layer in zip(neg_freq_edges_sorted, layers_i)
+        if c < 0
+    ]
+
     # neg parts
-    neg_len = len(neg_filtered_edges)
+    neg_len = len(neg_edges)
 
     # First segment: 3 points from 0 to len(neg_edges)
     part1 = np.linspace(0, neg_len, num=3, dtype=int)
@@ -715,7 +717,25 @@ def remove_edge_cnn_union_w_combined(args):
     part2 = np.linspace(neg_len, neg_total, num=5, dtype=int)
 
     # Combine, but avoid duplicate at the boundary
-    neg_remove_num = list(part1[:-1]) + list(part2)
+    neg_remove_num = np.unique(np.concatenate((part1, part2))).tolist()   
+    
+    # # define split points
+    # split1 = int(0.5 * pos_total)
+    # split2 = int(0.9 * pos_total)
+
+    # # stage 1: first 40% (coarse)
+    # part1 = np.linspace(0, split1, num=6, dtype=int)
+
+    # # stage 2: next 40% (medium)
+    # part2 = np.linspace(split1, split2, num=10, dtype=int)
+
+    # # stage 3: last 20% (fine)
+    # part3 = np.linspace(split2, pos_total, num=3, dtype=int)
+
+    # # combine, removing duplicates at boundaries
+    # pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()   
+    
+    pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
     
     remove_num = list(np.linspace(0, total_para, num=10, dtype=int))
     
