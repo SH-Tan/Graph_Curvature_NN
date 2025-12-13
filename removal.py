@@ -92,7 +92,7 @@ if __name__=='__main__':
                 # process_data(args)
                 # remove_edge_cifar_union_perlayer_w(args)
                 remove_edge_cifar_union_w_small_combined(args)
-                # remove_edge_cifar_union_perlayer_w_small_combined(args)
+                remove_edge_cifar_union_perlayer_w_small_combined(args)
                 # remove_w_cifar100(args)
                 # remove_edge_cifar100_perlayer_w_small_combined(args)
                 # remove_edge_cifar100_union_combined(args)
