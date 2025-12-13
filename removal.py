@@ -89,9 +89,9 @@ if __name__=='__main__':
             if args.community and args.dataset.lower() == "mnist":
                 community_check_cnn(args)
             if args.edge and args.dataset.lower() == "cifar":
-                process_data(args)
+                # process_data(args)
                 # remove_edge_cifar_union_perlayer_w(args)
-                # remove_edge_cifar_union_w_small_combined(args)
+                remove_edge_cifar_union_w_small_combined(args)
                 # remove_edge_cifar_union_perlayer_w_small_combined(args)
                 # remove_w_cifar100(args)
                 # remove_edge_cifar100_perlayer_w_small_combined(args)

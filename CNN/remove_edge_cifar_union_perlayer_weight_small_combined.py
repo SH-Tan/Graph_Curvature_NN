@@ -568,35 +568,37 @@ def plot_curve(
     neg_color = '#00A3E0'
     pos_color = '#EC008C'
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(11, 7))
 
     # Plot lines
-    plt.plot(neg_remove_num, neg_clean_acc, label='Negative edges removed first',
-             marker='o', linestyle='--', linewidth=3., markersize=13, color=neg_color)
+    plt.plot(neg_remove_num, neg_clean_acc, label='Negative parameters removed first',
+             marker='o', linestyle='--', linewidth=3.5, markersize=13, color=neg_color)
 
-    plt.plot(pos_remove_num, pos_clean_acc, label='Positive edges removed first',
-             marker='x', linestyle='-', linewidth=3., markersize=13, color=pos_color)
+    plt.plot(pos_remove_num, pos_clean_acc, label='Positive parameters removed first',
+             marker='x', linestyle='-', linewidth=3.5, markersize=13, color=pos_color)
 
     # Annotate frequencies BELOW points
     if neg_freq_labels:
         for i, (x, y, r) in enumerate(zip(neg_remove_num, neg_clean_acc, neg_freq_labels)):
             if (i % 1 == 0):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                            xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
-
+                            xytext=(-10, -25), ha='left', fontsize=22, color='#000000')
+    flag = 0
+    
     if pos_freq_labels:
         for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
-            if ((i+1) % 5 == 0 or (i == len(pos_remove_num)-2)) or ((i > 0) and (r < pos_freq_labels[i-1])):
+            if (i % 5 == 0) or (i == len(pos_remove_num)-1):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
+                    xytext=(0, -15), ha='center', fontsize=22, color=pos_color)
                 
-            elif i == len(pos_remove_num)-2:
-                plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
+            # elif (r < 0) and (~flag):
+            #     plt.annotate(r, (x, y), textcoords='offset points',
+            #         xytext=(0, 15), ha='center', fontsize=28, color=pos_color)
+            #     flag = 1
 
     # Labels and title
-    plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
-    plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
+    plt.xlabel('Number of Parameters Removed', fontsize=28, fontweight='semibold')
+    plt.ylabel('Accuracy', fontsize=31, fontweight='semibold')
     
     # plt.title('Accuracy vs. Edge Removal Count', fontsize=28, fontweight='semibold')
     plt.ylim(0.0, 1.0)
@@ -615,7 +617,7 @@ def plot_curve(
         mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
 
         # Set the ticks and the scaled mantissa labels
-        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=22, fontweight='semibold')
+        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=26, fontweight='semibold')
 
         # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
         ax.annotate(
@@ -628,16 +630,20 @@ def plot_curve(
     else:
         plt.xticks(fontsize=22, fontweight='semibold')
         ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
-        ax.xaxis.get_offset_text().set_fontsize(20)
+        ax.xaxis.get_offset_text().set_fontsize(24)
         ax.xaxis.get_offset_text().set_fontweight('semibold')
-        
+
     # Ticks
-    plt.xticks(fontsize=22, fontweight='semibold')
-    plt.yticks(fontsize=22, fontweight='semibold')
+    plt.xticks(fontsize=24, fontweight='semibold')
+    plt.yticks(fontsize=26, fontweight='semibold')
+    
+    # === Axis borders ===
+    for spine in ax.spines.values():
+        spine.set_linewidth(3)
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
-    legend = plt.legend(fontsize=22, loc='best')  # create the legend
+    legend = plt.legend(fontsize=24, loc=0)  # create the legend
     for text in legend.get_texts():
         text.set_fontweight('semibold')  # or 'bold'
 

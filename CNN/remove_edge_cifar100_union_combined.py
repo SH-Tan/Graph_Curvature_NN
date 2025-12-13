@@ -397,14 +397,15 @@ def plot_curve(
     # Colors
     neg_color = '#00A3E0'
     pos_color = '#EC008C'
+    text_color = "#012DF1"
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(11, 7))
 
     # Plot lines
-    plt.plot(neg_remove_num, neg_clean_acc, label='Negative edges removed first',
+    plt.plot(neg_remove_num, neg_clean_acc, label='Negative parameters removed first',
              marker='o', linestyle='--', linewidth=3.5, markersize=13, color=neg_color)
 
-    plt.plot(pos_remove_num, pos_clean_acc, label='Positive edges removed first',
+    plt.plot(pos_remove_num, pos_clean_acc, label='Positive parameters removed first',
              marker='x', linestyle='-', linewidth=3.5, markersize=13, color=pos_color)
 
     # Annotate frequencies BELOW points
@@ -419,7 +420,7 @@ def plot_curve(
         for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
             if (i % 5 == 0) or (i == len(pos_remove_num)-1):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, 15), ha='center', va='bottom', fontsize=22, color=pos_color)
+                    xytext=(0, 15), ha='center', va='bottom', fontsize=22, color=text_color)
                 
             # elif (r < 0) and (~flag):
             #     plt.annotate(r, (x, y), textcoords='offset points',
@@ -427,7 +428,7 @@ def plot_curve(
             #     flag = 1
 
     # Labels and title
-    plt.xlabel('Number of Edges Removed', fontsize=31, fontweight='semibold')
+    plt.xlabel('Number of Parameters Removed', fontsize=28, fontweight='semibold')
     plt.ylabel('Accuracy', fontsize=31, fontweight='semibold')
     
     # plt.title('Accuracy vs. Edge Removal Count', fontsize=28, fontweight='semibold')
@@ -466,6 +467,11 @@ def plot_curve(
     # Ticks
     plt.xticks(fontsize=24, fontweight='semibold')
     plt.yticks(fontsize=26, fontweight='semibold')
+    
+    # === Axis borders ===
+    for spine in ax.spines.values():
+        spine.set_linewidth(3)
+        spine.set_color('black')
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
@@ -474,7 +480,7 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para_combined_min2.png'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para_combined_min2.png'), dpi=400, bbox_inches="tight")
     plt.close()
     
     
