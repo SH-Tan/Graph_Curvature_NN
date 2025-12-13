@@ -567,6 +567,7 @@ def plot_curve(
     # Colors
     neg_color = '#00A3E0'
     pos_color = '#EC008C'
+    text_color = "#012DF1"
 
     plt.figure(figsize=(11, 7))
 
@@ -589,7 +590,7 @@ def plot_curve(
         for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
             if (i % 5 == 0) or (i == len(pos_remove_num)-1):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, -15), ha='center', fontsize=22, color=pos_color)
+                    xytext=(0, -15), ha='center', fontsize=22, color=text_color)
                 
             # elif (r < 0) and (~flag):
             #     plt.annotate(r, (x, y), textcoords='offset points',
@@ -640,6 +641,7 @@ def plot_curve(
     # === Axis borders ===
     for spine in ax.spines.values():
         spine.set_linewidth(3)
+        spine.set_color('black')
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
@@ -648,7 +650,7 @@ def plot_curve(
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_perlayer_para_combined_min2.png'), dpi=300)
+    plt.savefig(os.path.join(res_path, f'{label}_curve_perlayer_para_combined_min2.png'), dpi=400, bbox_inches="tight")
     plt.close()
 
 
@@ -725,8 +727,8 @@ def remove_edge_cifar_union_perlayer_w_small_combined(args):
     if activation.lower() == "relu":
         # from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
         from tools.vgg9_custom_relu import VGG9_CIFAR10
-    # elif activation.lower() == "tanh":
-    #     from tools.vgg9_custom_tanh import VGG9_CIFAR10
+    elif activation.lower() == "tanh":
+        from tools.vgg9_custom_tanh import VGG9_CIFAR10
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -818,29 +820,45 @@ def remove_edge_cifar_union_perlayer_w_small_combined(args):
             (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in pos_summary
         ]
         
-        # print(pos_edges[-10:])
+        # Filter: keep all weights, and only edges not in layer 9
+        neg_edges = [
+            (item, i, j, f, c)
+            for (item, i, j, f, c) in zip(neg_summary)
+            if c < 0
+        ]
 
         neg_total = len(neg_edges)
         pos_total = len(pos_edges)
 
-        neg_remove_num = list(np.linspace(0, neg_total, num=5, dtype=int))
-        # pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
+        # neg parts
+        neg_len = len(neg_edges)
+
+        # First segment: 3 points from 0 to len(neg_edges)
+        part1 = np.linspace(0, neg_len, num=3, dtype=int)
+
+        # Second segment: 5 points from len(neg_edges) to neg_total
+        part2 = np.linspace(neg_len, neg_total, num=5, dtype=int)
+
+        # Combine, but avoid duplicate at the boundary
+        neg_remove_num = list(part1[:-1]) + list(part2)
         
-        # define split points
-        split1 = int(0.3 * pos_total)
-        split2 = int(0.8 * pos_total)
+        # # define split points
+        # split1 = int(0.3 * pos_total)
+        # split2 = int(0.8 * pos_total)
 
-        # stage 1: first 40% (coarse)
-        part1 = np.linspace(0, split1, num=3, dtype=int)
+        # # stage 1: first 40% (coarse)
+        # part1 = np.linspace(0, split1, num=3, dtype=int)
 
-        # stage 2: next 40% (medium)
-        part2 = np.linspace(split1, split2, num=10, dtype=int)
+        # # stage 2: next 40% (medium)
+        # part2 = np.linspace(split1, split2, num=10, dtype=int)
 
-        # stage 3: last 20% (fine)
-        part3 = np.linspace(split2, pos_total, num=10, dtype=int)
+        # # stage 3: last 20% (fine)
+        # part3 = np.linspace(split2, pos_total, num=10, dtype=int)
 
-        # combine, removing duplicates at boundaries
-        pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
+        # # combine, removing duplicates at boundaries
+        # pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
+        
+        pos_remove_num = list(np.linspace(0, pos_total, num=20, dtype=int))
         
         print(f"\nLayer {layer}:")
         print(f"  Negative edges: {neg_total}")

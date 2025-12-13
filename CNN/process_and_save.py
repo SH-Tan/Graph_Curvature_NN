@@ -86,15 +86,6 @@ def get_top_c(curvature, b, prefix_dims):
     return neg_e, pos_e, cnn_e
 
 
-def aggregate_cnn_weight_curvature(edges, edge_to_weight):
-    """Your optimized version goes here."""
-    pass
-
-
-def build_cnn_edge_weight_map(*args, **kwargs):
-    """Your existing function."""
-    pass
-
 
 def fc_results(min_fc, count_fc):
     out = []
@@ -122,7 +113,9 @@ def process_and_save(
     1, 2, 5, 10 samples per label.
     """
 
-    save_checkpoints = {1, 2, 5, 10}  # change if needed
+    save_checkpoints = [1, 2, 5, 10]  # change if needed
+    
+    idx = 0
 
     prefix = f"{model_full_n}_{metric}_{dataset}_label"
     suffix = ".pkl"
@@ -158,6 +151,7 @@ def process_and_save(
                 prefix_dims,
             )
 
+    # selected_classes = [0,1,2,3,4]
     # --- State ---
     label_counts = {l: 0 for l in selected_classes}
 
@@ -182,7 +176,7 @@ def process_and_save(
             curvature_raw = pickle.load(fp)
 
         # Extract edges per-layer
-        neg_e, pos_e, cnn_e = get_top_c(curvature_raw, prefix_dims)
+        neg_e, pos_e, cnn_e = get_top_c(curvature_raw, 1, prefix_dims)
 
         for layer, edges in cnn_e.items():
             layer_info = model_dims[layer + 2]
@@ -219,7 +213,7 @@ def process_and_save(
         print(f"[LABEL {label}] count = {label_counts[label]}")
 
         # --- Checkpoint save ---
-        if all(label_counts[l] in save_checkpoints for l in selected_classes):
+        if all(label_counts[l] == save_checkpoints[idx] for l in selected_classes):
             save_name = f"{model_full_n}_{metric}_{dataset}_{label_counts[0]}_combined.pkl"
             save_path = os.path.join(res_path, save_name)
             freq_fc = fc_results(min_fc, count_fc)
@@ -240,6 +234,8 @@ def process_and_save(
 
             with open(save_path, "wb") as sf:
                 pickle.dump(save_data, sf)
+                
+            idx += 1
 
             print(f"[SAVE] {save_path}")
 

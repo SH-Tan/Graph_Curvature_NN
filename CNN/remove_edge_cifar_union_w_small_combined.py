@@ -446,7 +446,7 @@ def plot_curve(
     for spine in ax.spines.values():
         spine.set_linewidth(3)
         spine.set_color('black')
-
+        
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
     legend = plt.legend(fontsize=24, loc=0)  # create the legend
@@ -656,7 +656,7 @@ def remove_edge_cifar_union_w_small_combined(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -682,8 +682,8 @@ def remove_edge_cifar_union_w_small_combined(args):
     if activation.lower() == "relu":
         # from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
         from tools.vgg9_custom_relu import VGG9_CIFAR10
-    # elif activation.lower() == "tanh":
-    #     from tools.vgg9_custom_tanh import VGG9_CIFAR10
+    elif activation.lower() == "tanh":
+        from tools.vgg9_custom_tanh import VGG9_CIFAR10
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -709,7 +709,7 @@ def remove_edge_cifar_union_w_small_combined(args):
 
     net_full = copy.deepcopy(net_H)
     
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min2.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min1.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(model_name)
