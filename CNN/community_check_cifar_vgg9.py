@@ -268,7 +268,7 @@ def community_check_cifar_vgg9(args):
     elif model_pre_name == 'wd':
         model_name = "vgg9_10_wd_"
         
-    model_name = model_name + activation + "_s2.pth"
+    model_name = model_name + activation + "_s2_new.pth"
     
     net_H = VGG9_CIFAR10(model_dims, None, device)
     net_H.load_state_dict(torch.load(model_path + model_name))

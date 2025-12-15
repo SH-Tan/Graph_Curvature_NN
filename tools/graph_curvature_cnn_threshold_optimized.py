@@ -610,8 +610,8 @@ def process_edge(b, edge):
     
     target_a = _nodes_alpha[:,j].item()
     
-    # if (((i_layer > 0) and (node_i == 0))):
-    #     return (b, i, j, 1.0)
+    if (((i_layer > 0) and (node_i == 0))):
+        return (b, i, j, 1.0)
     
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
