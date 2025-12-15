@@ -567,7 +567,7 @@ def plot_curve(
     # Colors
     neg_color = '#00A3E0'
     pos_color = '#EC008C'
-    text_color = "#012DF1"
+    text_color = "#2101F1"
 
     plt.figure(figsize=(11, 7))
 
@@ -581,16 +581,16 @@ def plot_curve(
     # Annotate frequencies BELOW points
     if neg_freq_labels:
         for i, (x, y, r) in enumerate(zip(neg_remove_num, neg_clean_acc, neg_freq_labels)):
-            if (i % 1 == 0):
+            if (i % 2 == 0):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                            xytext=(-10, -25), ha='left', fontsize=22, color='#000000')
+                            xytext=(-10, -25), ha='left', fontsize=24, color='#000000')
     flag = 0
     
     if pos_freq_labels:
         for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
-            if (i % 5 == 0) or (i == len(pos_remove_num)-1):
+            if (i % 5 == 0):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, -15), ha='center', fontsize=22, color=text_color)
+                    xytext=(0, -15), ha='center', fontsize=27, color=text_color)
                 
             # elif (r < 0) and (~flag):
             #     plt.annotate(r, (x, y), textcoords='offset points',
@@ -821,9 +821,9 @@ def remove_edge_cifar_union_perlayer_w_small_combined(args):
         ]
         
         # Filter: keep all weights, and only edges not in layer 9
-        neg_edges = [
+        neg_edges_num = [
             (item, i, j, f, c)
-            for (item, i, j, f, c) in zip(neg_summary)
+            for (item, i, j, f, c) in (neg_summary)
             if c < 0
         ]
 
@@ -831,7 +831,7 @@ def remove_edge_cifar_union_perlayer_w_small_combined(args):
         pos_total = len(pos_edges)
 
         # neg parts
-        neg_len = len(neg_edges)
+        neg_len = len(neg_edges_num)
 
         # First segment: 3 points from 0 to len(neg_edges)
         part1 = np.linspace(0, neg_len, num=3, dtype=int)
