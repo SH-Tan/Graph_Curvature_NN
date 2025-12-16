@@ -264,7 +264,7 @@ def community_check_cifar_vgg9(args):
     if model_pre_name == 'ori':
         model_name = "vgg9_10_ori_"
     elif model_pre_name == 'adv':
-        model_name = "vgg16_adv_"
+        model_name = "vgg9_10_adv_"
     elif model_pre_name == 'wd':
         model_name = "vgg9_10_wd_"
         
