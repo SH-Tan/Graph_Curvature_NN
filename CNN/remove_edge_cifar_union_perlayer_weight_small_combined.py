@@ -588,7 +588,7 @@ def plot_curve(
     
     if pos_freq_labels:
         for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
-            if (i % 5 == 0) or (i == len(pos_remove_num)-1):
+            if (i % 5 == 0):
                 plt.annotate(r, (x, y), textcoords='offset points',
                     xytext=(0, -15), ha='center', fontsize=27, color=text_color)
                 
