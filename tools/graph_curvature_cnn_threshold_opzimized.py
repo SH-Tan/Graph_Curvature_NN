@@ -11,8 +11,7 @@ import sys
 import random
 import os
 import gc
-from multiprocessing import Manager
-from multiprocessing import Lock
+from joblib import Parallel, delayed
 
 
 np.set_printoptions(threshold=np.inf)
@@ -33,7 +32,7 @@ _layers = 0
 _edge_value = None
 _model_dims = None
 _W_dict = {}
-_upper_bound = 1.
+_nodes_alpha = None
 
 
 def out_distribution(model_dims, sp1, device='cuda', thre = 0.5, dist = None):
@@ -534,7 +533,7 @@ def compute_W(edge_list):
             j_x = 0
             j_y = j_size
         
-        key = (i_layer,i_x,i_y,c,j_x,j_y)
+        key = (i_layer,i_x,i_y,j_x,j_y)
         
         # In-neighbors distribution
         if i_layer == 0:
@@ -609,16 +608,16 @@ def process_edge(b, edge):
     node_j = _nodes_value[:,j].item()
     node_i = _nodes_value[:,i].item()
     
+    target_a = _nodes_alpha[:,j].item()
+    
+    if (((i_layer > 0) and (node_i == 0))):
+        return (b, i, j, 1.0)
+    
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
     
-    if ((j_layer < len(_dims)-1) and (node_j <= 0)):
-        return (b, i, j, 1.)
-    
-    if ((i_layer > 0) and (node_i <= 0)):
-        return (b, i, j, 1.)
-            
+    sp /= target_a
     
     if model_dim_i["name"] != "fc":
         pos_i = i_idx % (i_size**2)
@@ -643,7 +642,9 @@ def process_edge(b, edge):
     if (i_layer > 0) and (j_layer < len(_dims)-1) and (key in _W_dict):
         m = _W_dict.get(key)
         curv = 1.0 - m/sp
+        
         curv /= (1-_alpha)
+
         # if ((i_layer > 0) and (node_i <= 0)):
         #     curv = 1. if curv >= 0 else 0.
         return (b, i, j, curv)
@@ -698,9 +699,16 @@ def process_edge(b, edge):
     if d_np.size == 0 or np.isinf(d_np).all():
         return (b,i, j, 20.0)
     
-    m = ot.emd2(mu, nu, d_np)
-    curv = 1.0 - m/sp
-    curv /= (1-_alpha)
+    try:
+        m = ot.emd2(mu, nu, d_np)
+        curv = 1.0 - m/sp
+        curv /= (1-_alpha)
+    except:
+        print(sp, target_a)
+    # print(d_np)
+    
+    # if ((i_layer > 0) and (node_i <= 0)):
+    #     curv = 1. if curv >= 0 else 0.
 
     return (b, i, j, curv)
 
@@ -713,7 +721,7 @@ def _wrap_compute_single_edge(stuff):
 
 def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, 
                                alpha = 0., pre_n=0, layers_to_process=None, nodes = None, edge_value = None, 
-                               threshold = 0.5, node_before=None, upb = 1.):
+                               threshold = 0.5, nodes_alpha=None):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
@@ -725,14 +733,14 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     global _layers
     global _edge_value
     global _model_dims
-    global _upper_bound
+    global _nodes_alpha
     
     _alpha = alpha
     _pre_n = pre_n
     _nodes_value = nodes
     _edge_value = edge_value
     _model_dims = model_dims
-    _upper_bound = upb.item()
+    _nodes_alpha = nodes_alpha
 
     weights = weights.to(device)
     batch_size = weights.shape[0]
@@ -788,7 +796,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             
             indices = torch.where(sum_weights <= EPSILON)[1]
 
-            mask1 = (path_sub[:,:,indices] != float('inf')) & (path_sub[:,:,indices] != 0)
+            mask1 = (path_sub[:,:,indices] != float('inf'))
             dist_prev[:,:,indices] = -1
             dist_prev[:,:,indices] *= mask1
             dist_prev *= mask
@@ -816,7 +824,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
   
             indices = torch.where(sum_weights <= EPSILON)[1]
 
-            mask1 = (path_sub[:,indices,:] != float('inf')) & (path_sub[:,indices,:] != 0)
+            mask1 = (path_sub[:,indices,:] != float('inf'))
             dist_next[:,indices,:] = -1
             dist_next[:,indices,:] *= mask1
             dist_next *= mask
@@ -860,13 +868,14 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
                 global_src = prefix_dims[layer] + src
                 global_dst = prefix_dims[layer+1] + dst
                 
-                if (layer > 0) and (layer + 1 < len(_dims)-1) and (src < i_size):
+                if (layer > 0) and (layer + 1 < len(_dims)-1) and (src < i_size) and (dst < j_size):
                     edges_w.append((b, (global_src, global_dst)))
      
                 # print(f'{src} - {dst}: {sp_array[b][src][dst]} {_sp_dict[(layer, layer+1)][b][src][dst]} - {global_src}:{global_dst}')
                 edges.append((b, (global_src, global_dst)))
 
-    # if (len(edges_w) > 0):       
+    # if (len(edges_w) > 0): 
+    #     print(len(edges_w))      
     #     compute_W(edges_w)
 
     args = [(b, edge) for b, edge in edges]
@@ -879,11 +888,14 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     
     # Process edges in parallel
     ricci_results = defaultdict(list)
-    with get_context('fork').Pool(processes=proc) as pool:
-        
+    ctx = get_context("fork")
+    
+    with ctx.Pool(processes=proc) as pool:
+        # much larger chunk size
         chunksize = max(500, len(args) // (proc * 2))
         results = pool.map(_wrap_compute_single_edge, args, chunksize=chunksize)
-    
+
+
     # (b, i, j, len(mu), len(nu), m, sp, curv)
     for b, i, j, curv in results:
         ricci_results[b].append((i+_pre_n, j+_pre_n, curv))

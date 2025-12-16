@@ -501,8 +501,8 @@ def process_edge(b, edge):
     if (i_layer, j_layer) not in _sp_dict:
         return (b, i, j, 20.0)
     
-    # if ((i_layer > 0) and (_nodes_value[:,i] <= 0)):
-    #     return (b, i, j, 1.0)
+    if ((i_layer > 0) and (_nodes_value[:,i] <= 0)):
+        return (b, i, j, 1.0)
     
     target_alpha = _nodes_alpha[:,j].item()
     source_alpha = _nodes_alpha[:,i].item()
@@ -514,7 +514,8 @@ def process_edge(b, edge):
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
 
-    sp = sp/(target_alpha)
+    a = min(source_alpha,target_alpha)
+    sp = sp/(a)
 
     # In-neighbors distribution
     if i_layer == 0:
