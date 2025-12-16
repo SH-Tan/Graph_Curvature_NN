@@ -397,7 +397,7 @@ def plot_curve(
     # Colors
     neg_color = '#00A3E0'
     pos_color = '#EC008C'
-    text_color = "#012DF1"
+    text_color = "#041E91FF"
 
     plt.figure(figsize=(11, 7))
 
@@ -411,16 +411,16 @@ def plot_curve(
     # Annotate frequencies BELOW points
     if neg_freq_labels:
         for i, (x, y, r) in enumerate(zip(neg_remove_num, neg_clean_acc, neg_freq_labels)):
-            if (i % 1 == 0):
+            if (i % 4 == 0):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                            xytext=(-10, 5), ha='center', va='bottom', fontsize=22, color='#000000')
+                            xytext=(-10, 5), ha='left', fontsize=24, color='#000000')
     flag = 0
     
     if pos_freq_labels:
         for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
-            if (i % 5 == 0) or (i == len(pos_remove_num)-1):
+            if (i % 5 == 0):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, 15), ha='center', va='bottom', fontsize=22, color=text_color)
+                    xytext=(0, 15), ha='center', fontsize=27, color=text_color)
                 
             # elif (r < 0) and (~flag):
             #     plt.annotate(r, (x, y), textcoords='offset points',
@@ -428,7 +428,7 @@ def plot_curve(
             #     flag = 1
 
     # Labels and title
-    plt.xlabel('Number of Parameters Removed', fontsize=28, fontweight='semibold')
+    plt.xlabel('Number of Parameters Removed', fontsize=30, fontweight='semibold')
     plt.ylabel('Accuracy', fontsize=31, fontweight='semibold')
     
     # plt.title('Accuracy vs. Edge Removal Count', fontsize=28, fontweight='semibold')
@@ -887,10 +887,10 @@ def remove_edge_cifar100_union_combined(args):
     neg_len = len(neg_edges)
 
     # First segment: 3 points from 0 to len(neg_edges)
-    part1 = np.linspace(0, neg_len, num=3, dtype=int)
+    part1 = np.linspace(0, neg_len, num=12, dtype=int)
 
     # Second segment: 5 points from len(neg_edges) to neg_total
-    part2 = np.linspace(neg_len, neg_total, num=5, dtype=int)
+    part2 = np.linspace(neg_len, neg_total, num=6, dtype=int)
 
     # Combine, but avoid duplicate at the boundary
     neg_remove_num = list(part1[:-1]) + list(part2)
