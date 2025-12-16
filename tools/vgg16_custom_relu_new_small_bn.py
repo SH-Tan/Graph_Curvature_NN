@@ -349,7 +349,7 @@ class VGG16_CIFAR10_small_BN(nn.Module):
         return x_norm
     
     
-    def w_norm(self, w, alpha=1):
+    def w_norm(self, w, alpha=1.0):
         # alpha = 0: keep raw weights
         # alpha = 1: full min-max normalization
 

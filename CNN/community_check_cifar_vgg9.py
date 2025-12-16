@@ -14,13 +14,12 @@ import copy
 import pickle
 import time
 import pandas as pd
-from openpyxl import Workbook
 
 import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature_cnn_threshold_opzimized import graph_curvature_main_torch
+from tools.graph_curvature_cnn_threshold_optimized import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
@@ -30,6 +29,7 @@ import warnings
 
 # Ignore all warnings
 warnings.filterwarnings("ignore")
+
 
 
 model_dims = {
@@ -255,7 +255,7 @@ def community_check_cifar_vgg9(args):
     if activation.lower() == "relu":
         from tools.vgg9_custom_relu import VGG9_CIFAR10
     elif activation.lower() == "tanh":
-        from tools.vgg16_custom_tanh import VGG16_CIFAR10
+        from tools.vgg9_custom_tanh import VGG9_CIFAR10
 
     if not os.path.exists(res_path):
         os.makedirs(res_path)
@@ -268,7 +268,7 @@ def community_check_cifar_vgg9(args):
     elif model_pre_name == 'wd':
         model_name = "vgg9_10_wd_"
         
-    model_name = model_name + activation + "_s2.pth"
+    model_name = model_name + activation + "_s2_new.pth"
     
     net_H = VGG9_CIFAR10(model_dims, None, device)
     net_H.load_state_dict(torch.load(model_path + model_name))
@@ -320,17 +320,21 @@ def community_check_cifar_vgg9(args):
                         with torch.no_grad():
                             net_full.eval()
                             img = images[idx].to(device, non_blocking=True)
-                            edge_array, nodes_ori, output, nodes_before = net_full.NN_info_batch(img.unsqueeze(0))
+                            edge_array, nodes_ori, output, node_before, node_alpha = net_full.NN_info_batch(img.unsqueeze(0))
 
-                            weights = output.detach().clone().to(device)
-                            nodes_ori = nodes_ori.detach().clone().to(device)
-                            # node_before = nodes_before.detach().clone().cpu()
-                            
-                            # weights[edge_array == 0] = 1e6
- 
+                            weights = output.detach().cpu().to(device) 
+                            nodes_ori = nodes_ori.detach().clone().to(device) 
                             edge_array = edge_array.detach().clone().cpu()
+                            node_alpha = node_alpha.detach().clone().cpu()
+                            node_before = node_before.detach().clone().cpu()
                             
-                            del output, img, nodes_before
+                            # a = nodes_ori[:,3072:-1280]
+                            # b = node_alpha[:,3072:-1280]
+                            # a[b < 0.5] = 0
+                            # nodes_ori[:,3072:-1280] = a
+                            # nodes_ori[node_alpha <= 0.5] = 0.
+                            
+                            del output, img
                             torch.cuda.empty_cache()
                             
                             if metric.lower() == "w1":
@@ -361,11 +365,11 @@ def community_check_cifar_vgg9(args):
                                 weights_inv = weights_inv1.detach().cpu()
                                 weights_inv_p = weights_inv2.detach().cpu()
                                 node_abs = torch.abs(nodes_ori)
-                                # edge_array_abs = torch.abs(edge_array)
+                                edge_array_abs = torch.abs(edge_array)
 
-                                del weights, weights_inv1, weights_inv2, nodes_ori
+                                del weights, weights_inv1, weights_inv2
                                 torch.cuda.empty_cache()
-                                
+
                                 weight_idx = 0
                                 start = 0
                                 combined = []
@@ -384,7 +388,6 @@ def community_check_cifar_vgg9(args):
                                     w_inv_slice = weights_inv[:, start:end].to(device, non_blocking=True)
                                     w_inv2_slice = weights_inv_p[:, start:end].to(device, non_blocking=True)
                                     edge_slice = edge_array[:, start:end].to(device, non_blocking=True)
-                                    # edge_slice_noninv = edge_array[:, start:end].to(device, non_blocking=True)
 
                                     # Compute Ricci curvature for current layer(s)
                                     ricci_results = graph_curvature_main_torch(
@@ -399,9 +402,9 @@ def community_check_cifar_vgg9(args):
                                         edge_value=edge_slice,
                                         threshold=0.,
                                         layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key],
-                                        upb = 2./torch.min(weights_inv)
+                                        nodes_alpha = abs(node_alpha),
                                     )
-                     
+                                    
                                     # with open(res_path + f"output_{l_key}.txt", "a+") as f:
                                     #     for i, (batch_key, triples) in enumerate(ricci_results.items()):
                                     #         for i, j, lm, ln, m, sp, curv in triples:
@@ -412,10 +415,11 @@ def community_check_cifar_vgg9(args):
                                             
                                     # print("finished")
                                             
+                                    
                                     for batch_key, triples in ricci_results.items():
                                         combined.extend(triples)   # append all (i, j, val) tuples
                                         
-                                    # Free per-loop tensors
+                                     # Free per-loop tensors
                                     del w_inv_slice, w_inv2_slice, edge_slice, ricci_results
                                     torch.cuda.empty_cache()
                             else:
@@ -431,7 +435,7 @@ def community_check_cifar_vgg9(args):
                             print(f"[Saved] Label {l}, Example {label_progress[l]} → {save_name}")
 
                             # Final cleanup
-                            del edge_array, node_abs, combined
+                            del edge_array, nodes_ori, node_abs, edge_array_abs, combined, node_before, node_alpha
                             torch.cuda.empty_cache()
 
                             label_progress[l] += 1

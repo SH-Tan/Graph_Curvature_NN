@@ -666,8 +666,8 @@ def remove_edge_cifar_union_w_small(args):
     if activation.lower() == "relu":
         # from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
         from tools.vgg9_custom_relu import VGG9_CIFAR10
-    # elif activation.lower() == "tanh":
-    #     from tools.vgg9_custom_tanh import VGG9_CIFAR10
+    elif activation.lower() == "tanh":
+        from tools.vgg9_custom_tanh import VGG9_CIFAR10
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -681,7 +681,7 @@ def remove_edge_cifar_union_w_small(args):
     if model_pre_name == 'ori':
         model_name = "vgg9_10_ori_"
     elif model_pre_name == 'adv':
-        model_name = "vgg9_10_adv_"
+        model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
         model_name = "vgg9_10_wd_"
         
@@ -762,7 +762,7 @@ def remove_edge_cifar_union_w_small(args):
         (item, i, j, f, c, z)
         for (item, i, j, f, c, z), layer in zip(pos_freq_dict, layers_i)
         # if f == total
-        if (not ((item == "weight") and (i[0] in [0])))
+        if (not ((item == "weight") and (i[0] in [0]))) and (not ((item == "edge") and (layer == 8)))
     ]
     
     # Compute which layer each edge (i) belongs to
@@ -777,7 +777,7 @@ def remove_edge_cifar_union_w_small(args):
         (item, i, j, f, c, z)
         for (item, i, j, f, c, z), layer in zip(neg_freq_dict, layers_i)
         # if f == total
-        if (not ((item == "weight") and (i[0] in [0])))
+        if (not ((item == "weight") and (i[0] in [0]))) and (not ((item == "edge") and (layer == 8)))
     ]
     
     # neg_freq_dict = sorted(neg_freq_dict, key=lambda x: (-(x[3]+x[5]), x[4]))  # by frequency desc, curvature asc

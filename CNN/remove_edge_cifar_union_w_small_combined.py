@@ -217,45 +217,38 @@ def get_top_c(curvature, b, prefix_dims):
     pos_e = defaultdict(list)
     cnn_e = defaultdict(list)
 
-    # Convert once
-    curv = np.asarray(curvature)
-    edges = curv.copy()
-    edges[:, :2] = edges[:, :2].astype(int)
+    # Precompute a fast index-to-layer map
+    def find_layer(index):
+        return np.searchsorted(prefix_dims, index, side='right') - 1
 
-    # ----- PRECOMPUTE LAYER OF EACH UNIQUE NODE -----
-    i_nodes = edges[:, 0].astype(int)
-    j_nodes = edges[:, 1].astype(int)
-    unique_nodes = np.unique(np.concatenate([i_nodes, j_nodes]))
+    for batch in range(b):
+        ricci_curv = np.array(curvature)
+        
+        # Filter out large curvature values
+        valid = ricci_curv
+        valid[:, :2] = valid[:, :2].astype(int)
+        
+        for i, j, curr in valid:
+            # curr = min(curr, 1.0)  # clip curvature
+            i = int(i)
+            j = int(j)
 
-    # Compute layer for each unique node only once
-    unique_layers = np.searchsorted(prefix_dims, unique_nodes, side="right") - 1
+            i_layer = find_layer(i)
+            j_layer = find_layer(j)
+            
+            # if ((i_layer > 0) and (i_layer < 8)):
+            #     if (abs(curr - 1.00000) < 1e-6):
+            #         curr = 2.0
+            
+            if i_layer not in [6,7,8]:
+                cnn_e[i_layer].append((i,j,curr))
 
-    # Convert to a dictionary or array lookup
-    node_to_layer = dict(zip(unique_nodes, unique_layers))
-
-    # ----- PROCESS EDGES -----
-    for i, j, curr in edges:
-        i = int(i)
-        j = int(j)
-
-        i_layer = node_to_layer[i]
-        j_layer = node_to_layer[j]
-
-        # Adjust curvature only for some layers
-        if 0 < i_layer < 8 and abs(curr - 1.0) < 1e-6:
-            curr = 2.0
-
-        # CNN edges (non-FC)
-        if i_layer not in (6, 7, 8):
-            cnn_e[i_layer].append((i, j, curr))
-            continue
-
-        # FC edges only between adjacent layers
-        elif j_layer == i_layer + 1:
-            if curr < 0:
-                neg_e[i_layer].append((i, j, curr))
-            else:
-                pos_e[i_layer].append((i, j, curr))
+            # Only keep edges between adjacent layers (excluding input and first hidden)
+            elif j_layer == i_layer + 1:
+                if curr < 0:
+                    neg_e[i_layer].append((i, j, curr))
+                elif curr >= 0:
+                    pos_e[i_layer].append((i, j, curr))
 
     return neg_e, pos_e, cnn_e
 
@@ -371,39 +364,42 @@ def plot_curve(
     # Colors
     neg_color = '#00A3E0'
     pos_color = '#EC008C'
-    text_color = "#041E91FF"
 
-    plt.figure(figsize=(11, 7))
+    plt.figure(figsize=(10, 6))
 
     # Plot lines
-    plt.plot(neg_remove_num, neg_clean_acc, label='Negative parameters removed first',
-             marker='o', linestyle='--', linewidth=3.5, markersize=13, color=neg_color)
+    plt.plot(neg_remove_num, neg_clean_acc, label='Negative edges removed first',
+             marker='o', linestyle='--', linewidth=3., markersize=13, color=neg_color)
 
-    plt.plot(pos_remove_num, pos_clean_acc, label='Positive parameters removed first',
-             marker='x', linestyle='-', linewidth=3.5, markersize=13, color=pos_color)
+    plt.plot(pos_remove_num, pos_clean_acc, label='Positive edges removed first',
+             marker='x', linestyle='-', linewidth=3., markersize=13, color=pos_color)
 
     # Annotate frequencies BELOW points
     if neg_freq_labels:
         for i, (x, y, r) in enumerate(zip(neg_remove_num, neg_clean_acc, neg_freq_labels)):
-            if (i % 4 == 0):
+            if (i % 1 == 0):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                            xytext=(-10, -25), ha='left', fontsize=24, color='#000000')
+                            xytext=(-10, -25), ha='left', fontsize=18, color='#000000')
     flag = 0
     
     if pos_freq_labels:
         for i, (x, y, r) in enumerate(zip(pos_remove_num, pos_clean_acc, pos_freq_labels)):
-            if (i % 5 == 0):
+            if (i % 5 == 0) or (i == len(pos_remove_num)-1):
                 plt.annotate(r, (x, y), textcoords='offset points',
-                    xytext=(0, -15), ha='center', fontsize=27, color=text_color)
+                    xytext=(0, -15), ha='center', fontsize=18, color=pos_color)
                 
-            # elif (r < 0) and (~flag):
-            #     plt.annotate(r, (x, y), textcoords='offset points',
-            #         xytext=(0, 15), ha='center', fontsize=28, color=pos_color)
-            #     flag = 1
+            elif i == len(pos_remove_num)-2:
+                plt.annotate(r, (x, y), textcoords='offset points',
+                    xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
+                
+            elif (r < pos_freq_labels[0]) and (~flag):
+                plt.annotate(r, (x, y), textcoords='offset points',
+                    xytext=(0, 15), ha='center', fontsize=18, color=pos_color)
+                flag = 1
 
     # Labels and title
-    plt.xlabel('Number of Parameters Removed', fontsize=30, fontweight='semibold')
-    plt.ylabel('Accuracy', fontsize=31, fontweight='semibold')
+    plt.xlabel('Number of Edges Removed', fontsize=33, fontweight='semibold')
+    plt.ylabel('Accuracy', fontsize=33, fontweight='semibold')
     
     # plt.title('Accuracy vs. Edge Removal Count', fontsize=28, fontweight='semibold')
     plt.ylim(0.0, 1.0)
@@ -422,7 +418,7 @@ def plot_curve(
         mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
 
         # Set the ticks and the scaled mantissa labels
-        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=26, fontweight='semibold')
+        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=22, fontweight='semibold')
 
         # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
         ax.annotate(
@@ -435,26 +431,21 @@ def plot_curve(
     else:
         plt.xticks(fontsize=22, fontweight='semibold')
         ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
-        ax.xaxis.get_offset_text().set_fontsize(24)
+        ax.xaxis.get_offset_text().set_fontsize(20)
         ax.xaxis.get_offset_text().set_fontweight('semibold')
 
     # Ticks
-    plt.xticks(fontsize=24, fontweight='semibold')
-    plt.yticks(fontsize=26, fontweight='semibold')
-    
-    # === Axis borders ===
-    for spine in ax.spines.values():
-        spine.set_linewidth(3)
-        spine.set_color('black')
+    plt.xticks(fontsize=22, fontweight='semibold')
+    plt.yticks(fontsize=22, fontweight='semibold')
 
     # Grid and legend
     plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
-    legend = plt.legend(fontsize=24, loc=0)  # create the legend
+    legend = plt.legend(fontsize=22, loc=0)  # create the legend
     for text in legend.get_texts():
         text.set_fontweight('semibold')  # or 'bold'
 
     plt.tight_layout()
-    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para_combined_min2.png'), dpi=400, bbox_inches="tight")
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all_para_combined_min2.png'), dpi=300)
     plt.close()
     
     
@@ -656,7 +647,7 @@ def remove_edge_cifar_union_w_small_combined(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -709,7 +700,7 @@ def remove_edge_cifar_union_w_small_combined(args):
 
     net_full = copy.deepcopy(net_H)
     
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min1.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min2.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(model_name)
@@ -723,6 +714,8 @@ def remove_edge_cifar_union_w_small_combined(args):
     
     total = sample_size * len(selected_classes)
     
+    total_edge = sum(edge_dims_small) - edge_dims_small[0]
+      
     test_cleanacc = test_clean(net_full, test_loader)
     
     print(f'Finish Test..')
@@ -816,6 +809,41 @@ def remove_edge_cifar_union_w_small_combined(args):
     ]
     
     
+    
+    # Select edges either not in layer 9 OR in layer 9 but with freq > 0.1
+    # pos_edges_only = [
+    #     (i, j)
+    #     for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
+    #     if freq >= 0.6*total_example
+    # ]
+    
+    # neg_edges_new = [
+    #     (i, j, freq, curv)
+    #     for (i, j, freq, curv), layer in zip(pos_freq_edges_sorted, layers_i)
+    #     if freq < 0.6*total_example
+    # ]
+    
+    # Convert the existing list into a dictionary for quick lookup
+    # neg_edge_dict = {(i, j): [freq, curvature] for i, j, freq, curvature in neg_freq_edges_sorted}
+    
+    # # Merge / update
+    # for i, j, freq, curvature in neg_edges_new:
+    #     if (i, j) in neg_edge_dict:
+    #         f_old, c_old = neg_edge_dict[(i, j)]
+    #         f_new = f_old + freq
+    #         c_new = (c_old * f_old + curvature * freq) / f_new
+    #         neg_edge_dict[(i, j)] = [f_new, c_new]
+    #     else:
+    #         neg_edge_dict[(i, j)] = [freq, curvature]
+            
+    # # Rebuild full list from dictionary and sort
+    # neg_freq_edges_sorted = sorted(
+    #     [(i, j, freq, curv) for (i, j), (freq, curv) in neg_edge_dict.items()],
+    #     key=lambda x: (-x[2], x[3])  # sort by frequency descending, then curvature ascending
+    # )
+        
+    # neg_edges_only = [(i, j) for (i, j, _, _) in neg_freq_edges_sorted]
+    
     neg_total = len(neg_edges_only)
     pos_total = len(pos_edges_only)
     
@@ -826,31 +854,29 @@ def remove_edge_cifar_union_w_small_combined(args):
     neg_len = len(neg_edges)
 
     # First segment: 3 points from 0 to len(neg_edges)
-    part1 = np.linspace(0, neg_len, num=12, dtype=int)
+    part1 = np.linspace(0, neg_len, num=3, dtype=int)
 
     # Second segment: 5 points from len(neg_edges) to neg_total
-    part2 = np.linspace(neg_len, neg_total, num=6, dtype=int)
+    part2 = np.linspace(neg_len, neg_total, num=3, dtype=int)
 
     # Combine, but avoid duplicate at the boundary
     neg_remove_num = list(part1[:-1]) + list(part2)
     
-    # # define split points
-    # split1 = int(0.3 * pos_total)
-    # split2 = int(0.8 * pos_total)
+    # define split points
+    split1 = int(0.3 * pos_total)
+    split2 = int(0.8 * pos_total)
 
-    # # stage 1: first 40% (coarse)
-    # part1 = np.linspace(0, split1, num=4, dtype=int)
+    # stage 1: first 40% (coarse)
+    part1 = np.linspace(0, split1, num=5, dtype=int)
 
-    # # stage 2: next 40% (medium)
-    # part2 = np.linspace(split1, split2, num=8, dtype=int)
+    # stage 2: next 40% (medium)
+    part2 = np.linspace(split1, split2, num=10, dtype=int)
 
-    # # stage 3: last 20% (fine)
-    # part3 = np.linspace(split2, pos_total, num=3, dtype=int)
+    # stage 3: last 20% (fine)
+    part3 = np.linspace(split2, pos_total, num=8, dtype=int)
 
-    # # combine, removing duplicates at boundaries
-    # pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
-    
-    pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
+    # combine, removing duplicates at boundaries
+    pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
         
     remove_num = list(np.linspace(0, total_para, num=10, dtype=int))
 

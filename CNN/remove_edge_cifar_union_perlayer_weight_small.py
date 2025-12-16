@@ -666,7 +666,7 @@ def remove_edge_cifar_union_perlayer_w_small(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -693,8 +693,8 @@ def remove_edge_cifar_union_perlayer_w_small(args):
     if activation.lower() == "relu":
         # from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
         from tools.vgg9_custom_relu import VGG9_CIFAR10
-    # elif activation.lower() == "tanh":
-    #     from tools.vgg9_custom_tanh import VGG9_CIFAR10
+    elif activation.lower() == "tanh":
+        from tools.vgg9_custom_tanh import VGG9_CIFAR10
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 
@@ -713,7 +713,7 @@ def remove_edge_cifar_union_perlayer_w_small(args):
     if model_pre_name == 'ori':
         model_name = "vgg9_10_ori_"
     elif model_pre_name == 'adv':
-        model_name = "vgg9_10_adv_"
+        model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
         model_name = "vgg9_10_wd_"
         
