@@ -255,7 +255,7 @@ def community_check_cifar_vgg9(args):
     if activation.lower() == "relu":
         from tools.vgg9_custom_relu import VGG9_CIFAR10
     elif activation.lower() == "tanh":
-        from tools.vgg16_custom_tanh import VGG16_CIFAR10
+        from tools.vgg9_custom_tanh import VGG9_CIFAR10
 
     if not os.path.exists(res_path):
         os.makedirs(res_path)
