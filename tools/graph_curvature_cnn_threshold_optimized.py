@@ -609,6 +609,7 @@ def process_edge(b, edge):
     node_i = _nodes_value[:,i].item()
     
     target_a = _nodes_alpha[:,j].item()
+    source_a = _nodes_alpha[:,i].item()
     
     if (((i_layer > 0) and (node_i == 0))):
         return (b, i, j, 1.0)
@@ -617,7 +618,8 @@ def process_edge(b, edge):
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
     
-    sp /= target_a
+    a = min(source_a, target_a)
+    sp /= a
     
     if model_dim_i["name"] != "fc":
         pos_i = i_idx % (i_size**2)
