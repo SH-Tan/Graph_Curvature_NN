@@ -19,7 +19,7 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature_cnn_threshold_opzimized import graph_curvature_main_torch
+from tools.graph_curvature_cnn_threshold_opzimized_old import graph_curvature_main_torch
 
 
 np.set_printoptions(threshold=np.inf)
