@@ -656,7 +656,7 @@ def remove_edge_cifar_union_w_small_combined(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -839,16 +839,21 @@ def remove_edge_cifar_union_w_small_combined(args):
     # split2 = int(0.8 * pos_total)
 
     # # stage 1: first 40% (coarse)
-    # part1 = np.linspace(0, split1, num=4, dtype=int)
+    # part1 = np.linspace(0, split1, num=5, dtype=int)
 
     # # stage 2: next 40% (medium)
-    # part2 = np.linspace(split1, split2, num=8, dtype=int)
+    # part2 = np.linspace(split1, split2, num=15, dtype=int)
 
     # # stage 3: last 20% (fine)
-    # part3 = np.linspace(split2, pos_total, num=3, dtype=int)
+    # part3 = np.linspace(split2, pos_total, num=10, dtype=int)
 
     # # combine, removing duplicates at boundaries
     # pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
+    
+    # # print(part1)
+    # # print(part2)
+    # # print(part3)
+    # # print(pos_remove_num)
     
     pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
         
