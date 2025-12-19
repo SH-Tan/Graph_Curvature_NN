@@ -618,8 +618,12 @@ def process_edge(b, edge):
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
     
-    a = min(source_a, target_a)
-    sp /= a
+    if (i_layer > 0) and (j_layer < len(_dims)-1):
+        a = min(source_a, target_a)
+        sp = sp/a
+    else:
+        sp = sp/(target_a)
+
     
     if model_dim_i["name"] != "fc":
         pos_i = i_idx % (i_size**2)
