@@ -242,8 +242,8 @@ def get_top_c(curvature, b, prefix_dims):
         j_layer = node_to_layer[j]
 
         # Adjust curvature only for some layers
-        if 0 < i_layer < 8 and abs(curr - 1.0) < 1e-6:
-            curr = 2.0
+        # if 0 < i_layer < 8 and abs(curr - 1.0) < 1e-6:
+        #     curr = 2.0
 
         # CNN edges (non-FC)
         if i_layer not in (6, 7, 8):
@@ -656,7 +656,7 @@ def remove_edge_cifar_union_w_small_combined(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
