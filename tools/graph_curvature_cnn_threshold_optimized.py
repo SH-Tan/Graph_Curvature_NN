@@ -611,18 +611,18 @@ def process_edge(b, edge):
     target_a = _nodes_alpha[:,j].item()
     source_a = _nodes_alpha[:,i].item()
     
-    if (((i_layer > 0) and (node_i == 0))):
-        return (b, i, j, 1.0)
+    # if (((i_layer > 0) and (node_i == 0))):
+    #     return (b, i, j, 1.0)
     
     i_idx = i - _prefix_dims[i_layer]
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
     
-    if (i_layer > 0) and (j_layer < len(_dims)-1):
-        a = min(source_a, target_a)
-        sp = sp/a
-    else:
-        sp = sp/(target_a)
+    # if (i_layer > 0) and (j_layer < len(_dims)-1):
+    #     a = min(source_a, target_a)
+    #     sp = sp/a
+    # else:
+    sp = sp/(target_a)
 
     
     if model_dim_i["name"] != "fc":

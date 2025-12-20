@@ -227,7 +227,7 @@ def community_check_cifar_vgg9(args):
     print(f"Using {device} device")
 
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
-
+    selected_classes = [0,1,2,3,4,5,6,7,8,9]
     val_set = load_dataset_from_disk("./data/CIFAR10_val", batch_size=64, shuffle=False)
     sep_dataloader = utils.sep_label(val_set, selected_classes, bs=32)
     
@@ -282,6 +282,8 @@ def community_check_cifar_vgg9(args):
     res_l = defaultdict(list)
 
     print("Finished loading model and test data..")
+    
+    selected_classes = [5,6,7,8,9]
     
     # Track how many samples have been processed for each class
     label_progress = defaultdict(int)
