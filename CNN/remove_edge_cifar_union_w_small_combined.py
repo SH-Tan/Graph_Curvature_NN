@@ -242,8 +242,8 @@ def get_top_c(curvature, b, prefix_dims):
         j_layer = node_to_layer[j]
 
         # Adjust curvature only for some layers
-        if 0 < i_layer < 8 and abs(curr - 1.0) < 1e-6:
-            curr = 2.0
+        # if 0 < i_layer < 8 and abs(curr - 1.0) < 1e-6:
+        #     curr = 2.0
 
         # CNN edges (non-FC)
         if i_layer not in (6, 7, 8):
@@ -839,16 +839,21 @@ def remove_edge_cifar_union_w_small_combined(args):
     # split2 = int(0.8 * pos_total)
 
     # # stage 1: first 40% (coarse)
-    # part1 = np.linspace(0, split1, num=4, dtype=int)
+    # part1 = np.linspace(0, split1, num=5, dtype=int)
 
     # # stage 2: next 40% (medium)
-    # part2 = np.linspace(split1, split2, num=8, dtype=int)
+    # part2 = np.linspace(split1, split2, num=15, dtype=int)
 
     # # stage 3: last 20% (fine)
-    # part3 = np.linspace(split2, pos_total, num=3, dtype=int)
+    # part3 = np.linspace(split2, pos_total, num=10, dtype=int)
 
     # # combine, removing duplicates at boundaries
     # pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
+    
+    # # print(part1)
+    # # print(part2)
+    # # print(part3)
+    # # print(pos_remove_num)
     
     pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
         
