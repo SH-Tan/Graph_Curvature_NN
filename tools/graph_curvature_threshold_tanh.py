@@ -514,7 +514,11 @@ def process_edge(b, edge):
     j_idx = j - _prefix_dims[j_layer]
     sp = _sp_dict[(i_layer, j_layer)][b, i_idx, j_idx].item()
 
-    sp = sp/(target_alpha)
+    if (i_layer > 0) and (j_layer < len(_dims)-1):
+        a = min(source_alpha, target_alpha)
+        sp = sp/a
+    else:
+        sp = sp/(target_alpha)
 
     # In-neighbors distribution
     if i_layer == 0:
