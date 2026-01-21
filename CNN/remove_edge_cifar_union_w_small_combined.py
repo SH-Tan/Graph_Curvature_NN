@@ -708,7 +708,7 @@ def remove_edge_cifar_union_w_small_combined(args):
 
     net_full = copy.deepcopy(net_H)
     
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min2.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_l5.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(model_name)
@@ -814,6 +814,12 @@ def remove_edge_cifar_union_w_small_combined(args):
         if c < 0
     ]
     
+    pos_edges = [
+        (item, i, j, f, c)
+        for (item, i, j, f, c), layer in zip(pos_freq_dict, layers_i)
+        if c >= 0
+    ]
+    
     
     neg_total = len(neg_edges_only)
     pos_total = len(pos_edges_only)
@@ -833,28 +839,24 @@ def remove_edge_cifar_union_w_small_combined(args):
     # Combine, but avoid duplicate at the boundary
     neg_remove_num = list(part1[:-1]) + list(part2)
     
-    # # define split points
+    # define split points
+    pos_len = len(pos_edges)
     # split1 = int(0.3 * pos_total)
     # split2 = int(0.8 * pos_total)
 
-    # # stage 1: first 40% (coarse)
-    # part1 = np.linspace(0, split1, num=5, dtype=int)
+    # stage 1: first 40% (coarse)
+    part1 = np.linspace(0, pos_len, num=25, dtype=int)
 
-    # # stage 2: next 40% (medium)
-    # part2 = np.linspace(split1, split2, num=15, dtype=int)
+    # stage 2: next 40% (medium)
+    # part2 = np.linspace(pos_len, split2, num=15, dtype=int)
 
-    # # stage 3: last 20% (fine)
-    # part3 = np.linspace(split2, pos_total, num=10, dtype=int)
+    # stage 3: last 20% (fine)
+    part3 = np.linspace(pos_len, pos_total, num=10, dtype=int)
 
-    # # combine, removing duplicates at boundaries
-    # pos_remove_num = np.unique(np.concatenate((part1, part2, part3))).tolist()
+    # combine, removing duplicates at boundaries
+    pos_remove_num = list(part1[:-1]) + list(part3)
     
-    # # print(part1)
-    # # print(part2)
-    # # print(part3)
-    # # print(pos_remove_num)
-    
-    pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
+    # pos_remove_num = list(np.linspace(0, pos_total, num=30, dtype=int))
         
     remove_num = list(np.linspace(0, total_para, num=10, dtype=int))
 
