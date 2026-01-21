@@ -285,7 +285,7 @@ def community_check_cifar_vgg9(args):
     
     # Track how many samples have been processed for each class
     label_progress = defaultdict(int)
-
+    
     # Prepare iterators for each label's data
     data_iterators = {l: iter(robust_pair[l]) for l in selected_classes}
     finished_labels = set()
@@ -325,8 +325,10 @@ def community_check_cifar_vgg9(args):
                             weights = output.detach().clone().to(device)
                             nodes_ori = nodes_ori.detach().clone().to(device)
                             # node_before = nodes_before.detach().clone().cpu()
+              
+                            weights[abs(weights)<=1e-30] = 1e-30
                             
-                            # weights[edge_array == 0] = 1e6
+                            # print(len(weights[weights==0]), len(weights[0]), torch.min(weights))
  
                             edge_array = edge_array.detach().clone().cpu()
                             
@@ -355,7 +357,7 @@ def community_check_cifar_vgg9(args):
                                     layers_to_process=[1,2,3]
                                 )
                             elif metric.lower() == "w4":
-                                weights_inv1, weights_inv2= net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
+                                weights_inv1, weights_inv2 = net_full.normalization_weight_w4(nodes_ori, weights, dims, model_dims_small)
                                 
                                 # Move back to CPU immediately to save GPU RAM
                                 weights_inv = weights_inv1.detach().cpu()
@@ -399,7 +401,6 @@ def community_check_cifar_vgg9(args):
                                         edge_value=edge_slice,
                                         threshold=0.,
                                         layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key],
-                                        upb = 2./torch.min(weights_inv)
                                     )
                      
                                     # with open(res_path + f"output_{l_key}.txt", "a+") as f:

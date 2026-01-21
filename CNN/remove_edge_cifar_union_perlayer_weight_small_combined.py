@@ -410,8 +410,8 @@ def get_top_c(curvature, b, prefix_dims):
         j_layer = node_to_layer[j]
 
         # Adjust curvature only for some layers
-        # if 0 < i_layer < 8 and abs(curr - 1.0) < 1e-6:
-        #     curr = 2.0
+        if 0 < i_layer < 8 and abs(curr - 1.0) < 1e-6:
+            curr = 2.0
 
         # CNN edges (non-FC)
         if i_layer not in (6, 7, 8):

@@ -732,7 +732,6 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     _nodes_value = nodes
     _edge_value = edge_value
     _model_dims = model_dims
-    _upper_bound = upb.item()
 
     weights = weights.to(device)
     batch_size = weights.shape[0]
