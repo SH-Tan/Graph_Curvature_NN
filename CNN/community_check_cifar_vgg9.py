@@ -325,9 +325,7 @@ def community_check_cifar_vgg9(args):
                             weights = output.detach().clone().to(device)
                             nodes_ori = nodes_ori.detach().clone().to(device)
                             # node_before = nodes_before.detach().clone().cpu()
-                            
-                            # weights[edge_array == 0] = 1e6
- 
+              
                             edge_array = edge_array.detach().clone().cpu()
                             
                             del output, img, nodes_before
