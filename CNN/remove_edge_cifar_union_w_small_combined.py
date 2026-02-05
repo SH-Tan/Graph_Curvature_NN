@@ -804,8 +804,6 @@ def remove_edge_cifar_union_w_small_combined(args):
         (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in pos_freq_dict
     ]
 
-    neg_total = len(neg_edges_only)
-    pos_total = len(pos_edges_only)
     
     # Filter: keep all weights, and only edges not in layer 9
     neg_edges = [

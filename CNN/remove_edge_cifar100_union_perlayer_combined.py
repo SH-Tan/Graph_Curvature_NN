@@ -660,11 +660,11 @@ def remove_edge_cifar100_perlayer_w_small_combined(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg9_100_"
+        model_name = "vgg9_100_ori_"
     elif model_pre_name == 'adv':
-        model_name = "vgg9_10_adv_"
+        model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
-        model_name = "vgg9_10_wd_"
+        model_name = "vgg9_100_wd_"
         
     model_name = model_name + activation + "_s2.pth"
         

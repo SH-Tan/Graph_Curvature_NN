@@ -680,7 +680,7 @@ def remove_edge_cifar100_union_combined(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -719,11 +719,11 @@ def remove_edge_cifar100_union_combined(args):
         
     # build model
     if model_pre_name == 'ori':
-        model_name = "vgg9_100_"
+        model_name = "vgg9_100_ori_"
     elif model_pre_name == 'adv':
         model_name = "vgg16_adv_"
     elif model_pre_name == 'wd':
-        model_name = "vgg16_wd_"
+        model_name = "vgg9_100_wd_"
         
     model_name = model_name + activation + "_s2.pth"
     

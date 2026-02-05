@@ -176,7 +176,76 @@ class VGG9_CIFAR10(nn.Module):
                 print(item_type)
 
         print(f"Removed {remove_num} total connections/weights.")
-                
+        
+           
+        
+    def register_freeze_grad(self, freeze_on_mask_one=False):
+        self.register_conv_mask(self.conv1_1, 1, freeze_on_mask_one)
+        self.register_conv_mask(self.conv2_1, 2, freeze_on_mask_one)
+        self.register_conv_mask(self.conv3_1, 3, freeze_on_mask_one)
+        self.register_conv_mask(self.conv3_2, 4, freeze_on_mask_one)
+        self.register_conv_mask(self.conv4_1, 5, freeze_on_mask_one)
+        self.register_conv_mask(self.conv4_2, 6, freeze_on_mask_one)
+
+        self.register_linear_mask(self.fc1, 7, freeze_on_mask_one)
+        self.register_linear_mask(self.fc2, 8, freeze_on_mask_one)
+        self.register_linear_mask(self.fc3, 9, freeze_on_mask_one)
+
+
+    def freeze_grad_hook(self, mask, freeze_on_mask_one=False):
+        """
+        Returns a gradient hook that freezes parameters according to mask.
+        """
+        mask = mask.float()
+
+        if freeze_on_mask_one:
+            # 1 → freeze → grad = 0
+            grad_multiplier = 1.0 - mask
+        else:
+            # 0 → freeze → grad = 0
+            grad_multiplier = mask
+
+        def hook(grad):
+            return grad * grad_multiplier
+
+        return hook
+        
+        
+    def register_conv_mask(self, conv_layer, l1, freeze_on_mask_one=False):
+        mask = self.remove_mask[l1].to(self.device)
+
+        # ---- weight ----
+        conv_layer.weight.register_hook(
+            self.freeze_grad_hook(mask, freeze_on_mask_one)
+        )
+
+        # ---- bias ----
+        if conv_layer.bias is not None:
+            # reduce mask → per-output-channel
+            bias_mask = mask.view(mask.size(0), -1).all(dim=1).float()
+
+            conv_layer.bias.register_hook(
+                self.freeze_grad_hook(bias_mask, freeze_on_mask_one)
+            )
+
+        
+        
+    def register_linear_mask(self, fc_layer, l1, freeze_on_mask_one=False):
+        mask = self.remove_mask[l1].to(self.device)
+
+        # ---- weight ----
+        fc_layer.weight.register_hook(
+            self.freeze_grad_hook(mask.T, freeze_on_mask_one)
+        )
+
+        # ---- bias ----
+        if fc_layer.bias is not None:
+            bias_mask = mask.T.all(dim=1).float()
+
+            fc_layer.bias.register_hook(
+                self.freeze_grad_hook(bias_mask, freeze_on_mask_one)
+            )
+            
 
 
     def CNN(self, ori, kernel, b, l1, l2):
@@ -225,6 +294,34 @@ class VGG9_CIFAR10(nn.Module):
         
         return y
     
+    
+    def forward1(self, x):
+        x = self.normalize(x)
+        
+        x = self.activation(self.bn1_1(self.conv1_1(x)))
+        
+        # x = self.activation(self.bn1_2(self.conv1_2(x)))
+        
+        x = self.activation(self.bn2_1(self.conv2_1(x)))
+        
+        # x = self.activation(self.bn2_2(self.conv2_2(x)))
+        
+        x = self.activation(self.bn3_1(self.conv3_1(x)))
+        
+        x = self.activation(self.bn3_2(self.conv3_2(x)))
+        
+        # x = self.activation(self.bn3_3(self.conv3_3(x)))
+        
+        x = self.activation(self.bn4_1(self.conv4_1(x)))
+        
+        x = self.activation(self.bn4_2(self.conv4_2(x)))
+        
+        x = x.view(x.size(0), -1)  # flatten
+        x = self.activation(self.fc1(x))
+        x = self.activation(self.fc2(x))
+        
+        x = self.fc3(x)
+        return x
 
 
     def forward(self, x):
