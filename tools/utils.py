@@ -149,12 +149,27 @@ def get_new_data(l1, data_train, data_test, train_bs = 128, test_bs = 2000, vali
     return train_loader, test_loader, valid_loader, valid_dataset, test_dataset
 
 
-def sep_label(dataset, ls, bs = 5000):
+import random
+def sep_label(dataset, ls, bs = 5000, seed=4):
+    # Global seeds
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+    def seed_worker(worker_id):
+        worker_seed = seed + worker_id
+        np.random.seed(worker_seed)
+        random.seed(worker_seed)
+        torch.manual_seed(worker_seed)
+
+    g = torch.Generator()
+    g.manual_seed(seed)
+    
     sep_dataloader = dict()
     for l in ls:
         index = torch.tensor([i for i, (_, label) in enumerate(dataset) if label == l])
         subset = torch.utils.data.Subset(dataset, index)
-        loader = DataLoader(subset, batch_size=bs, num_workers=2)
+        loader = DataLoader(subset, batch_size=bs, num_workers=2, shuffle=True, worker_init_fn=seed_worker, generator=g,)
 
         sep_dataloader[l] = loader
         

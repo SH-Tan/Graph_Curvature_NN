@@ -361,30 +361,30 @@ class VGG9_CIFAR10(nn.Module):
         return y
 
 
-    def w_norm(self, w, std_alpha = 10):
-        # w_abs = torch.abs(w)
-        std_w = torch.std(w)
-        w_norm = np.abs(w/(std_alpha*std_w))
-        # sum_w = torch.sum(w_abs)
-        # min_vals = w_abs.min(dim=1, keepdim=True)[0]
-        # max_vals = w_abs.max(dim=1, keepdim=True)[0]
-        # w_minmax = ((w_abs - min_vals) / (max_vals - min_vals + 1e-6)) + 1e-6
+    # def w_norm(self, w, std_alpha = 10):
+    #     # w_abs = torch.abs(w)
+    #     std_w = torch.std(w)
+    #     w_norm = np.abs(w/(std_alpha*std_w))
+    #     # sum_w = torch.sum(w_abs)
+    #     # min_vals = w_abs.min(dim=1, keepdim=True)[0]
+    #     # max_vals = w_abs.max(dim=1, keepdim=True)[0]
+    #     # w_minmax = ((w_abs - min_vals) / (max_vals - min_vals + 1e-6)) + 1e-6
 
-        return w_norm
+    #     return w_norm
     
     
-    def channel_norm(self, w, alpha=1.0):
-        # w shape: [B, C, H, W] or [B, 1, H, W]
+    # def channel_norm(self, w, alpha=1.0):
+    #     # w shape: [B, C, H, W] or [B, 1, H, W]
 
-        w_abs = torch.abs(w)
+    #     w_abs = torch.abs(w)
 
-        # reduce over spatial dims, not channel dim
-        min_vals = w_abs.amin(dim=(2,3), keepdim=True)
-        max_vals = w_abs.amax(dim=(2,3), keepdim=True)
+    #     # reduce over spatial dims, not channel dim
+    #     min_vals = w_abs.amin(dim=(2,3), keepdim=True)
+    #     max_vals = w_abs.amax(dim=(2,3), keepdim=True)
 
-        w_minmax = (w_abs - min_vals) / (max_vals - min_vals + 1e-6) + 1e-6
+    #     w_minmax = (w_abs - min_vals) / (max_vals - min_vals + 1e-6) + 1e-6
 
-        return (1 - alpha) * w_abs + alpha * w_minmax
+    #     return (1 - alpha) * w_abs + alpha * w_minmax
     
     
     # CNN using unfold/fold, calculate edges values
@@ -439,7 +439,7 @@ class VGG9_CIFAR10(nn.Module):
         max_vals = x_abs.max(dim=1, keepdim=True)[0]
         x_norm = (x_abs - min_vals) / (max_vals - min_vals)
         
-        return x_flat
+        return x_norm
     
 
     # calculate edge weights

@@ -733,7 +733,7 @@ def remove_edge_cifar100_union_combined(args):
 
     net_full = copy.deepcopy(net_H)
     
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min1.pkl"
+    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min2.pkl"
     save_path = os.path.join(res_path, save_name)
     
     print(model_name)

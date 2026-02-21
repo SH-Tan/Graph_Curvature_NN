@@ -211,7 +211,7 @@ def cal_edges(model_dims):
 
 
 def community_check_cifar_vgg9(args):
-    seed = 29
+    seed = 39 # 29
     
     # set random seed
     random.seed(seed)
@@ -222,14 +222,14 @@ def community_check_cifar_vgg9(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
 
     val_set = load_dataset_from_disk("./data/CIFAR10_val", batch_size=64, shuffle=False)
-    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=32)
+    sep_dataloader = utils.sep_label(val_set, selected_classes, bs=32, seed=seed)
     
     dims_full = cal_dims(model_dims)
     dims = cal_dims(model_dims_small)
