@@ -271,49 +271,6 @@ def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='
             )
             
             # Adaptive chunk sizes for available memory
-            # chunk_k, chunk_p = adaptive_chunksize()
-            # print(f"({i}, {j}) -> shape={current_min.shape}, chunk=({chunk_k},{chunk_p})")
-            
-            # # Loop over possible intermediate k
-            # for k in range(i + 1, j):
-            #     if (i, k) not in shortest_paths or (k, j) not in shortest_paths:
-            #         continue
-
-                # A = shortest_paths[(i, k)]
-                # B = shortest_paths[(k, j)]
-
-                # # ---- MASK A by node activity in layer k ----
-                # dst_start_k = prefix_dims[i]
-                # dst_end_k   = prefix_dims[i+1]
-                # dst_idx_k   = torch.arange(dst_start_k, dst_end_k, device=device)
-                # dst_active_k = (_nodes_value[:, dst_idx_k] > 0).unsqueeze(-1)  # (B,1,size_k)
-
-                # # Mask only the destination slice
-                # A_slice = A[:, 0:(dst_end_k-dst_start_k), :]  # (B, src_dim, size_k)
-
-                # A_slice = torch.where(dst_active_k, A_slice, inf)
-
-                # # ---- MASK B by node activity in layer j ----
-                # dst_start_j = prefix_dims[k]
-                # dst_end_j   = prefix_dims[k+1]
-                # dst_idx_j   = torch.arange(dst_start_j, dst_end_j, device=device)
-                
-                # dst_active_j = (_nodes_value[:, dst_idx_j] > 0).unsqueeze(-1)  # (B,1,size_j)
-                
-                # # Mask only the destination slice
-                # B_slice = B[:, 0:(dst_end_j-dst_start_j), :]  # (B, src_dim, size_k)
-
-                # B_slice = torch.where(dst_active_j, B_slice, inf)
-
-                # # B_masked = torch.where(dst_active_j, B, inf)
-
-                # # ---- Compute masked min-plus multiplication ----
-                # C = min_plus_mult(A_slice, B_slice, chunk_k=chunk_k, chunk_p=chunk_p)
-
-                # # ---- Take elementwise minimum ----
-                # current_min = torch.minimum(current_min, C)
-            
-            # Adaptive chunk sizes for available memory
             chunk_k, chunk_p = adaptive_chunksize()
             print(f"({i}, {j}) -> shape={current_min.shape}, chunk=({chunk_k},{chunk_p})")
 
@@ -743,6 +700,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     layers = layers_to_process or list(range(len(dims)-1))
     _layers = layers
 
+    t1 = time.time()
+    
     # Compute shortest paths
     if model_dims:
         sp_dict = cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='cuda')
@@ -750,6 +709,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
             sp1 = cnn_adjacent_layer(model_dims, probability_w.to(device), prefix_dims, device='cuda', thre = threshold)
             # e_sp = cnn_adjacent_layer(model_dims, edge_value, prefix_dims, device='cuda', thre = threshold)
             sp2 = out_distribution(model_dims, sp1, device='cuda', thre = threshold, dist = sp_dict)
+            
+    matrix_t = time.time() - t1
 
     _sp_dict = {k: v.cpu().numpy() for k, v in sp_dict.items()}
 
@@ -876,6 +837,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
 
     print(len(args))
     
+    t2 = time.time()
+    
     # Process edges in parallel
     ricci_results = defaultdict(list)
     with get_context('fork').Pool(processes=proc) as pool:
@@ -887,6 +850,8 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     for b, i, j, curv in results:
         ricci_results[b].append((i+_pre_n, j+_pre_n, curv))
         
+    curv_t = time.time() - t2
+        
     # for b, l_i, l_o, sp, m, curv in results:
     #     ricci_results[b].append((l_i, l_o, sp, m, curv))
         
@@ -894,7 +859,7 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     torch.cuda.empty_cache()
     gc.collect()
 
-    return ricci_results
+    return ricci_results, matrix_t, curv_t
 
 
 if __name__ == '__main__':

@@ -3,7 +3,10 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import numpy as np
+import sys
 
+sys.path.append("..")
+from tools import layers as l
 
 
 class VGG9_CIFAR10(nn.Module):
@@ -80,19 +83,36 @@ class VGG9_CIFAR10(nn.Module):
     
     def init_remove_mask(self):
         total_layers = len(self.model_info)
+        self.remove_mask = {}
+        layer_idx = 1
 
         # === 1. Prebuild all-one masks for every layer ===
-        self.remove_mask = {}
-        for l in range(1, total_layers):  # skip input layer
-            layer_info = self.model_info[l+1]
-            l1_info = self.model_info[l]
-
-            if layer_info["name"] == "cnn":
+        for module in self.modules():
+            layer_info = self.model_info[layer_idx+1]
+            l1_info = self.model_info[layer_idx]
+            
+            # ---- Conv layers ----
+            if isinstance(module, torch.nn.Conv2d):
+                weight = module.weight.data
                 out_ch = layer_info["dim"]["channel"]
                 k = layer_info["dim"]["kernel"]
                 in_ch = l1_info["dim"]["channel"]
                 self.remove_mask[l] = torch.ones((out_ch, in_ch, k, k))
-            else:
+                
+                # keep your original structure
+                self.remove_mask[layer_idx] = torch.ones(
+                    (out_ch, in_ch, k, k),
+                    device=weight.device
+                )
+
+                # set 0 where weight is 0
+                self.remove_mask[layer_idx][weight == 0] = 0.
+                # print((weight == 0).sum().item())
+
+                layer_idx += 1
+            
+            # ---- FC layers ----
+            elif isinstance(module, torch.nn.Linear):
                 l1_nodes = l1_info["dim"]["out_size"]
                 l2_nodes = layer_info["dim"]["out_size"]
                 
@@ -100,7 +120,20 @@ class VGG9_CIFAR10(nn.Module):
                     l1_nodes = l1_nodes**2 * l1_info["dim"]["channel"]
                 
                 self.remove_mask[l] = torch.ones((l1_nodes, l2_nodes))
-    
+                
+                weight = module.weight.data   # [out, in]
+
+                self.remove_mask[layer_idx] = torch.ones(
+                    (l1_nodes, l2_nodes),
+                    device=weight.device
+                )
+
+                # transpose to match your graph layout
+                self.remove_mask[layer_idx][weight.t() == 0] = 0.
+                # print((weight == 0).sum().item())
+
+                layer_idx += 1
+        
     
     
     def __build_remove_mask__(
@@ -138,8 +171,9 @@ class VGG9_CIFAR10(nn.Module):
                     and 0 <= kh < mask_tensor.shape[2]
                     and 0 <= kw < mask_tensor.shape[3]
                 ):
-                    mask_tensor[oc, ic, kh, kw] = 0
-                    remove_num += 1
+                    if mask_tensor[oc, ic, kh, kw] != 0:
+                        mask_tensor[oc, ic, kh, kw] = 0
+                        remove_num += 1
                 else:
                     print(w_idx, mask_tensor.shape)
                 continue
@@ -165,8 +199,9 @@ class VGG9_CIFAR10(nn.Module):
                         0 <= local_i < mask_tensor.shape[0]
                         and 0 <= local_j < mask_tensor.shape[1]
                     ):
-                        mask_tensor[local_i, local_j] = 0
-                        remove_num += 1
+                        if mask_tensor[local_i, local_j] != 0:
+                            mask_tensor[local_i, local_j] = 0
+                            remove_num += 1
                     else:
                         print(i, j, l1, l2, mask_tensor.shape)
                 else:
@@ -176,6 +211,7 @@ class VGG9_CIFAR10(nn.Module):
                 print(item_type)
 
         print(f"Removed {remove_num} total connections/weights.")
+        return remove_num
         
            
         
@@ -406,8 +442,6 @@ class VGG9_CIFAR10(nn.Module):
         for i in range(l2_channel):
             y = (ori_unf).transpose(1,2)
             edges = (y.unsqueeze(1) * w[None,i,:,:]).transpose(2,3)
-            if norm == 1:
-                edges = self.channel_norm(edges)
 
             res = edges if res == None else torch.cat((res, edges), axis=1)
             
@@ -621,6 +655,7 @@ class VGG9_CIFAR10(nn.Module):
         ones = (self.fc_edges(ones_tmp, self.fc1, 7,8)).cpu().detach()
         # ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        # print(len(ones[ones==0]))
         
         x = self.fc1(x)
         nodes_before = torch.cat((nodes_before, x), axis = 1)
@@ -644,6 +679,7 @@ class VGG9_CIFAR10(nn.Module):
         ones = (self.fc_edges(ones_tmp, self.fc2, 8,9)).cpu().detach()
         # ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
+        # print(len(ones[ones==0]))
         
         x = self.fc2(x)
         nodes_before = torch.cat((nodes_before, x), axis = 1)
@@ -659,13 +695,14 @@ class VGG9_CIFAR10(nn.Module):
         nodes = torch.cat((nodes, x_norm), axis=1)
 
         # fc3
+        # print((self.fc3.weight == 0).sum().item())
         edge_v = (self.fc_edges(x_tmp, self.fc3, 9,10)).cpu().detach()
         edge_value = edge_v if edge_value == None else torch.cat((edge_value, edge_v), axis=1)
 
         ones = (self.fc_edges(ones_tmp, self.fc3, 9,10)).cpu().detach()
         # ones = self.w_norm(ones)
         weights = ones if weights == None else torch.cat((weights, ones), axis=1)
-        
+
         x = self.fc3(x)
         nodes_before = torch.cat((nodes_before, x), axis = 1)
    
@@ -674,7 +711,7 @@ class VGG9_CIFAR10(nn.Module):
 
         # Concatenate normalized x to nodes along feature dimension
         nodes = torch.cat((nodes, x_norm), axis=1)
-        
+
         return edge_value, nodes, weights, nodes_before
 
 

@@ -382,3 +382,165 @@ def build_cnn_unfold_index_table(in_ch: int, in_size: int, k: int, stride: int, 
     return unfolded, patches, L, per_patch_map
 
 
+
+def min_plus_mult(a, b, chunk_k=256, chunk_p=256):
+    """
+    Fully chunked min-plus matrix multiplication.
+    a: [batch, m, n]
+    b: [batch, n, p]
+    Returns: [batch, m, p]
+    """
+    batch_size, m, n = a.shape
+    _, n2, p = b.shape
+    assert n == n2, "Dimension mismatch"
+
+    device = a.device
+    result = torch.full((batch_size, m, p), float('inf'), device=device)
+
+    for start_k in range(0, n, chunk_k):
+        end_k = min(start_k + chunk_k, n)
+
+        # Preselect the shared chunk
+        a_chunk = a[:, :, start_k:end_k]  # [B, m, chunk_k]
+        b_chunk = b[:, start_k:end_k, :]  # [B, chunk_k, p]
+
+        for start_p in range(0, p, chunk_p):
+            end_p = min(start_p + chunk_p, p)
+
+            # Compute partial block
+            b_sub = b_chunk[:, :, start_p:end_p]  # [B, chunk_k, chunk_p]
+
+            # [B, m, chunk_k, chunk_p]
+            # Add in broadcasted manner
+            partial = (a_chunk.unsqueeze(3) + b_sub.unsqueeze(1)).min(dim=2)[0]  # [B, m, chunk_p]
+
+            # Update the result for this block
+            result[:, :, start_p:end_p] = torch.minimum(result[:, :, start_p:end_p], partial)
+
+    return result
+
+
+# For CNN
+def cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='cuda'):
+    batch_size, weight_num = weights.shape
+    
+    total_layers = len(model_dims) - 1  # transitions
+
+    shortest_paths = {}
+    inf = torch.tensor(float('inf'), device=device)
+    
+    # ---- Determine computation region ----
+    start_layer = 0
+    end_layer = total_layers - 1
+    
+    weight_idx = 0
+    for i in range(start_layer, end_layer + 1):
+        l = i + 1
+        current_layer = model_dims[l+1]
+        src_size = prefix_dims[i+1] - prefix_dims[i]
+        dst_size = prefix_dims[i+2] - prefix_dims[i+1]
+        
+        if current_layer['name'] == 'fc':
+            # FC layer handling
+            direct_dist = weights[:, weight_idx:weight_idx+src_size*dst_size]
+            direct_dist = direct_dist.view(batch_size, src_size, dst_size)
+            
+            shortest_paths[(i, i+1)] = torch.where(direct_dist > 0, direct_dist, inf)
+            weight_idx += src_size * dst_size
+            
+            # f.write(f'{i}-{i+1}: {shortest_paths[(i, i+1)]}\n')
+            
+        elif current_layer['name'] in ['cnn', 'pooling']:
+            # CNN layer handling
+            k = current_layer['dim']['kernel']
+            s = current_layer['dim']['stride']
+            # p = current_layer['dim']['padding']
+            in_size = model_dims[l]['dim']['out_size']
+            pre_ch = model_dims[l]['dim'].get('channel', 1)
+            cur_ch = current_layer['dim']['channel']
+            padding = current_layer['dim'].get('padding', 0)
+            pool = current_layer['dim'].get('pool', False)
+            if pool:
+                dst_size = dst_size * 2 * 2
+            else:
+                dst_size = dst_size
+            
+            adjacent_m = torch.zeros((batch_size, src_size, dst_size), dtype=torch.float32, device=device)
+            
+            # Generate receptive field indices
+            dummy = torch.arange(src_size, device=device).reshape(1, pre_ch, in_size, in_size).float()
+
+            # Unfold operation to get receptive field indices
+            unfolded = F.unfold(dummy, kernel_size=k, stride=s, padding=padding).transpose(1, 2).int()
+            patches = unfolded.shape[1]
+
+            step = k**2 
+            
+            # Create indices matrix
+            n = 0
+            end_col = weight_idx + step*pre_ch
+            for c in range(cur_ch):
+                for p in range(patches):
+                    cur_idx = unfolded[0,p].tolist()
+                    adjacent_m[:, cur_idx, n] = weights[:, weight_idx : end_col]
+                    
+                    weight_idx = end_col
+                    end_col = weight_idx + step*pre_ch
+                    n += 1
+            
+            shortest_paths[(i, i+1)] = torch.where(adjacent_m > 0, adjacent_m, inf)
+            
+    def adaptive_chunksize(max_chunk=512):
+        free_mem, total_mem = torch.cuda.mem_get_info()
+        gb_free = free_mem / (1024**3) 
+        if gb_free < 10:
+            return 64, 64
+        elif gb_free < 16:
+            return 128, 128
+        elif gb_free < 32:
+            return 256, 256
+        else:
+            return max_chunk, max_chunk
+
+    max_hops = 3
+
+    for d in range(2, max_hops + 1):   # only 2-hop and 3-hop
+        for i in range(start_layer, end_layer - d + 2):
+            j = i + d
+            if j > end_layer + 1:
+                continue
+
+            # Initialize current_min tensor
+            current_min = torch.full(
+                (batch_size,
+                prefix_dims[i + 1] - prefix_dims[i],
+                prefix_dims[j + 1] - prefix_dims[j]),
+                float('inf'),
+                device=device
+            )
+            
+            # Adaptive chunk sizes for available memory
+            chunk_k, chunk_p = adaptive_chunksize()
+            print(f"({i}, {j}) -> shape={current_min.shape}, chunk=({chunk_k},{chunk_p})")
+
+            # Combine intermediate paths
+            for k in range(i + 1, j):
+                if (i, k) not in shortest_paths or (k, j) not in shortest_paths:
+                    continue
+
+                current_min = torch.minimum(
+                    current_min,
+                    min_plus_mult(
+                        shortest_paths[(i, k)],
+                        shortest_paths[(k, j)],
+                        chunk_k=chunk_k,
+                        chunk_p=chunk_p
+                    )
+                )
+
+            # Save computed shortest path for this (i, j)
+            shortest_paths[(i, j)] = current_min
+            
+    return shortest_paths
+
+

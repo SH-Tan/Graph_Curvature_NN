@@ -122,7 +122,6 @@ model_dims = {
 
 model_dims_small = model_dims
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
-all_classes = [0,1,2,3,4,5,6,7,8,9]
 
 
 
@@ -471,7 +470,7 @@ def count_edge_frequency(edge_sets):
 
     results = []
     for key in freq:
-        avg_curv = np.min(curvature_sum[key])
+        avg_curv =  np.min(curvature_sum[key])
         results.append((key[0], key[1], freq[key], avg_curv))
 
     return results
@@ -701,12 +700,50 @@ def remove_edge_cifar_union_w_small_combined(args):
         model_name = "vgg9_10_wd_"
         
     model_name = model_name + activation + "_s2.pth"
+    print(model_path + model_name)
     
     net_H = VGG9_CIFAR10(model_dims, None, device, prefix_dims)
+    # state_dict = torch.load(model_path + model_name, map_location=torch.device("cpu"))
+    # net_H.load_state_dict(state_dict, strict=False)
+    # # net_H.load_state_dict(state_dict)
+    # net_H.to(device)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
+    
+    # for name, buf in net_H.named_buffers():
+    #     if "mask" in name:
+    #         print(name, buf.sum().item(), buf.numel())
+    
+    # for module in net_H.modules():
+    #     if hasattr(module, "weight_mask"):
+    #         module.weight.data.mul_(module.weight_mask)
 
-    net_full = copy.deepcopy(net_H)
+    #     if hasattr(module, "bias") and module.bias is not None and hasattr(module, "bias_mask"):
+    #         module.bias.data.mul_(module.bias_mask)
+            
+    # for module in net_H.modules():
+    #     if hasattr(module, "weight_mask"):
+    #         del module._buffers["weight_mask"]
+    #     if hasattr(module, "bias_mask"):
+    #         del module._buffers["bias_mask"]
+            
+    # torch.save(net_H.state_dict(), model_path + model_name)
+    
+    print("Load!")
+    
+    total = 0
+    zeros = 0
+
+    for p in net_H.parameters():
+        total += p.numel()
+        zeros += (p == 0).sum().item()
+        # print((p == 0).sum().item())
+
+    print(f"Sparsity: {zeros / total}, zeros = {zeros}, total = {total}")
+    
+    # net_H.init_remove_mask()
+
+    # net_full = copy.deepcopy(net_H)
     
     save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min2.pkl"
     save_path = os.path.join(res_path, save_name)
@@ -722,7 +759,8 @@ def remove_edge_cifar_union_w_small_combined(args):
     
     total = sample_size * len(selected_classes)
     
-    test_cleanacc = test_clean(net_full, test_loader)
+    test_cleanacc = test_clean(net_H, test_loader)
+    print(f'The clean acc is  = {test_cleanacc}')
     
     print(f'Finish Test..')
 
@@ -875,39 +913,59 @@ def remove_edge_cifar_union_w_small_combined(args):
     # # Step 3: For each threshold, count how many edges would be removed
     # neg_remove_num = [sum(1 for (_, _, freq, _) in neg_freq_edges_sorted if freq >= t) for t in neg_freq_thresholds]
     # pos_remove_num = [sum(1 for (_, _, freq, _) in pos_freq_edges_sorted if freq >= t) for t in pos_freq_thresholds]
-        
+    print(neg_remove_num)
+    print(pos_remove_num)
+    
+    neg_real_remove = []
+    pos_real_remove = []
+    
     # start remove
     for index, rem_f in enumerate(neg_remove_num):
         # ff.write(f'Remove edge number {rem_f}: \n')
 
         # remove second layer negative curvature edges
-        net_neg = copy.deepcopy(net_H)
-        net_neg.__build_remove_mask__(neg_edges_only, rem_f)
+        # net_neg = copy.deepcopy(net_H)
+        net_neg = type(net_H)(model_dims, None, device, prefix_dims)
+        net_neg.load_state_dict(net_H.state_dict())
+        net_neg.to(device)
+        net_neg.init_remove_mask()
+        
+        remove_neg = net_neg.__build_remove_mask__(neg_edges_only, rem_f)
         # test acc
         acc_clean_neg = test_clean(net_neg, test_loader)
         neg_acc_clean.append(acc_clean_neg)
+        neg_real_remove.append(remove_neg)
         
         # ff.write(f'After remove {rem_f} negative edges, the acc is {acc_clean_neg}\n')
 
     for index, rem_f in enumerate(pos_remove_num):
         # remove positive curvature edges
-        net_pos = copy.deepcopy(net_H)
-        net_pos.__build_remove_mask__(pos_edges_only, rem_f)
+        # net_pos = copy.deepcopy(net_H)
+        net_pos = type(net_H)(model_dims, None, device, prefix_dims)
+        net_pos.load_state_dict(net_H.state_dict())
+        net_pos.to(device)
+        net_pos.init_remove_mask()
+        
+        remove_pos = net_pos.__build_remove_mask__(pos_edges_only, rem_f)
         # test acc
         acc_clean_pos = test_clean(net_pos, test_loader)
         pos_acc_clean.append(acc_clean_pos)
+        pos_real_remove.append(remove_pos)
+        pos_remove_num[index] = zeros + remove_pos
         # ff.write(f'After remove {rem_f} negative edges, the acc is {acc_clean_pos}\n')
-        
+    
     # pack into a dictionary
     data = {
         "neg_clean_acc": neg_acc_clean,
         "pos_clean_acc": pos_acc_clean,
         "neg_remove_num": neg_remove_num,
         "pos_remove_num": pos_remove_num,
+        "neg_removed_after_prune": neg_real_remove,
+        "pos_removed_after_prune": pos_real_remove,
     }
 
     # save to pickle file
-    with open(res_path+"results.pkl", "wb") as f:
+    with open(res_path+"results_max.pkl", "wb") as f:
         pickle.dump(data, f)
 
     print("Saved variables to results.pkl")
