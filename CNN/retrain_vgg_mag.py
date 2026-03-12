@@ -156,9 +156,9 @@ def train_adversarial(net, loader, optimizer, eps=.1, alpha=.1, iters=100, devic
         loss.backward()
         optimizer.step()
         
-    print('Adversary training set: Avg. Accuracy: {}/{} ({:.2f}%)'.format(
-    correct, len(loader.dataset),
-    (100. * correct / len(loader.dataset))))
+    # print('Adversary training set: Avg. Accuracy: {}/{} ({:.2f}%)'.format(
+    # correct, len(loader.dataset),
+    # (100. * correct / len(loader.dataset))))
 
     return total_loss/len(loader), correct / len(loader.dataset)
 
@@ -298,23 +298,15 @@ def retrain_one_round(
     # rebuild mask from CURRENT weights
     net.build_global_magnitude_remove_mask(
         ratio=ratio,
-        freeze_smallest=True
+        freeze_smallest=False
     )
-    
-    # # freeze mask == 0
-    # net.register_freeze_grad(freeze_on_mask_one=False)
-    
-    # optimizer = torch.optim.Adam(
-    #     [p for p in net.parameters() if p.requires_grad],
-    #     lr=lr
-    # )
 
     for p in net.parameters():
         if hasattr(p, "_backward_hooks") and p._backward_hooks is not None:
             p._backward_hooks.clear()
 
 
-    net.register_freeze_grad(freeze_on_mask_one=True)
+    net.register_freeze_grad()
 
     optimizer = torch.optim.Adam(
         [p for p in net.parameters() if p.requires_grad],
@@ -431,12 +423,21 @@ def retrain_vgg_mag(args):
 
     test_cleanacc = test_clean(net_full, test_loader)
 
-    split_points = [0, 0.3, 0.5, 0.6, 0.7]
-    num_rounds = 20
-    epochs_per_round = 30
+    split_points = [0, 0.3, 0.5, 0.6, 0.8]
+    num_rounds = 6
+    epochs_per_round = 25
 
-    with open(res_path + "retrain_adv_acc_useful_mag.txt", "a+") as f:
+    with open(res_path + "retrain_ori_acc_useless_mag.txt", "w+") as f:
         f.write(f'The clean acc for the full model is {test_cleanacc}...\n')
+        for ep in eps:
+            adv_acc = test_adversarial(
+                net_full, test_loader,
+                eps=ep/255, alpha=2/255, iters=20
+            )
+            f.write(
+                f"Clean: adv acc @ eps={ep}: {adv_acc}\n"
+            )
+                    
         for spilt_p in split_points:
             f.write(f"\n====== Freeze ratio = {spilt_p} ======\n")
 
@@ -444,6 +445,8 @@ def retrain_vgg_mag(args):
 
             for r in range(num_rounds):
                 f.write(f"\n--- Mask / Retrain Round {r+1} ---\n")
+                
+                print(f'spilt_p = {spilt_p}, round = {r}')
 
                 # ----------------------------------
                 # load model for THIS round
@@ -484,8 +487,8 @@ def retrain_vgg_mag(args):
                 # ----------------------------------
                 # save & carry forward BEST model
                 # ----------------------------------
-                ckpt_path = res_path + f"vgg9_iter{r+1}_ratio{spilt_p}.pth"
-                torch.save(best_state, ckpt_path)
+                # ckpt_path = res_path + f"vgg9_iter{r+1}_ratio{spilt_p}.pth"
+                # torch.save(best_state, ckpt_path)
 
                 prev_best_state = best_state  # ← THIS enables chaining
 

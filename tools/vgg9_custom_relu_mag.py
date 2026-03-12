@@ -196,40 +196,21 @@ class VGG9_CIFAR10(nn.Module):
 
         
         
-    def register_freeze_grad(self, freeze_on_mask_one=True):
-        self.register_conv_mask(self.conv1_1, 1, freeze_on_mask_one)
-        self.register_conv_mask(self.conv2_1, 2, freeze_on_mask_one)
-        self.register_conv_mask(self.conv3_1, 3, freeze_on_mask_one)
-        self.register_conv_mask(self.conv3_2, 4, freeze_on_mask_one)
-        self.register_conv_mask(self.conv4_1, 5, freeze_on_mask_one)
-        self.register_conv_mask(self.conv4_2, 6, freeze_on_mask_one)
+    def register_freeze_grad(self):
+        self.register_conv_mask(self.conv1_1, 1)
+        self.register_conv_mask(self.conv2_1, 2)
+        self.register_conv_mask(self.conv3_1, 3)
+        self.register_conv_mask(self.conv3_2, 4)
+        self.register_conv_mask(self.conv4_1, 5)
+        self.register_conv_mask(self.conv4_2, 6)
 
-        self.register_linear_mask(self.fc1, 7, freeze_on_mask_one)
-        self.register_linear_mask(self.fc2, 8, freeze_on_mask_one)
-        self.register_linear_mask(self.fc3, 9, freeze_on_mask_one)
+        self.register_linear_mask(self.fc1, 7)
+        self.register_linear_mask(self.fc2, 8)
+        self.register_linear_mask(self.fc3, 9)
 
-
-
-    def freeze_grad_hook(self, mask, freeze_on_mask_one=True):
-        """
-        Returns a gradient hook that freezes parameters according to mask.
-        """
-        mask = mask.float()
-
-        if freeze_on_mask_one:
-            # 1 → freeze → grad = 0
-            grad_multiplier = 1.0 - mask
-        else:
-            # 0 → freeze → grad = 0
-            grad_multiplier = mask
-
-        def hook(grad):
-            return grad * grad_multiplier
-
-        return hook
         
         
-    def register_conv_mask(self, conv_layer, l1, freeze_on_mask_one=False):
+    def register_conv_mask(self, conv_layer, l1):
         mask = self.remove_mask[l1].to(self.device)  # [out, in, kH, kW]
         mask = mask.float()
 
@@ -255,7 +236,7 @@ class VGG9_CIFAR10(nn.Module):
 
             
             
-    def register_linear_mask(self, fc_layer, l1, freeze_on_mask_one=False):
+    def register_linear_mask(self, fc_layer, l1):
         mask = self.remove_mask[l1].to(self.device)  # shape [out, in]
         mask = mask.float()
 
