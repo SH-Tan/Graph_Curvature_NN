@@ -117,7 +117,7 @@ def test(n, loader, device, selected_classes):
 
 
 
-def curv_cal(model_dims, model_dims_small, selected_classes, args, ckpt_path):
+def curv_cal(model_dims, model_dims_small, selected_classes, args, best_state):
     seed = 29
     
     # set random seed
@@ -141,6 +141,8 @@ def curv_cal(model_dims, model_dims_small, selected_classes, args, ckpt_path):
     dims_full = cal_dims(model_dims)
     dims = cal_dims(model_dims_small)
     edge_dims = cal_edges(model_dims_small)
+    
+    prefix_dims = np.cumsum([0] + dims_full).tolist()
 
     print(dims_full)
     print(dims)
@@ -178,7 +180,7 @@ def curv_cal(model_dims, model_dims_small, selected_classes, args, ckpt_path):
     model_name = model_name + activation + "_s2.pth"
     
     net_H = VGG9_CIFAR10(model_dims, None, device)
-    net_H.load_state_dict(torch.load(ckpt_path))
+    net_H.load_state_dict(best_state)
     net_H = net_H.to(device)
 
     net_full = copy.deepcopy(net_H)
@@ -200,7 +202,7 @@ def curv_cal(model_dims, model_dims_small, selected_classes, args, ckpt_path):
 
     while len(finished_labels) < len(selected_classes):
         finished_l = 0
-        for l in selected_classes:
+        for order, l in enumerate(selected_classes):
             finished_l += 1
             if label_progress[l] >= sample_size:
                 finished_labels.add(l)
@@ -278,6 +280,12 @@ def curv_cal(model_dims, model_dims_small, selected_classes, args, ckpt_path):
                                 weight_idx = 0
                                 start = 0
                                 combined = []
+                                
+                                if order == 0:
+                                    sp_dict = utils.cnn_layerwise_shortest_path_torch(model_dims, weights_inv.to(device), prefix_dims, device='cuda')
+                                    sp_dict = {k: v.cpu() for k, v in sp_dict.items()}
+                                torch.cuda.empty_cache()
+                                
                                 for l_key in [0,1,2,3,4,5,[6,7,8]]:  # loop variable is l_key
                                     print(f'Current label {l} - l_key {l_key}.....')
                                     # Determine weight index slice
@@ -296,7 +304,7 @@ def curv_cal(model_dims, model_dims_small, selected_classes, args, ckpt_path):
                                     # edge_slice_noninv = edge_array[:, start:end].to(device, non_blocking=True)
 
                                     # Compute Ricci curvature for current layer(s)
-                                    ricci_results = graph_curvature_main_torch(
+                                    ricci_results, _, _ = graph_curvature_main_torch(
                                         dims,
                                         w_inv_slice,
                                         device=device,
@@ -308,18 +316,10 @@ def curv_cal(model_dims, model_dims_small, selected_classes, args, ckpt_path):
                                         edge_value=edge_slice,
                                         threshold=0.,
                                         layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key],
+                                        sp_dict = sp_dict,
                                     )
                      
-                                    # with open(res_path + f"output_{l_key}.txt", "a+") as f:
-                                    #     for i, (batch_key, triples) in enumerate(ricci_results.items()):
-                                    #         for i, j, lm, ln, m, sp, curv in triples:
-                                    #             f.write(f'edge {i}-{j}: \n')
-                                    #             f.write(f"in-neighbor number: {lm}, out-neighbor number {ln}\n")
-                                    #             f.write(f"m = {m:.6f}, sp = {sp:.6f}, {curv:.6f}\n")
-                                    #         f.write("\n")
-                                            
-                                    # print("finished")
-                                            
+
                                     for batch_key, triples in ricci_results.items():
                                         combined.extend(triples)   # append all (i, j, val) tuples
                                         

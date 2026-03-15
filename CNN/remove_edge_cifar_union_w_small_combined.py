@@ -816,6 +816,12 @@ def remove_edge_cifar_union_w_small_combined(args):
         if (not ((item == "weight") and (i[0] in [1])))
     ]
     
+    pos_edges = [
+        (item, i, j, f, c)
+        for (item, i, j, f, c), layer in zip(pos_freq_dict, layers_i)
+        if c >= 0
+    ]
+    
     # Compute which layer each edge (i) belongs to
     layers_i = [
         np.searchsorted(prefix_dims, i, side='right') - 1
@@ -831,6 +837,14 @@ def remove_edge_cifar_union_w_small_combined(args):
         if (not ((item == "weight") and (i[0] in [1])))
     ]
     
+    # Filter: keep all weights, and only edges not in layer 9
+    neg_edges = [
+        (item, i, j, f, c)
+        for (item, i, j, f, c), layer in zip(neg_freq_dict, layers_i)
+        if c < 0
+    ]
+    
+    
     # neg_freq_dict = sorted(neg_freq_dict, key=lambda x: (-(x[3]+x[5]), x[4]))  # by frequency desc, curvature asc
     # pos_freq_dict = sorted(pos_freq_dict, key=lambda x: (-(x[3]+x[5]), -x[4])) # by frequency desc, curvature desc
 
@@ -841,21 +855,6 @@ def remove_edge_cifar_union_w_small_combined(args):
     pos_edges_only = [
         (item[0], item[1]) if item[0] == "weight" else item[0:3] for item in pos_freq_dict
     ]
-
-    
-    # Filter: keep all weights, and only edges not in layer 9
-    neg_edges = [
-        (item, i, j, f, c)
-        for (item, i, j, f, c), layer in zip(neg_freq_dict, layers_i)
-        if c < 0
-    ]
-    
-    pos_edges = [
-        (item, i, j, f, c)
-        for (item, i, j, f, c), layer in zip(pos_freq_dict, layers_i)
-        if c >= 0
-    ]
-    
     
     neg_total = len(neg_edges_only)
     pos_total = len(pos_edges_only)

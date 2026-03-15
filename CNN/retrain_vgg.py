@@ -71,6 +71,80 @@ model_dims = {
 model_dims_small = model_dims
 selected_classes = [0,1,2,3,4,5,6,7,8,9]
 
+
+
+def plot_curve( pos_clean_acc, pos_remove_num,
+    label, res_path, x_axis = None
+):
+    # Colors
+    neg_color = '#00A3E0'
+    pos_color = '#EC008C'
+    text_color = "#041E91FF"
+
+    plt.figure(figsize=(11, 7))
+
+    # Plot line
+    plt.plot(pos_remove_num, pos_clean_acc, label='Positive parameters removed first',
+             marker='x', linestyle='-', linewidth=3.5, markersize=13, color=pos_color)
+
+
+    # Labels and title
+    plt.xlabel('Number of Parameters Removed', fontsize=30, fontweight='semibold')
+    plt.ylabel('Accuracy', fontsize=31, fontweight='semibold')
+    
+    # plt.title('Accuracy vs. Edge Removal Count', fontsize=28, fontweight='semibold')
+    plt.ylim(0.0, 1.0)
+
+    # Set scientific notation on x-axis
+    ax = plt.gca()
+    
+    # Override the x-axis ticks/labels if `x_axis` is given
+    if x_axis is not None:
+        # Compute exponent (e.g., 1e+3, 1e+4) based on the max value
+        exponent = int(np.floor(np.log10(max(x_axis))))
+        scale = 10 ** exponent
+
+        # Scale values and format tick labels as mantissas only
+        scaled_ticks = [x / scale for x in x_axis]
+        mantissa_labels = [f"{v:.1f}" for v in scaled_ticks]
+
+        # Set the ticks and the scaled mantissa labels
+        plt.xticks(ticks=x_axis, labels=mantissa_labels, fontsize=26, fontweight='semibold')
+
+        # Add scientific scale as offset text (e.g., ×1e4) to the end of the x-axis
+        ax.annotate(
+            f"×1e{exponent}",
+            xy=(1.0, 0.0), xycoords='axes fraction',  # Right end of x-axis
+            xytext=(10, -35), textcoords='offset points',  # Just below and slightly to the left
+            ha='right', va='top',
+            fontsize=18, fontweight='semibold'
+        )
+    else:
+        plt.xticks(fontsize=22, fontweight='semibold')
+        ax.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
+        ax.xaxis.get_offset_text().set_fontsize(24)
+        ax.xaxis.get_offset_text().set_fontweight('semibold')
+
+    # Ticks
+    plt.xticks(fontsize=24, fontweight='semibold')
+    plt.yticks(fontsize=26, fontweight='semibold')
+    
+    # === Axis borders ===
+    for spine in ax.spines.values():
+        spine.set_linewidth(3)
+        spine.set_color('black')
+
+    # Grid and legend
+    plt.grid(True, linestyle='--', linewidth=2.5, color='gray', alpha=0.85)
+    legend = plt.legend(fontsize=24, loc=0)  # create the legend
+    for text in legend.get_texts():
+        text.set_fontweight('semibold')  # or 'bold'
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(res_path, f'{label}_curve_all.png'), dpi=400, bbox_inches="tight")
+    plt.close()
+    
+
 class TransformedTensorDataset(Dataset):
     def __init__(self, tensors, transform=None):
         self.images, self.labels = tensors
@@ -115,6 +189,34 @@ def standard_PGD(model, images, labels, device, eps=11/255, alpha=2/255, iters=4
     return images
 
 
+def train(net_H, loader, optimizer, device = 'cuda'):
+    net_H.train()
+    loss_fn = nn.CrossEntropyLoss()
+    
+    correct = 0
+    total_loss = 0
+
+    for batch_idx, (data, target) in enumerate(loader):
+        # print(batch_idx)
+        data, target = data.to(device), target.to(device)
+
+        # clear up gradients for backprop
+        optimizer.zero_grad()
+        output = net_H(data)
+        
+        loss = loss_fn(output, target)
+        total_loss += loss
+
+        # compute gradients and make updates
+        loss.backward()
+        optimizer.step()
+
+        pred = output.data.max(1, keepdim=True)[1]
+        correct += (pred.eq(target.data.view_as(pred)).sum().item())
+
+    return total_loss/len(loader), correct / len(loader.dataset)
+
+
 def test_clean(n, loader, device = 'cuda'):
     n.eval()
     total_correct = 0.
@@ -157,9 +259,9 @@ def train_adversarial(net, loader, optimizer, eps=.1, alpha=.1, iters=100, devic
         loss.backward()
         optimizer.step()
         
-    print('Adversary training set: Avg. Accuracy: {}/{} ({:.2f}%)'.format(
-    correct, len(loader.dataset),
-    (100. * correct / len(loader.dataset))))
+    # print('Adversary training set: Avg. Accuracy: {}/{} ({:.2f}%)'.format(
+    # correct, len(loader.dataset),
+    # (100. * correct / len(loader.dataset))))
 
     return total_loss/len(loader), correct / len(loader.dataset)
 
@@ -289,7 +391,7 @@ def cal_parameters(model_dims):
 
 
 def compute_curvature_edges(
-    ckpt_path,
+    best_state,
     model_full_n,
     metric,
     dataset,
@@ -299,23 +401,19 @@ def compute_curvature_edges(
     para_dims,
     res_path,
     args,
-    data_path,
 ):
-    save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min2.pkl"
-    save_path = os.path.join(res_path, save_name)
-
     # recompute curvature
     curv_cal(
         model_dims,
         model_dims_small,
         selected_classes,
         args,
-        ckpt_path
+        best_state
     )
 
     # load curvature results
-    neg_freq_dict, pos_freq_dict = process_batches_memory_efficient(
-        data_path,
+    _, pos_freq_dict = process_batches_memory_efficient(
+        res_path,
         model_full_n,
         metric,
         dataset,
@@ -543,22 +641,17 @@ def retrain_one_round(
     train_loader,
     valid_loader,
     test_loader,
-    ratio,
     epochs,
-    lr=0.002
+    lr=0.002,
+    freeze_on_mask_one = False
 ):
-    # rebuild mask from CURRENT weights
-    net.build_global_magnitude_remove_mask(
-        ratio=ratio,
-        freeze_smallest=True
-    )
 
     for p in net.parameters():
         if hasattr(p, "_backward_hooks") and p._backward_hooks is not None:
             p._backward_hooks.clear()
 
 
-    net.register_freeze_grad(freeze_on_mask_one=False)
+    net.register_freeze_grad(freeze_on_mask_one=freeze_on_mask_one)
 
     optimizer = torch.optim.Adam(
         [p for p in net.parameters() if p.requires_grad],
@@ -569,10 +662,12 @@ def retrain_one_round(
     best_state = None
 
     for e in range(epochs):
-        train_adversarial(
-            net, train_loader, optimizer,
-            eps=2/255, alpha=2/255, iters=20
-        )
+        # train_adversarial(
+        #     net, train_loader, optimizer,
+        #     eps=2/255, alpha=2/255, iters=20
+        # )
+        
+        train(net, train_loader, optimizer)
 
         val_acc = test_clean(net, valid_loader)
 
@@ -585,6 +680,37 @@ def retrain_one_round(
 
     test_acc = test_clean(net, test_loader)
     return best_val, test_acc, best_state
+
+
+
+def plot(pos_edges_only, pos_total, total_para, net_H, prefix_dims, test_loader, device, mark, res_path):
+    # define split point
+    pos_remove_num = np.linspace(0, pos_total, num=30, dtype=int)
+
+    remove_num = list(np.linspace(0, total_para, num=10, dtype=int))
+    pos_acc_clean = []
+    
+    for index, rem_f in enumerate(pos_remove_num):
+        # remove positive curvature edges
+        # net_pos = copy.deepcopy(net_H)
+        net_pos = type(net_H)(model_dims, None, device, prefix_dims)
+        net_pos.load_state_dict(net_H.state_dict())
+        net_pos.to(device)
+        net_pos.init_remove_mask()
+        
+        remove_pos = net_pos.__build_remove_mask__(pos_edges_only, rem_f)
+        # test acc
+        acc_clean_pos = test_clean(net_pos, test_loader)
+        pos_acc_clean.append(acc_clean_pos)
+        
+    # Plot
+    plot_curve(
+        pos_clean_acc=pos_acc_clean,
+        pos_remove_num=pos_remove_num,
+        label=mark,
+        res_path=res_path,
+        x_axis = remove_num
+    )
 
 
 
@@ -604,18 +730,18 @@ def retrain_vgg(args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
-    train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=200, valid_num=5000)
+    _, test_loader, _, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=200, valid_num=5000)
 
-    # transform_train1 = transforms.Compose([
-        # transforms.RandomCrop(32, padding=4),
-        # transforms.RandomHorizontalFlip(),
-        # transforms.ColorJitter(0.4, 0.4, 0.4, 0.1),
+    transform_train1 = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(0.4, 0.4, 0.4, 0.1),
         # transforms.ToTensor(),
         # transforms.Normalize((0.4914,0.4822,0.4465), (0.2023,0.1994,0.2010)),
-    # ])
+    ])
     
-    # train_loader = load_dataset_from_disk("./data/CIFAR10_train", batch_size=256, transform=transform_train1)
-    # valid_loader = load_dataset_from_disk("./data/CIFAR10_val", batch_size=2000, shuffle=True)
+    train_loader = load_dataset_from_disk("./data/CIFAR10_train", batch_size=256, transform=transform_train1)
+    valid_loader = load_dataset_from_disk("./data/CIFAR10_val", batch_size=2000, shuffle=True)
 
     eps = [1,2,3,5,8]
     dims = cal_dims(model_dims)
@@ -632,7 +758,6 @@ def retrain_vgg(args):
     data_path = args.mnist_data_path
     
     if activation.lower() == "relu":
-        # from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
         from tools.vgg9_custom_relu import VGG9_CIFAR10
     elif activation.lower() == "tanh":
         from tools.vgg9_custom_tanh import VGG9_CIFAR10
@@ -660,11 +785,7 @@ def retrain_vgg(args):
     net_H = VGG9_CIFAR10(model_dims, None, device, prefix_dims)
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
-
-    net_full = copy.deepcopy(net_H)
     
-    
-    edge_dims_small = cal_edges(model_dims_small) 
     para_dims = cal_parameters(model_dims_small)
 
     total_para = sum(para_dims) # - sum(para_dims[0:2]) # - sum(para_dims[:11]) # - sum(para_dims[-3:])
@@ -677,7 +798,9 @@ def retrain_vgg(args):
     print(f'Finish Test..')
     
     save_name = f"{model_full_n}_{metric}_{dataset}_{sample_size}_combined_min2.pkl"
-    save_path = os.path.join(res_path, save_name)
+    save_path = os.path.join(data_path, save_name)
+    
+    print(os.path.exists(save_path))
 
     if os.path.exists(save_path):
         with open(save_path, 'rb') as f:
@@ -695,18 +818,17 @@ def retrain_vgg(args):
     
     pos_total = len(pos_edges_only)
     
+    test_cleanacc = test_clean(net_H, test_loader)
     
-    test_cleanacc = test_clean(net_full, test_loader)
-    
-    split_points = [0.55]
+    split_points = [0, 0.3, 0.5, 0.7]
     num_rounds = 3
     epochs_per_round = 30
     
-    with open(res_path + "retrain_adv_acc_iter_useful.txt", "a+") as f:
+    with open(res_path + "retrain_ori_cleanacc_curv_useful.txt", "a+") as f:
         f.write(f'The clean acc for the full model is {test_cleanacc}...\n')
         for ep in eps:
-            test_advacc = test_adversarial(net_full,test_loader,eps=ep/255, alpha=2/255, iters=20)
-            f.write(f'The adv acc for the full model is {test_advacc} - eps = {ep}...\n')
+            adv_acc = test_adversarial(net_H, test_loader,eps=ep/255, alpha=2/255, iters=20)
+            f.write(f"Clean: adv acc @ eps={ep}: {adv_acc}\n")
         f.write('\n')
                 
         for spilt_p in split_points:
@@ -717,6 +839,24 @@ def retrain_vgg(args):
             for r in range(num_rounds):
                 f.write(f"\n--- Mask / Retrain Round {r+1} ---\n")
                 
+                print(f'spilt_p = {spilt_p}, round = {r}')
+                
+                if r > 0:
+                    pos_edges_only = compute_curvature_edges(
+                        best_state,
+                        model_full_n,
+                        metric,
+                        dataset,
+                        sample_size,
+                        prefix_dims,
+                        total,
+                        para_dims,
+                        res_path,
+                        args,
+                    )
+                    
+                    pos_total = len(pos_edges_only)
+
                 # define split points
                 split1 = int(spilt_p * pos_total)
             
@@ -730,16 +870,9 @@ def retrain_vgg(args):
                 if prev_best_state is not None:
                     net_iter.load_state_dict(prev_best_state)
                     
+                # plot(pos_edges_only, pos_total, total_para, net_iter, prefix_dims, test_loader, device, f"{spilt_p}_{r}_", res_path)
+                    
                 net_iter.__build_remove_mask__(pos_edges_only, split1)
-                net_iter.register_freeze_grad(freeze_on_mask_one=True)
-
-                trainable_params = [
-                    p for p in net_iter.parameters() if p.requires_grad
-                ]
-                
-                optimizer = torch.optim.Adam(trainable_params, lr=0.002, weight_decay=0.00)
-                optimizer.state_dict()["state"]
-
 
                 # ----------------------------------
                 # retrain (best-val tracked)
@@ -749,36 +882,34 @@ def retrain_vgg(args):
                     train_loader=train_loader,
                     valid_loader=valid_loader,
                     test_loader=test_loader,
-                    ratio=spilt_p,
                     epochs=epochs_per_round,
+                    freeze_on_mask_one = False,
                 )
 
                 f.write(
                     f"Round {r+1}: best val acc = {val_acc}, test acc = {test_acc}\n"
                 )
                 
-                best_acc = 0.
-                
                 # ----------------------------------
                 # adversarial evaluation
                 # ----------------------------------
-                for ep in eps:
-                    adv_acc = test_adversarial(
-                        net_iter, test_loader,
-                        eps=ep/255, alpha=2/255, iters=20
-                    )
-                    f.write(
-                        f"Round {r+1}: adv acc @ eps={ep}: {adv_acc}\n"
-                    )
+                # for ep in eps:
+                #     adv_acc = test_adversarial(
+                #         net_iter, test_loader,
+                #         eps=ep/255, alpha=2/255, iters=20
+                #     )
+                #     f.write(
+                #         f"Round {r+1}: adv acc @ eps={ep}: {adv_acc}\n"
+                #     )
 
                 # ----------------------------------
                 # save & carry forward BEST model
                 # ----------------------------------
-                ckpt_path = res_path + f"vgg9_iter{r+1}_ratio{spilt_p}.pth"
-                torch.save(best_state, ckpt_path)
+                # ckpt_path = res_path + f"vgg9_iter{r+1}_ratio{spilt_p}.pth"
+                # torch.save(best_state, ckpt_path)
 
                 prev_best_state = best_state  # ← THIS enables chaining
                 
-                curv_cal(model_dims, model_dims_small, selected_classes, args, ckpt_path)
-
+                # curv_cal(model_dims, model_dims_small, selected_classes, args, best_state)
+                
             f.write("\n\n")

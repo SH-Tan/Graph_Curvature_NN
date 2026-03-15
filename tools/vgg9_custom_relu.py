@@ -5,8 +5,8 @@ import torch.nn.functional as F
 import numpy as np
 import sys
 
-sys.path.append("..")
-from tools import layers as l
+# sys.path.append("..")
+# from tools import layers as l
 
 
 class VGG9_CIFAR10(nn.Module):
@@ -87,7 +87,7 @@ class VGG9_CIFAR10(nn.Module):
         layer_idx = 1
 
         # === 1. Prebuild all-one masks for every layer ===
-        for module in self.modules():
+        for l, module in enumerate(self.modules()):
             layer_info = self.model_info[layer_idx+1]
             l1_info = self.model_info[layer_idx]
             
@@ -97,7 +97,6 @@ class VGG9_CIFAR10(nn.Module):
                 out_ch = layer_info["dim"]["channel"]
                 k = layer_info["dim"]["kernel"]
                 in_ch = l1_info["dim"]["channel"]
-                self.remove_mask[l] = torch.ones((out_ch, in_ch, k, k))
                 
                 # keep your original structure
                 self.remove_mask[layer_idx] = torch.ones(
@@ -119,8 +118,6 @@ class VGG9_CIFAR10(nn.Module):
                 if l1_info["name"] == "cnn":
                     l1_nodes = l1_nodes**2 * l1_info["dim"]["channel"]
                 
-                self.remove_mask[l] = torch.ones((l1_nodes, l2_nodes))
-                
                 weight = module.weight.data   # [out, in]
 
                 self.remove_mask[layer_idx] = torch.ones(
@@ -136,6 +133,7 @@ class VGG9_CIFAR10(nn.Module):
         
     
     
+    @torch.no_grad()
     def __build_remove_mask__(
         self,
         mixed_set,
@@ -212,8 +210,7 @@ class VGG9_CIFAR10(nn.Module):
 
         print(f"Removed {remove_num} total connections/weights.")
         return remove_num
-        
-           
+    
         
     def register_freeze_grad(self, freeze_on_mask_one=False):
         self.register_conv_mask(self.conv1_1, 1, freeze_on_mask_one)
@@ -331,7 +328,7 @@ class VGG9_CIFAR10(nn.Module):
         return y
     
     
-    def forward1(self, x):
+    def forward(self, x):
         x = self.normalize(x)
         
         x = self.activation(self.bn1_1(self.conv1_1(x)))
@@ -360,7 +357,7 @@ class VGG9_CIFAR10(nn.Module):
         return x
 
 
-    def forward(self, x):
+    def forward1(self, x):
         '''
         One forward pass through the network.
         
@@ -396,32 +393,6 @@ class VGG9_CIFAR10(nn.Module):
         
         return y
 
-
-    # def w_norm(self, w, std_alpha = 10):
-    #     # w_abs = torch.abs(w)
-    #     std_w = torch.std(w)
-    #     w_norm = np.abs(w/(std_alpha*std_w))
-    #     # sum_w = torch.sum(w_abs)
-    #     # min_vals = w_abs.min(dim=1, keepdim=True)[0]
-    #     # max_vals = w_abs.max(dim=1, keepdim=True)[0]
-    #     # w_minmax = ((w_abs - min_vals) / (max_vals - min_vals + 1e-6)) + 1e-6
-
-    #     return w_norm
-    
-    
-    # def channel_norm(self, w, alpha=1.0):
-    #     # w shape: [B, C, H, W] or [B, 1, H, W]
-
-    #     w_abs = torch.abs(w)
-
-    #     # reduce over spatial dims, not channel dim
-    #     min_vals = w_abs.amin(dim=(2,3), keepdim=True)
-    #     max_vals = w_abs.amax(dim=(2,3), keepdim=True)
-
-    #     w_minmax = (w_abs - min_vals) / (max_vals - min_vals + 1e-6) + 1e-6
-
-    #     return (1 - alpha) * w_abs + alpha * w_minmax
-    
     
     # CNN using unfold/fold, calculate edges values
     def CNN_edges(self, ori, kernel, l1, l2, norm = 0):

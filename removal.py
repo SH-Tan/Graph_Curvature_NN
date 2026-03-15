@@ -99,7 +99,7 @@ if __name__=='__main__':
                 # community_check_cifar100(args)
                 # iterative_edge_removal_and_curvature(args)
             if args.retrain and args.dataset.lower() == "cifar":
-                retrain_vgg_mag(args)
+                retrain_vgg(args)
             if args.single_label and args.dataset.lower() == "cifar":
                 curv_single_label(args)
         else:

@@ -380,7 +380,6 @@ def retrain_vgg_mag(args):
     data_path = args.mnist_data_path
     
     if activation.lower() == "relu":
-        # from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
         from tools.vgg9_custom_relu_mag import VGG9_CIFAR10
     elif activation.lower() == "tanh":
         from tools.vgg9_custom_tanh import VGG9_CIFAR10
@@ -423,7 +422,7 @@ def retrain_vgg_mag(args):
 
     test_cleanacc = test_clean(net_full, test_loader)
 
-    split_points = [0, 0.3, 0.5, 0.6, 0.8]
+    split_points = [0, 0.3, 0.5, 0.7]
     num_rounds = 6
     epochs_per_round = 25
 
