@@ -741,7 +741,7 @@ def retrain_vgg(args):
     ])
     
     train_loader = load_dataset_from_disk("./data/CIFAR10_train", batch_size=256, transform=transform_train1)
-    valid_loader = load_dataset_from_disk("./data/CIFAR10_val", batch_size=2000, shuffle=True)
+    valid_loader = load_dataset_from_disk("./data/CIFAR10_val", batch_size=2000, shuffle=False)
 
     eps = [1,2,3,5,8]
     dims = cal_dims(model_dims)
@@ -820,7 +820,7 @@ def retrain_vgg(args):
     
     test_cleanacc = test_clean(net_H, test_loader)
     
-    split_points = [0, 0.3, 0.5, 0.7]
+    split_points = [0.8]
     num_rounds = 3
     epochs_per_round = 30
     
