@@ -798,30 +798,14 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
 
     # Generate edges from original weights
     edges = []
-    edges_w = []
     for layer in layers:
         sp_array = sp_dict[(layer, layer+1)]
-        
-        model_dim_i = _model_dims[layer+1]
-        model_dim_j = _model_dims[layer+2]
-        
-        i_size = model_dim_i["dim"]['out_size']
-        j_size = model_dim_j["dim"]['out_size']
-        
-        if model_dim_i["name"] != "fc":
-            i_size = i_size**2
-            
-        if model_dim_j["name"] != "fc":
-            j_size = j_size**2
             
         for b in range(batch_size):
             non_inf = torch.nonzero(~torch.isinf(sp_array[b])).cpu().numpy()
             for src, dst in non_inf:
                 global_src = prefix_dims[layer] + src
                 global_dst = prefix_dims[layer+1] + dst
-                
-                if (layer > 0) and (layer + 1 < len(_dims)-1) and (src < i_size):
-                    edges_w.append((b, (global_src, global_dst)))
      
                 # print(f'{src} - {dst}: {sp_array[b][src][dst]} {_sp_dict[(layer, layer+1)][b][src][dst]} - {global_src}:{global_dst}')
                 edges.append((b, (global_src, global_dst)))

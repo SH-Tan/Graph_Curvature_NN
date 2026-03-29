@@ -162,7 +162,7 @@ wheels/
 *.egg
 *.csv
 
-*.txt
+
 *.png
 *.pkl
 *.eps
@@ -268,3 +268,7 @@ models_diff_10l/
 __MACOSX/*.pth
 *.pt
 *.ckpt
+llm_weights/
+LLM/*.txt
+CNN/*.txt
+Lidar/*.txt
