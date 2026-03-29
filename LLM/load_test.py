@@ -7,6 +7,15 @@ import os
 import torch.fx as fx
 import inspect
 
+token = "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"
+
+from huggingface_hub import login
+login(token)
+
+print('# of gpus: ', torch.cuda.device_count())
+
+
+
 
 seed = 29
     
@@ -19,24 +28,30 @@ torch.cuda.manual_seed(seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
 
 # model_name = "mistralai/Mistral-7B-v0.1"
-# model_name = "meta-llama/Meta-Llama-3-8B"
-model_name = "Qwen/Qwen2.5-7B-Instruct"
+model_name = "meta-llama/Meta-Llama-3-8B"
+# model_name = "Qwen/Qwen2.5-7B-Instruct"
 
 print("Loading model:", model_name)
 
+cache_dir="llm_weights"
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
     dtype=torch.float16,
-    device_map="cpu"
+    device_map="auto",
+    cache_dir=cache_dir, 
+    low_cpu_mem_usage=True, 
 )
 
 model.to(device)
 
+model.seqlen = model.config.max_position_embeddings 
+
+model.eval()
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 # print("\n===== MODEL ARCHITECTURE =====\n")
@@ -80,16 +95,10 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 
 prompt = "Hello"
-messages = [
-    {"role": "system", "content": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."},
-    {"role": "user", "content": prompt}
-]
-text = tokenizer.apply_chat_template(
-    messages,
-    tokenize=False,
-    add_generation_prompt=True
-)
-model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+model_inputs = tokenizer(prompt, return_tensors="pt", truncation=True).to(model.device)
+
+print(type(model_inputs))
+print(model_inputs.shape)
 
 generated_ids = model.generate(
     **model_inputs,
@@ -101,3 +110,9 @@ generated_ids = [
 
 response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 print(response)
+
+def main():
+    pass
+
+if __name__ == '__main__':
+    main()

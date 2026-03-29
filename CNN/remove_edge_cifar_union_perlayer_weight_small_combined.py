@@ -24,7 +24,6 @@ import sys
 sys.path.append("..")
 
 import tools.utils as utils
-from tools.graph_curvature import graph_curvature_main_torch
 # from tools.vgg16_custom_relu import VGG16_CIFAR10
 
 np.set_printoptions(threshold=np.inf)

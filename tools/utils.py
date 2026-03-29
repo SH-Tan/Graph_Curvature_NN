@@ -7,9 +7,6 @@ from GraphRicciCurvature.OllivierRicci import OllivierRicci
 import networkx as nx
 
 
-from tools.small_model_relu import FC_MD
-
-
 def plot_acc(acc_1, acc_2, name, path, acc_3 = None, acc_4 = None, model_size = None, avg_w = None, avg_c = None):
     fig, ax = plt.subplots()
     

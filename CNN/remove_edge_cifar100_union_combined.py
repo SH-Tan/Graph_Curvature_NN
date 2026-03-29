@@ -706,8 +706,6 @@ def remove_edge_cifar100_union_combined(args):
     if activation.lower() == "relu":
         # from tools.vgg16_custom_relu_new_small_bn import VGG16_CIFAR10_small_BN
         from tools.vgg9_custom_relu import VGG9_CIFAR10
-    elif activation.lower() == "tanh":
-        from tools.vgg16_custom_tanh import VGG16_CIFAR10
     
     model_full_n = model_type.lower() + model_pre_name.lower()
 

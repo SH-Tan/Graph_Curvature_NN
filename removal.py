@@ -1,11 +1,3 @@
-import torch
-import numpy as np
-import os
-import pandas as pd
-from collections import defaultdict
-
-import pickle
-import time
 import argparse
 
 import sys
@@ -15,15 +7,11 @@ from CNN.remove_edge_cnn_union_perlayer_w_combined import remove_edge_cnn_union_
 from CNN.remove_edge_cnn_union_w_combined import remove_edge_cnn_union_w_combined
 from CNN.remove_edge_cifar_union_w_small_combined import remove_edge_cifar_union_w_small_combined
 from CNN.community_check_cnn import community_check_cnn
-from CNN.community_check_cifar import community_check_cifar
-from CNN.community_check_cifar_new_small import community_check_cifar_new_small
 from CNN.community_check_cifar_vgg9 import community_check_cifar_vgg9
 from CNN.remove_edge_cifar_union_perlayer_weight_small_combined import remove_edge_cifar_union_perlayer_w_small_combined
 from CNN.community_check_cifar100 import community_check_cifar100
 from CNN.remove_edge_cifar100_union_combined import remove_edge_cifar100_union_combined
 from CNN.remove_edge_cifar100_union_perlayer_combined import remove_edge_cifar100_perlayer_w_small_combined
-from Lidar.plot_trajectories import main_lidar
-from Lidar.plot_trajectories_perlayer import main_lidar_perlayer
 from Lidar.remove_weights_fc import remove_w_lidar
 from CNN.process_and_save import process_data
 from CNN.retrain_vgg import retrain_vgg

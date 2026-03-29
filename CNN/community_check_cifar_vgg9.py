@@ -298,11 +298,11 @@ def community_check_cifar_vgg9(args):
     net_H.load_state_dict(torch.load(model_path + model_name))
     net_H = net_H.to(device)
     
-    model_name_pruned = "vgg9_10_ori_" + activation + "_s2_pruned.pth"
-    net_H_pruned = VGG9_CIFAR10(model_dims, None, device)
-    net_H_pruned.load_state_dict(torch.load(model_path + model_name_pruned))
-    net_H_pruned = net_H_pruned.to(device)
-    net_H_pruned.init_remove_mask()
+    # model_name_pruned = "vgg9_10_ori_" + activation + "_s2_pruned.pth"
+    # net_H_pruned = VGG9_CIFAR10(model_dims, None, device)
+    # net_H_pruned.load_state_dict(torch.load(model_path + model_name_pruned))
+    # net_H_pruned = net_H_pruned.to(device)
+    # net_H_pruned.init_remove_mask()
  
     prefix_dims = np.cumsum([0] + dims_full).tolist()
     
@@ -389,15 +389,15 @@ def community_check_cifar_vgg9(args):
                                 net_H.eval()
                                 img = images[idx].to(device, non_blocking=True)
                                 edge_array, nodes_ori, output, nodes_before = net_H.NN_info_batch(img.unsqueeze(0))
-                                net_H_pruned.eval()
-                                _, _, output1, _ = net_H_pruned.NN_info_batch(img.unsqueeze(0))
+                                # net_H_pruned.eval()
+                                # _, _, output1, _ = net_H_pruned.NN_info_batch(img.unsqueeze(0))
                                 
                                 weights = output.detach().clone().to(device)
                                 nodes_ori = nodes_ori.detach().clone().to(device)
                                 # node_before = nodes_before.detach().clone().cpu()
-                                weights1 = output1.detach().clone().to(device)
+                                # weights1 = output1.detach().clone().to(device)
                                 
-                                weights[abs(weights)<=1e-30] = 1e-30
+                                # weights[abs(weights)<=1e-30] = 1e-30
                                 
                                 # print(len(weights[weights==0]), len(weights[0]), torch.min(weights))
     
@@ -478,7 +478,7 @@ def community_check_cifar_vgg9(args):
                                         w_inv_slice = weights_inv[:, start:end].to(device, non_blocking=True)
                                         w_inv2_slice = weights_inv_p[:, start:end].to(device, non_blocking=True)
                                         edge_slice = edge_array[:, start:end].to(device, non_blocking=True)
-                                        output1_slice = weights1[:, start:end].to(device, non_blocking=True)
+                                        # output1_slice = weights1[:, start:end].to(device, non_blocking=True)
                                         # edge_slice_noninv = edge_array[:, start:end].to(device, non_blocking=True)
 
                                         # Compute Ricci curvature for current layer(s)
@@ -494,7 +494,7 @@ def community_check_cifar_vgg9(args):
                                             edge_value=edge_slice,
                                             threshold=0.,
                                             layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key],
-                                            edge_allowed = torch.abs(output1_slice), 
+                                            # edge_allowed = torch.abs(output1_slice), 
                                             sp_dict = sp_dict,
                                         )
                         
