@@ -1,3 +1,5 @@
+import os
+import pickle
 import time 
 import heapq 
 import torch 
@@ -5,8 +7,8 @@ import torch.nn as nn
 from layerwrapper import WrappedGPT
 from data import get_loaders 
 from layerwrapper_curv import collect_layer_data, _make_lm_head_op
-from cal_curvature import compute_op_curvature, build_layer_cache
-from curv_prune_utils import _curvature_to_param_tensor
+from cal_curvature import compute_op_curvature, build_layer_cache, build_shortest_path_cache
+from curv_prune_utils import save_layer_op_curves
 
 
 def find_layers(module, layers=[nn.Linear], name=''):
@@ -93,7 +95,6 @@ def prepare_calibration_input(model, dataloader, device, nsamples):
 
         def forward(self, inp, **kwargs):
             i = cache["i"]
-
             # ✅ stop if enough samples collected
             if i >= nsamples:
                 raise StopIteration
@@ -145,6 +146,82 @@ def prepare_calibration_input(model, dataloader, device, nsamples):
 
     return inps, outs, attention_mask, position_ids
 
+
+def _clone_pickleable_to_cpu(value):
+    if torch.is_tensor(value):
+        return value.detach().cpu().clone()
+    if isinstance(value, dict):
+        return {k: _clone_pickleable_to_cpu(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_clone_pickleable_to_cpu(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_clone_pickleable_to_cpu(v) for v in value)
+    return value
+
+
+def save_layer_curvature_pkl(layer_idx, curvature_scores, save_dir, metadata=None):
+    if save_dir is None:
+        return None
+
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"layer_{layer_idx:03d}_curvature.pkl")
+    payload = {
+        "layer_idx": int(layer_idx),
+        "curvature_scores": {
+            op_name: _clone_pickleable_to_cpu(curv)
+            for op_name, curv in curvature_scores.items()
+        },
+    }
+    if metadata is not None:
+        payload["metadata"] = _clone_pickleable_to_cpu(metadata)
+
+    with open(save_path, "wb") as f:
+        pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    return save_path
+
+
+def load_layer_curvature_pkl(pkl_path):
+    with open(pkl_path, "rb") as f:
+        payload = pickle.load(f)
+
+    layer_idx = int(payload["layer_idx"])
+    curvature_scores = {
+        op_name: _clone_pickleable_to_cpu(curv)
+        for op_name, curv in payload.get("curvature_scores", {}).items()
+    }
+    metadata = payload.get("metadata", None)
+    return layer_idx, curvature_scores, metadata
+
+
+def load_curvature_pkls(save_dir, num_layers):
+    curvature_scores = [{} for _ in range(num_layers)]
+    if save_dir is None or not os.path.isdir(save_dir):
+        return curvature_scores
+
+    for file_name in sorted(os.listdir(save_dir)):
+        if not (file_name.startswith("layer_") and file_name.endswith("_curvature.pkl")):
+            continue
+
+        layer_idx, layer_scores, _ = load_layer_curvature_pkl(os.path.join(save_dir, file_name))
+        if 0 <= layer_idx < num_layers:
+            curvature_scores[layer_idx] = layer_scores
+
+    return curvature_scores
+
+
+def _curvature_save_metadata(args):
+    return {
+        "model": getattr(args, "model", None),
+        "seed": getattr(args, "seed", None),
+        "nsamples": getattr(args, "nsamples", None),
+        "alpha": getattr(args, "alpha", None),
+        "sparsity_ratio": getattr(args, "sparsity_ratio", None),
+        "prune_method": getattr(args, "prune_method", None),
+    }
+
+
+
 def return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before):
     thres_cumsum = sum_before * alpha 
     sort_mask = tmp_metric <= thres_cumsum.reshape((-1,1))
@@ -152,8 +229,6 @@ def return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before):
     W_mask = (W_metric <= thres)
     cur_sparsity = (W_mask==True).sum() / W_mask.numel()
     return W_mask, cur_sparsity
-
-
 
 
 
@@ -322,132 +397,219 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
         position_ids = position_ids.to(model_device)
 
     layers = model.model.layers
-    target_ops = ["prev_down_proj", "q_proj", "k_proj", "v_proj",
-                  "o_proj", "gate_proj", "up_proj", "down_proj"]
+    # target_ops = ["prev_down_proj", "q_proj", "k_proj", "v_proj",
+    #               "o_proj", "gate_proj", "up_proj", "down_proj"]
+    
+    target_ops = ["q_proj", "k_proj"]
     last_layer_idx = len(layers) - 1
 
     # Store masks and curvature
     model.removal_mask = [{} for _ in range(len(layers))]
     model.curvature_scores = [{} for _ in range(len(layers))]
+    curvature_save_dir = getattr(args, "save_curvature_dir", None)
+    curvature_load_dir = getattr(args, "load_curvature_dir", None)
+    curvature_metadata = _curvature_save_metadata(args)
+
+    if curvature_load_dir is not None:
+        model.curvature_scores = load_curvature_pkls(curvature_load_dir, len(layers))
+        print(f"Loaded curvature pkls from {curvature_load_dir}")
+        model.config.use_cache = use_cache
+        return
 
     # ---- cross-layer storage ----
     prev_layer_outputs = None
     layer_cache = {}
+    sp_cache = {} 
 
     for i, layer in enumerate(layers):
         print(f"Processing layer {i}")
+
+        layer_cache = {}
+        sp_cache = {}   # overwrite same layer cache when moving to next layer
 
         layer = layer.to(model_device)
         layer_subset = find_layers(layer)
 
         op_modules = {
             short: next(m for n, m in layer_subset.items() if n.endswith(short))
-            for short in target_ops if short != "prev_down_proj"
+            for short in target_ops
         }
-        
         modules_items = list(op_modules.items())
 
-        # ---- init buffers ----
         for short, module in modules_items:
             W = module.weight
             module.min_curvature = torch.full_like(W, float("inf"), device="cpu")
             module.removal_mask = torch.ones_like(W, dtype=torch.bool)
             model.removal_mask[i][short] = module.removal_mask
-            
-        # ---- allocate CPU buffer ----
+
         new_inps = torch.empty_like(inps, device="cpu")
 
-        # ---- per-sample loop ----
         for j in range(args.nsamples):
-            x = inps[j:j+1].to(model_device, non_blocking=True)
+            x = inps[j:j+1].to(model_device, non_blocking=True) # [1, seq, hiddensize]
+
+            should_plot_ops = (
+                getattr(args, "save_layer_input_plots", None) is not None
+            )
 
             with torch.no_grad():
                 x_out, operations = collect_layer_data(
-                    layer, x, attention_mask, position_ids, model, layer_id=i
+                    layer, x, attention_mask, position_ids, model, layer_id=i, keep_raw=should_plot_ops
                 )
-                
+
             x_out = x_out.detach().cpu()
-
-            # ---- inject previous layer ----
-            if prev_layer_outputs is not None:
-                for name in ["gate_proj", "up_proj", "down_proj"]:
-                    if name in prev_layer_outputs:
-                        operations[f"prev_{name}"] = prev_layer_outputs[name]
-
-            # ---- last layer ----
-            if i == last_layer_idx:
-                operations.update(_make_lm_head_op(model, x_out, i))
-                
-            # ---- get layer weight matrix ----   
-            if j == 0:
-                layer_cache = build_layer_cache(model, operations, i, layer_cache)
-
-            # ---- curvature computation ----
-            for short, module in modules_items:
-                # skip ONLY real down_proj (not prev_down_proj)
-                if short == "down_proj" and i != last_layer_idx:
-                    continue
-
-                curv = compute_op_curvature(
-                    operations,
-                    short,
-                    layer_cache,
-                    device=compute_device,
-                    alpha=args.alpha
+            
+            if should_plot_ops:
+                save_paths = save_layer_op_curves(
+                    operations=operations,
+                    layer_idx=i,
+                    save_dir=args.save_layer_input_plots,
+                    sample_idx=j,
+                    num_rows=getattr(args, "input_plot_rows", 20),
+                    seed=getattr(args, "seed", 0),
                 )
+                print(f"Saved {len(save_paths)} op plots for layer {i}")
+            
+            print(f'Finish getting layer data!!!')
+
+            # if prev_layer_outputs is not None:
+            #     for name in ["gate_proj", "up_proj", "down_proj"]:
+            #         if name in prev_layer_outputs:
+            #             operations[f"prev_{name}"] = prev_layer_outputs[name]
+
+            # if i == last_layer_idx:
+            #     operations.update(_make_lm_head_op(model, x_out, keep_raw=should_plot_ops))
+
+
+            # if j == 0:
+            #     layer_cache = build_layer_cache(model, operations, i, layer_cache, device=compute_device)
+
+            #     for short, _ in modules_items:
+            #         build_shortest_path_cache(
+            #             operations=operations,
+            #             layer_cache=layer_cache,
+            #             short_name=short,
+            #             sp_cache=sp_cache,
+            #             device=compute_device,
+            #         )
+
+            #     if prev_layer_outputs is not None:
+            #         build_shortest_path_cache(
+            #             operations=operations,
+            #             layer_cache=layer_cache,
+            #             short_name="prev_down_proj",
+            #             sp_cache=sp_cache,
+            #             device=compute_device,
+            #         )
+
+            #     if i == last_layer_idx:
+            #         build_shortest_path_cache(
+            #             operations=operations,
+            #             layer_cache=layer_cache,
+            #             short_name="lm_head",
+            #             sp_cache=sp_cache,
+            #             device=compute_device,
+            #         )
+
+            # for short, module in modules_items:
+            #     if short == "down_proj" and i != last_layer_idx:
+            #         continue
                 
-                assert curv is not None, "curv is None"
+            #     print(f'Layer {i}, op name = {short}')
 
-                # you will define format later
-                param_curv = curv
+            #     curv = compute_op_curvature(
+            #         model=model,
+            #         operations=operations,
+            #         short_name=short,
+            #         layer_id=i,
+            #         layer_cache=layer_cache,
+            #         sp_cache=sp_cache,
+            #         device=compute_device,
+            #         alpha=args.alpha,
+            #     )
 
-                torch.minimum(module.min_curvature, param_curv, out=module.min_curvature)
-                
-            # =========================================================
-            # 🔥 DEFERRED prev_down_proj (for previous layer)
-            # =========================================================
-            if prev_layer_outputs is not None:
-                curv = compute_op_curvature(
-                    operations,
-                    "prev_down_proj",
-                    layer_cache,
-                    device=compute_device,
-                    alpha=args.alpha
-                )
-                
-                assert curv is not None, "prev_down_proj curv is None"
+            #     assert curv is not None, f"{short} curv is None"
 
-                if curv is not None:
-                    prev_i = i - 1
-                    if prev_i >= 0:
-                        if "down_proj" not in model.curvature_scores[prev_i]:
-                            model.curvature_scores[prev_i]["down_proj"] = curv
-                        else:
-                            torch.minimum(
-                                model.curvature_scores[prev_i]["down_proj"],
-                                curv,
-                                out=model.curvature_scores[prev_i]["down_proj"]
-                            )
+            #     param_curv = curv
+            #     assert (
+            #         param_curv.shape == module.weight.shape
+            #         or param_curv.T.shape == module.weight.shape
+            #     ), f"Unexpected curvature shape for {short}: {tuple(param_curv.shape)} vs {tuple(module.weight.shape)}"
 
+            #     if param_curv.T.shape == module.weight.shape:
+            #         param_curv = param_curv.T
 
-            # ---- lm_head curvature ----
-            if i == last_layer_idx:
-                lm_curv = compute_op_curvature(operations, "lm_head", layer_cache, last_layer=True, device=compute_device, alpha=args.alpha)
-                assert lm_curv is not None, "lm_head curv is None"
-                
-                model.curvature_scores[i]["lm_head"] = lm_curv["curvature_score"]
+            #     torch.minimum(module.min_curvature, param_curv, out=module.min_curvature)
 
-            # ---- store prev outputs (CPU ONLY) ----
-            prev_layer_outputs = {
-                name: {
-                    "node": operations[name]["node"],
-                    "extra": operations[name]["extra"],
-                }
-                for name in ["gate_proj", "up_proj", "down_proj_in", "down_proj"]
-                if name in operations
-            }
+            # if prev_layer_outputs is not None:
+            #     curv = compute_op_curvature(
+            #         model=model,
+            #         operations=operations,
+            #         short_name="prev_down_proj",
+            #         layer_id=i,
+            #         layer_cache=layer_cache,
+            #         sp_cache=sp_cache,
+            #         device=compute_device,
+            #         alpha=args.alpha,
+            #     )
 
-            # ---- next layer input ----
+            #     assert curv is not None, "prev_down_proj curv is None"
+
+            #     prev_i = i - 1
+            #     if prev_i >= 0:
+            #         prev_weight = model.model.layers[prev_i].mlp.down_proj.weight.detach().cpu()
+            #         param_curv = curv
+            #         assert (
+            #             param_curv.shape == prev_weight.shape
+            #             or param_curv.T.shape == prev_weight.shape
+            #         ), f"Unexpected curvature shape for prev down_proj: {tuple(param_curv.shape)} vs {tuple(prev_weight.shape)}"
+
+            #         if param_curv.T.shape == prev_weight.shape:
+            #             param_curv = param_curv.T
+
+            #         if "down_proj" not in model.curvature_scores[prev_i]:
+            #             model.curvature_scores[prev_i]["down_proj"] = param_curv
+            #         else:
+            #             torch.minimum(
+            #                 model.curvature_scores[prev_i]["down_proj"],
+            #                 param_curv,
+            #                 out=model.curvature_scores[prev_i]["down_proj"],
+            #             )
+
+            #         save_path = save_layer_curvature_pkl(
+            #             layer_idx=prev_i,
+            #             curvature_scores=model.curvature_scores[prev_i],
+            #             save_dir=curvature_save_dir,
+            #             metadata=curvature_metadata,
+            #         )
+            #         if save_path is not None:
+            #             print(f"Saved curvature pkl: {save_path}")
+
+            # if i == last_layer_idx:
+            #     lm_curv = compute_op_curvature(
+            #         model=model,
+            #         operations=operations,
+            #         short_name="lm_head",
+            #         layer_id=i,
+            #         layer_cache=layer_cache,
+            #         sp_cache=sp_cache,
+            #         device=compute_device,
+            #         alpha=args.alpha,
+            #     )
+            #     assert lm_curv is not None, "lm_head curv is None"
+
+            #     if lm_curv.T.shape == model.lm_head.weight.shape:
+            #         lm_curv = lm_curv.T
+            #     model.curvature_scores[i]["lm_head"] = lm_curv
+
+            # prev_layer_outputs = {
+            #     name: {
+            #         "node": operations[name]["node"],
+            #         "extra": operations[name]["extra"],
+            #     }
+            #     for name in ["gate_proj", "up_proj", "down_proj_in", "down_proj"]
+            #     if name in operations
+            # }
+
             new_inps[j] = x_out.squeeze(0)
 
             del operations, x, x_out
@@ -455,13 +617,20 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
             if j % 8 == 0:
                 torch.cuda.empty_cache()
 
-        # ---- swap inputs ----
         inps = new_inps
 
-        # ---- store curvature ----
         for short, module in modules_items:
             model.curvature_scores[i][short] = module.min_curvature
             del module.min_curvature
+
+        save_path = save_layer_curvature_pkl(
+            layer_idx=i,
+            curvature_scores=model.curvature_scores[i],
+            save_dir=curvature_save_dir,
+            metadata=curvature_metadata,
+        )
+        if save_path is not None:
+            print(f"Saved curvature pkl: {save_path}")
 
         if i % 2 == 0:
             torch.cuda.empty_cache()
