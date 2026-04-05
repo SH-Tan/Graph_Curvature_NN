@@ -21,6 +21,7 @@ sys.path.append("..")
 
 import tools.utils as utils
 from tools.graph_curvature_cnn_threshold_combinemag import graph_curvature_main_torch
+from tools.graph_curvature_cnn_threshold_optimized_sinkhorn import graph_curvature_main_torch_sinkhorn
 
 
 np.set_printoptions(threshold=np.inf)
@@ -246,8 +247,8 @@ def community_check_cifar_vgg9(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1' 
+    device = "cuda:1" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
     # train_loader, test_loader, valid_loader, valid_dataset, test_dataset = utils.get_new_data(selected_classes, data_train, data_test, test_bs=2000, valid_num=5000)
@@ -403,7 +404,7 @@ def community_check_cifar_vgg9(args):
     
                                 edge_array = edge_array.detach().clone().cpu()
                                 
-                                del output, img, nodes_before,output1
+                                del output, img, nodes_before
                                 torch.cuda.empty_cache()
                                 
                                 if metric.lower() == "w1":
@@ -449,7 +450,7 @@ def community_check_cifar_vgg9(args):
                                     f.write("layer | total time(s) | dist time(s) | matrix time(s) | curv time(s) | alloc(MB) | reserved(MB) | peak(MB)\n")
 
                                     if order == 0:
-                                        sp_dict = utils.cnn_layerwise_shortest_path_torch(model_dims, weights_inv.to(device), prefix_dims, device='cuda')
+                                        sp_dict = utils.cnn_layerwise_shortest_path_torch(model_dims, weights_inv.to(device), prefix_dims, device=device)
                                         sp_dict = {k: v.cpu() for k, v in sp_dict.items()}
                                     torch.cuda.empty_cache()
                                     
@@ -457,7 +458,7 @@ def community_check_cifar_vgg9(args):
                                     
                                     print(f'Finish distance matrix')
                                      
-                                    for l_key in [0,1,2,3,4,5,6,7,8]:  # loop variable is l_key
+                                    for l_key in [1]:  # loop variable is l_key
                                         print(f'Current label {l} - l_key {l_key}.....')
                                         
                                         # 🔹 reset peak stats for this layer
@@ -482,7 +483,7 @@ def community_check_cifar_vgg9(args):
                                         # edge_slice_noninv = edge_array[:, start:end].to(device, non_blocking=True)
 
                                         # Compute Ricci curvature for current layer(s)
-                                        ricci_results, matrix_t, curv_t = graph_curvature_main_torch(
+                                        ricci_results, matrix_t, curv_t = graph_curvature_main_torch_sinkhorn(
                                             dims,
                                             w_inv_slice,
                                             device=device,
@@ -495,14 +496,14 @@ def community_check_cifar_vgg9(args):
                                             threshold=0.,
                                             layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key],
                                             # edge_allowed = torch.abs(output1_slice), 
-                                            sp_dict = sp_dict,
+                                            sp_dict = sp_dict, max_compare_edges = 50,
                                         )
                         
                                         for batch_key, triples in ricci_results.items():
                                             combined.extend(triples)   # append all (i, j, val) tuples
                                             
                                         # Free per-loop tensors
-                                        del w_inv_slice, w_inv2_slice, edge_slice, ricci_results, output1_slice
+                                        del w_inv_slice, w_inv2_slice, edge_slice, ricci_results
                                         torch.cuda.empty_cache()
                                             
                                         # 🔹 timing end
@@ -536,7 +537,7 @@ def community_check_cifar_vgg9(args):
                                 print(f"[Saved] Label {l}, Example {label_progress[l]} → {save_name}")
 
                                 # Final cleanup
-                                del edge_array, node_abs, combined, weights1
+                                del edge_array, node_abs, combined
                                 torch.cuda.empty_cache()
 
                                 label_progress[l] += 1

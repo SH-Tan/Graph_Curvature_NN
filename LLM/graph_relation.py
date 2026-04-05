@@ -17,16 +17,11 @@ GRAPH_RELATION = {
 
     "v_proj": {
         "prev": ["prev_down_proj"],
-        "next": ["A"],
-    },
-
-    "A": {
-        "prev": ["v_proj"],
-        "next": ["o_proj"]
+        "next": ["o_proj"],
     },
 
     "o_proj": {
-        "prev": ["A"],
+        "prev": ["v_proj"],
         "next": ["gate_proj", "up_proj"]
     },
 
@@ -47,14 +42,14 @@ GRAPH_RELATION = {
     # DEFERRED CROSS-LAYER EDGE
     # =========================
     "down_proj": {
-        "prev": ["down_proj_in"],
+        "prev": ["down_proj"],
         "prev_cost": ["gate_proj", "up_proj"],
         "next": ["lm_head"]
     },
 
     # This is the deferred version used in next layer
     "prev_down_proj": {
-        "prev": ["prev_down_proj_in"],
+        "prev": ["prev_down_proj"],
         "prev_cost": ["prev_gate_proj", "prev_up_proj"],
         "next": ["q_proj", "k_proj", "v_proj"]
     },

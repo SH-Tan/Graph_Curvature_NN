@@ -670,7 +670,7 @@ def _wrap_compute_single_edge(stuff):
 
 def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', probability_w = None, 
                                alpha = 0., pre_n=0, layers_to_process=None, nodes = None, edge_value = None, 
-                               threshold = 0.5, node_before=None, upb = 1.):
+                               threshold = 0.5, node_before=None, upb = 1., sp_dict=None):
     global _dims 
     global _prefix_dims 
     global _sp_dict 
@@ -704,7 +704,9 @@ def graph_curvature_main_torch(dims, weights, model_dims = None, device='cuda', 
     
     # Compute shortest paths
     if model_dims:
-        sp_dict = cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='cuda')
+        if sp_dict == None:
+            sp_dict = cnn_layerwise_shortest_path_torch(model_dims, weights, prefix_dims, device='cuda')
+            sp_dict = {k: v.cpu() for k, v in sp_dict.items()}
         if probability_w != None:
             sp1 = cnn_adjacent_layer(model_dims, probability_w.to(device), prefix_dims, device='cuda', thre = threshold)
             # e_sp = cnn_adjacent_layer(model_dims, edge_value, prefix_dims, device='cuda', thre = threshold)
