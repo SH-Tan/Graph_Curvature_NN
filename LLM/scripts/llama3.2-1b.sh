@@ -3,7 +3,8 @@
 # Set common variables
 model="meta-llama/Llama-3.2-1B"
 sparsity_ratio=0.5
-nsamples=2
+nsamples=1
+curvature_save_dir="curv_pkl"
 model_device="cuda:0"
 compute_device="cuda:1"
 # cuda_device=0
@@ -23,8 +24,7 @@ run_python_command () {
     --nsamples $nsamples \
     --model_device $model_device \
     --compute_device $compute_device \
-    --save_layer_input_plots "imgs/" \
-    --input_plot_rows 20
+    --save_curvature_dir $curvature_save_dir
 }
 
 # llama-7b with magnitude pruning method

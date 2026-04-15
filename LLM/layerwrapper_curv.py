@@ -1,14 +1,18 @@
 import torch
-import torch.nn.functional as F
 import math
+import numpy as np
+import sys
 
 
+np.set_printoptions(threshold=np.inf)
+torch.set_printoptions(threshold=sys.maxsize)
+
+# Efficient implementation equivalent to the following:
 def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0,
         is_causal=False, scale=None, enable_gqa=False) -> torch.Tensor:
     L, S = query.size(-2), key.size(-2)
     scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
     attn_bias = torch.zeros(L, S, dtype=query.dtype, device=query.device)
-
     if is_causal:
         assert attn_mask is None
         temp_mask = torch.ones(L, S, dtype=torch.bool, device=query.device).tril(diagonal=0)
@@ -25,37 +29,13 @@ def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.
         value = value.repeat_interleave(query.size(-3)//value.size(-3), -3)
 
     attn_weight = query @ key.transpose(-2, -1) * scale_factor
+    
     attn_weight += attn_bias
     attn_weight = torch.softmax(attn_weight, dim=-1)
     attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
-    return attn_weight, attn_weight @ value
 
+    return attn_weight @ value, attn_weight
 
-def minmax_per_batch(x, eps=1e-8):
-    x_min = x.min(dim=1, keepdim=True).values
-    x_max = x.max(dim=1, keepdim=True).values
-    return (x - x_min) / (x_max - x_min + eps)
-
-
-# L2 / root{d}
-def _sequence_to_node_value(x):
-    if x is None:
-        return None
-
-    x = x.detach().float().cpu()
-
-    if x.dim() == 3:
-        node_val = torch.linalg.vector_norm(x, ord=2, dim=1) / math.sqrt(x.size(1))
-
-    elif x.dim() == 4:
-        node_val = torch.linalg.vector_norm(x, ord=2, dim=(1, 2)) / math.sqrt(x.size(1) * x.size(2))
-
-    else:
-        raise ValueError(f"Expected (B,S,N) or (B,H,S,S), got {x.shape}")
-
-    # node_norm = minmax_per_batch(node_val)
-    
-    return node_val
 
 
 def _reshape_for_heads(x, num_heads, head_dim):
@@ -123,15 +103,12 @@ def _resolve_attention_dims(layer, model):
     return num_heads, num_kv_heads, num_kv_groups, head_dim
 
 
-def _store_operation(op_bank, name, node, extra=None, keep_raw=False):
-    op_bank[name] = {
-        "node": _sequence_to_node_value(node),
-        "extra": extra.detach().cpu() if extra is not None else {},
-        "raw": node.detach().cpu() if keep_raw and node is not None else None,
-    }
+def _store_operation(op_bank, name, node):
+    op_bank[name] = node.detach().cpu() # _normalize_node_value_per_sequence(node, name)
 
 
-def collect_layer_data(layer, x, attention_mask, position_ids, model, layer_id=None, keep_raw=False):
+
+def collect_layer_data(layer, x, attention_mask, position_ids, model, next_layer=None):
     operations = {}
 
     with torch.no_grad():
@@ -139,7 +116,7 @@ def collect_layer_data(layer, x, attention_mask, position_ids, model, layer_id=N
         x_norm = layer.input_layernorm(x_in)
         
         # ---- store shared layer input ----
-        _store_operation(operations, "layer_input", x_norm, keep_raw=keep_raw)
+        # _store_operation(operations, "layer_input", x_norm)
 
         if not hasattr(layer, "_cached_dims"):
             layer._cached_dims = _resolve_attention_dims(layer, model)
@@ -159,44 +136,37 @@ def collect_layer_data(layer, x, attention_mask, position_ids, model, layer_id=N
             cos, sin = model.model.rotary_emb(x_norm, position_ids)
             q, k = _apply_rotary_pos_emb(q, k, cos, sin)
             del cos, sin
-
+        
+        # Keep GQA-expanded K/V aligned with the expanded curvature weight layout.
+        _store_operation(operations, "q_proj", _merge_heads(q))
+        _store_operation(operations, "k_proj", _merge_heads(k))
+        _store_operation(operations, "v_proj", v_linear)
         
         k = _repeat_kv(k, num_kv_groups) # [1, 32, 8192, 128]
         v = _repeat_kv(v, num_kv_groups) # [1, 32, 8192, 128]
 
-        # (Q*K^T /sqrt(d)) * V
-        A, attn_output = scaled_dot_product_attention(
+        attn_output, A = scaled_dot_product_attention(
             q,
             k,
             v,
             attn_mask=attention_mask,
             dropout_p=0.0,
             is_causal=attention_mask is None,
-        ) # [1, 32, 8192, 128]
+        )  # [1, 32, 8192, 128]
         
         attn_context = _merge_heads(attn_output) # [1, 8192, 4096]
         
-        q_merge = _merge_heads(q)
-        k_merge = _merge_heads(k)
-        
-        # ---- store Q/K/V (with FULL tensors for cost) ----
-        _store_operation(operations, "q_proj", q_merge, extra=q_merge, keep_raw=keep_raw)
-        # _store_operation(operations, "k_proj", k_merge, extra=k_merge, keep_raw=keep_raw)
-        _store_operation(operations, "v_proj", attn_context, keep_raw=keep_raw)
-        
-        del q_merge, k_merge
-        
-        # ---- store A as virtual node (cost carrier) ----
-        _store_operation(operations, "A_q", A, keep_raw=keep_raw)
-        # _store_operation(operations, "A_k", A.transpose(-2, -1), keep_raw=keep_raw)
-        
+        # ---- store Attention weight and out ----
+        _store_operation(operations, "A", A)
+        _store_operation(operations, "Att_out", attn_context)
+
         # ===== O PROJ =====
         o = layer.self_attn.o_proj(attn_context)
         x_res1 = x_in + o
         x_norm2 = layer.post_attention_layernorm(x_res1)
         
         # ---- attention output ----
-        _store_operation(operations, "o_proj", x_norm2, keep_raw=keep_raw)
+        _store_operation(operations, "o_proj", x_norm2)
 
         # ===== MLP =====
         gate = layer.mlp.gate_proj(x_norm2)
@@ -206,30 +176,35 @@ def collect_layer_data(layer, x, attention_mask, position_ids, model, layer_id=N
         down = layer.mlp.down_proj(mlp_hidden)
         x_out = x_res1 + down
         
-        # _store_operation(operations, "gate_proj", act, keep_raw=keep_raw)
-        # _store_operation(operations, "up_proj", up, keep_raw=keep_raw)
-        # _store_operation(operations, "down_proj", mlp_hidden, keep_raw=keep_raw) # input node
+        _store_operation(operations, "gate_proj", act)
+        _store_operation(operations, "up_proj", up)
+        _store_operation(operations, "gate_up_out", mlp_hidden)
 
+        if next_layer is not None and hasattr(next_layer, "input_layernorm"):
+            next_ln = next_layer.input_layernorm
+            next_ln_device = next_ln.weight.device
+            next_input = x_out.to(next_ln_device)
+            next_input_norm = next_ln(next_input)
+            _store_operation(operations, "down_proj", next_input_norm)
+        else:
+            _store_operation(operations, "down_proj", x_out)
+            
         # ---- cleanup (GPU memory critical) ----
         del q, k, v, A, attn_output
         del q_linear, k_linear, v_linear
-        del attn_context, o, x_res1
+        del attn_context, o, x_res1, x_norm2
         del gate, up, act, mlp_hidden, down
+        if next_layer is not None and hasattr(next_layer, "input_layernorm"):
+            del next_input, next_input_norm
 
     return x_out, operations
 
 
-def _make_lm_head_op(model, final_hidden, keep_raw=False):
+def _make_lm_head_op(model, final_hidden):
     if hasattr(model.model, "norm") and model.model.norm is not None:
         final_hidden = model.model.norm(final_hidden)
 
     logits = model.lm_head(final_hidden)
     probs = torch.softmax(logits.float(), dim=-1)
 
-    return {
-        "lm_head": {
-            "node": probs,
-            "extra": {},
-            "raw": probs.detach().cpu() if keep_raw else None,
-        }
-    }
+    return {"lm_head": probs}

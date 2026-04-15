@@ -1,12 +1,13 @@
 import gc
+import multiprocessing as mp
 import os
 import random
 import sys
 import time
 from collections import defaultdict
+from multiprocessing import get_context
 
 import numpy as np
-import ot
 import torch
 import torch.nn.functional as F
 
@@ -29,13 +30,7 @@ _model_dims = None
 _W_dict = {}
 _upper_bound = 1.0
 _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def _to_numpy(x):
-    if isinstance(x, torch.Tensor):
-        return x.detach().cpu().numpy()
-    return np.asarray(x)
-
+proc = mp.cpu_count()
 
 def _as_cpu_tensor(x):
     if isinstance(x, torch.Tensor):
@@ -43,79 +38,114 @@ def _as_cpu_tensor(x):
     return torch.as_tensor(x)
 
 
-def _format_array_for_log(x):
-    if x is None:
-        return "None"
-
-    arr = _to_numpy(x)
-    return np.array2string(arr, threshold=arr.size, max_line_width=sys.maxsize)
-
-
-def _safe_cost_scale_torch(C: torch.Tensor) -> torch.Tensor:
-    finite = torch.isfinite(C)
-    if not finite.any():
-        return torch.tensor(1.0, device=C.device, dtype=C.dtype)
-    vals = C[finite]
-    scale = torch.median(vals)
-    return torch.clamp(scale, min=EPSILON)
-
-
-def sinkhorn_cost_torch(
+def sinkhorn_cost_batch_torch(
     mu,
     nu,
     C,
     reg_scales=[1.0],
     numItermax=2000,
     stopThr=1e-6,
+    check_interval=25,
 ):
     mu = torch.as_tensor(mu, dtype=torch.float64, device=_device)
     nu = torch.as_tensor(nu, dtype=torch.float64, device=_device)
-    C  = torch.as_tensor(C,  dtype=torch.float64, device=_device)
+    C = torch.as_tensor(C, dtype=torch.float64, device=_device)
+
+    squeeze_result = False
+    if mu.ndim == 1:
+        mu = mu.unsqueeze(0)
+        nu = nu.unsqueeze(0)
+        C = C.unsqueeze(0)
+        squeeze_result = True
+
+    batch_size = mu.shape[0]
+    costs = torch.full((batch_size,), float('inf'), dtype=torch.float64, device=_device)
+    finite_mask = torch.isfinite(C)
+
+    valid_rows = finite_mask.any(dim=2) | (mu <= EPSILON)
+    valid_cols = finite_mask.any(dim=1) | (nu <= EPSILON)
+    valid_batch = valid_rows.all(dim=1) & valid_cols.all(dim=1)
+
+    if not torch.any(valid_batch):
+        return costs[0] if squeeze_result else costs
+
+    mu_valid = mu[valid_batch]
+    nu_valid = nu[valid_batch]
+    C_valid = C[valid_batch]
+    finite_mask_valid = finite_mask[valid_batch]
+    neg_inf = torch.tensor(float('-inf'), dtype=torch.float64, device=_device)
+
+    log_mu = torch.where(mu_valid > 0, torch.log(mu_valid), neg_inf)
+    log_nu = torch.where(nu_valid > 0, torch.log(nu_valid), neg_inf)
+    log_u = torch.zeros_like(mu_valid)
+    log_v = torch.zeros_like(nu_valid)
 
     for reg in reg_scales:
-        cost = ot.sinkhorn2(
-            mu,
-            nu,
-            C,
-            reg=reg,
-            method="sinkhorn_log",   # or sinkhorn_stabilized / sinkhorn_epsilon_scaling
-            numItermax=numItermax,
-            stopThr=stopThr,
-            warn=True,
-        )
+        scaled_C = torch.where(finite_mask_valid, -C_valid / reg, neg_inf)
+        scaled_C_t = scaled_C.transpose(1, 2)
 
-        # row_err = torch.max(torch.abs(P.sum(dim=1) - mu)).item()
-        # col_err = torch.max(torch.abs(P.sum(dim=0) - nu)).item()
-        # cost = torch.sum(P * C).item()
-        # forced_entry = P[7, 18].item()   # row 8, col 19 in 0-based indexing
+        for it in range(numItermax):
+            row_norm = torch.logsumexp(scaled_C + log_v.unsqueeze(1), dim=2)
+            next_log_u = torch.where(mu_valid > 0, log_mu - row_norm, neg_inf)
 
-        # print("reg: ", reg)
-        # print("row error:", row_err)
-        # print("col error:", col_err)
-        # print("transport cost:", cost)
-        # print("P[7,18]:", forced_entry)
- 
-    return float(cost.detach().cpu().item() if isinstance(cost, torch.Tensor) else cost)
+            col_norm = torch.logsumexp(scaled_C_t + next_log_u.unsqueeze(1), dim=2)
+            next_log_v = torch.where(nu_valid > 0, log_nu - col_norm, neg_inf)
+
+            log_u = next_log_u
+            log_v = next_log_v
+
+            if it % check_interval == 0 or it == numItermax - 1:
+                log_P = scaled_C + log_u.unsqueeze(2) + log_v.unsqueeze(1)
+                P = torch.exp(log_P)
+                row_err = (P.sum(dim=2) - mu_valid).abs().amax(dim=1)
+                col_err = (P.sum(dim=1) - nu_valid).abs().amax(dim=1)
+                if torch.maximum(row_err, col_err).amax() <= stopThr:
+                    break
+
+    log_P = scaled_C + log_u.unsqueeze(2) + log_v.unsqueeze(1)
+    transport = torch.exp(log_P)
+    valid_costs = (transport * torch.where(finite_mask_valid, C_valid, torch.zeros_like(C_valid))).sum(dim=(1, 2))
+    costs[valid_batch] = valid_costs
+
+    return costs[0] if squeeze_result else costs
 
 
-def emd2_cost_cpu(mu, nu, C):
-    """
-    Exact OT on CPU for comparison.
-    POT docs note that exact OT uses a C++ CPU backend, so keep this on CPU.
-    """
-    mu_np = _to_numpy(mu).astype(np.float64)
-    nu_np = _to_numpy(nu).astype(np.float64)
-    C_np = _to_numpy(C).astype(np.float64)
+def _iter_chunks(items, chunk_size):
+    for start in range(0, len(items), chunk_size):
+        yield items[start:start + chunk_size]
 
-    finite_mask = np.isfinite(C_np)
-    if not finite_mask.any():
-        return float("inf")
+
+def _estimate_sinkhorn_group_batch_size(shape_key, requested_cap, safety_factor=0.35):
+    requested_cap = max(1, int(requested_cap))
+    device = torch.device(_device)
+    if device.type != 'cuda' or not torch.cuda.is_available():
+        return requested_cap
+
+    rows, cols = shape_key
+    per_problem_bytes = 8 * ((6 * rows * cols) + (4 * rows) + (4 * cols))
+    per_problem_bytes = max(per_problem_bytes, 1)
 
     try:
-        return float(ot.emd2(mu_np, nu_np, C_np))
+        if device.index is None:
+            free_mem, _ = torch.cuda.mem_get_info()
+        else:
+            free_mem, _ = torch.cuda.mem_get_info(device.index)
     except Exception:
-        return float("inf")
+        return requested_cap
 
+    budget = max(1, int(free_mem * safety_factor))
+    return max(1, min(requested_cap, budget // per_problem_bytes))
+
+
+def _init_problem_worker():
+    try:
+        torch.set_num_threads(1)
+    except Exception:
+        pass
+    try:
+        torch.set_num_interop_threads(1)
+    except Exception:
+        pass
 
 def out_distribution(model_dims, sp1, device='cuda', thre=0.5, dist=None):
     out_dist_matrices = {}
@@ -382,7 +412,8 @@ def cnn_adjacent_layer(model_dims, weights, prefix_dims, device='cuda', thre=0.5
 
 
 def _build_cost_matrix_torch(b, in_neigh, out_neigh):
-    d = torch.full((len(in_neigh), len(out_neigh)), float('inf'), dtype=torch.float64, device=_device)
+    # Keep problem construction on CPU so worker processes remain GPU-memory free.
+    d = torch.full((len(in_neigh), len(out_neigh)), float('inf'), dtype=torch.float32, device='cpu')
 
     if len(in_neigh) > 1 and len(out_neigh) > 1:
         _fill_shortest_paths_torch(d, b, in_neigh[:-1], out_neigh[:-1])
@@ -414,7 +445,7 @@ def _fill_shortest_paths_torch(d, b, in_neigh, out_neigh, row_offset=0, col_offs
     d[row_offset:row_offset + len(in_neigh), col_offset:col_offset + len(out_neigh)] = submat
 
 
-def _edge_problem_from_graph(b, edge):
+def _edge_transport_data_from_graph(b, edge):
     i, j = edge
     i_layer = np.searchsorted(_prefix_dims, i, side='right') - 1
     j_layer = np.searchsorted(_prefix_dims, j, side='right') - 1
@@ -497,17 +528,16 @@ def _edge_problem_from_graph(b, edge):
             nu = np.hstack((nu[non_zero], np.array(_alpha)))
 
     assert in_neigh[-1] == i and out_neigh[-1] == j
-    C = _build_cost_matrix_torch(b, in_neigh, out_neigh)
-    C[-1, -1] = sp
+    return {
+        "mu": np.asarray(mu, dtype=np.float32),
+        "nu": np.asarray(nu, dtype=np.float32),
+        "in_neigh": np.asarray(in_neigh, dtype=np.int32),
+        "out_neigh": np.asarray(out_neigh, dtype=np.int32),
+        "sp": sp,
+    }
 
-    if C.numel() == 0 or torch.isinf(C).all():
-        return None
 
-    return {"mu": mu, "nu": nu, "C": C, "sp": sp}
-
-
-def process_edge_compare_gpu(b, edge, compute_exact=True, sinkhorn_reg_scales=(1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-2)):
-    problem = _edge_problem_from_graph(b, edge)
+def _edge_result_from_problem(b, edge, problem):
     i, j = edge
 
     if problem is None:
@@ -516,77 +546,134 @@ def process_edge_compare_gpu(b, edge, compute_exact=True, sinkhorn_reg_scales=(1
             "i": i,
             "j": j,
             "sinkhorn_cost": float('inf'),
-            "emd2_cost": float('inf') if compute_exact else None,
             "sinkhorn_curv": 20.0,
-            "emd2_curv": 20.0 if compute_exact else None,
-            "abs_diff": float('inf') if compute_exact else None,
             "sp": None,
-            "mu": None,
-            "nu": None,
         }
 
     if 'fallback_curv' in problem:
-        curv = float(problem['fallback_curv'])
         return {
             "b": b,
             "i": i,
             "j": j,
             "sinkhorn_cost": None,
-            "emd2_cost": None,
-            "sinkhorn_curv": curv,
-            "emd2_curv": curv if compute_exact else None,
-            "abs_diff": 0.0 if compute_exact else None,
+            "sinkhorn_curv": float(problem['fallback_curv']),
             "sp": problem.get("sp"),
-            "mu": None,
-            "nu": None,
         }
 
     if 'cached_curv' in problem:
-        curv = float(problem['cached_curv'])
         return {
             "b": b,
             "i": i,
             "j": j,
             "sinkhorn_cost": None,
-            "emd2_cost": None,
-            "sinkhorn_curv": curv,
-            "emd2_curv": curv if compute_exact else None,
-            "abs_diff": 0.0 if compute_exact else None,
+            "sinkhorn_curv": float(problem['cached_curv']),
             "sp": problem.get("sp"),
-            "mu": None,
-            "nu": None,
         }
 
-    mu = problem['mu']
-    nu = problem['nu']
-    C = problem['C']
-    sp = problem['sp']
+    return None
 
-    sinkhorn_cost = sinkhorn_cost_torch(mu, nu, C, reg_scales=sinkhorn_reg_scales)
-    sinkhorn_curv = (1.0 - sinkhorn_cost / sp) / (1.0 - _alpha) if np.isfinite(sinkhorn_cost) and sp > 0 else 20.0
 
-    emd2_cost = None
-    emd2_curv = None
-    abs_diff = None
-    if compute_exact:
-        emd2_cost = emd2_cost_cpu(mu, nu, C)
-        emd2_curv = (1.0 - emd2_cost / sp) / (1.0 - _alpha) if np.isfinite(emd2_cost) and sp > 0 else 20.0
-        abs_diff = abs(sinkhorn_curv - emd2_curv) if np.isfinite(sinkhorn_curv) and np.isfinite(emd2_curv) else float('inf')
+def _prepare_serializable_problem(idx, b, edge):
+    transport = _edge_transport_data_from_graph(b, edge)
+    result = _edge_result_from_problem(b, edge, transport)
+    if result is not None:
+        return (
+            "result",
+            idx,
+            result["b"],
+            result["i"],
+            result["j"],
+            float(result["sinkhorn_curv"]),
+        )
 
-    return {
-        "b": b,
-        "i": i,
-        "j": j,
-        "sinkhorn_cost": sinkhorn_cost,
-        "emd2_cost": emd2_cost,
-        "sinkhorn_curv": sinkhorn_curv,
-        "emd2_curv": emd2_curv,
-        "abs_diff": abs_diff,
-        "sp": sp,
-        # "mu": mu,
-        # "nu": nu,
-        # "C": C
-    }
+    i, j = edge
+    return (
+        "transport",
+        idx,
+        b,
+        i,
+        j,
+        float(transport["sp"]),
+        transport["mu"],
+        transport["nu"],
+        transport["in_neigh"],
+        transport["out_neigh"],
+    )
+
+
+def _wrap_prepare_single_edge(stuff):
+    """Wrapper for multiprocessing-based problem preparation."""
+    return _prepare_serializable_problem(*stuff)
+
+
+def _prepare_edge_problems_parallel(selected_edges, problem_num_workers=1):
+    direct_results = {}
+    grouped_problems = defaultdict(list)
+    args = [(idx, b, edge) for idx, (b, edge) in enumerate(selected_edges)]
+
+    if not args:
+        return direct_results, grouped_problems
+
+    worker_count = max(1, int(problem_num_workers))
+
+    if worker_count == 1:
+        results = list(map(_wrap_prepare_single_edge, args))
+    else:
+        try:
+            with get_context('fork').Pool(processes=worker_count, initializer=_init_problem_worker) as pool:
+                chunksize = max(500, len(args) // (worker_count * 2))
+                results = pool.map(_wrap_prepare_single_edge, args, chunksize=chunksize)
+        except ValueError:
+            results = list(map(_wrap_prepare_single_edge, args))
+
+    for item in results:
+        if item[0] == "result":
+            _, idx, b, i, j, sinkhorn_curv = item
+            direct_results[idx] = (b, i, j, sinkhorn_curv)
+        else:
+            _, idx, b, i, j, sp, mu, nu, in_neigh, out_neigh = item
+            grouped_problems[(len(mu), len(nu))].append((idx, b, i, j, sp, mu, nu, in_neigh, out_neigh))
+
+    return direct_results, grouped_problems
+
+
+def _solve_prepared_problem_groups(grouped_problems, sinkhorn_reg_scales, sinkhorn_edge_batch_size):
+    solved_results = {}
+
+    for shape_key, grouped_items in sorted(
+        grouped_problems.items(),
+        key=lambda item: item[0][0] * item[0][1],
+        reverse=True,
+    ):
+        group_batch_size = _estimate_sinkhorn_group_batch_size(shape_key, sinkhorn_edge_batch_size)
+    
+        for group_slice in _iter_chunks(grouped_items, group_batch_size):
+            mu_batch = np.stack([item[5] for item in group_slice], axis=0)
+            nu_batch = np.stack([item[6] for item in group_slice], axis=0)
+            C_batch = torch.stack(
+                [_build_cost_matrix_torch(item[1], item[7], item[8]) for item in group_slice],
+                dim=0,
+            )
+            C_batch[:, -1, -1] = torch.as_tensor([item[4] for item in group_slice], dtype=torch.float32)
+            sp_batch = torch.as_tensor([item[4] for item in group_slice], dtype=torch.float64, device=_device)
+
+            sinkhorn_costs = sinkhorn_cost_batch_torch(
+                mu_batch,
+                nu_batch,
+                C_batch,
+                reg_scales=sinkhorn_reg_scales,
+            )
+            sinkhorn_curvs = torch.where(
+                torch.isfinite(sinkhorn_costs) & (sp_batch > 0),
+                (1.0 - sinkhorn_costs / sp_batch) / (1.0 - _alpha),
+                torch.full_like(sinkhorn_costs, 20.0),
+            )
+
+            for item, sinkhorn_curv in zip(group_slice, sinkhorn_curvs.detach().cpu().tolist()):
+                idx, b, i, j = item[:4]
+                solved_results[idx] = (b, i, j, sinkhorn_curv)
+
+    return solved_results
 
 
 def graph_curvature_main_torch_sinkhorn(
@@ -601,15 +688,16 @@ def graph_curvature_main_torch_sinkhorn(
     nodes=None,
     edge_value=None,
     threshold=0.,
-    compare_with_emd=True,
-    max_compare_edges=None,
+    max_edges=None,
     sp_dict = None, 
     sinkhorn_reg_scales=[0.1],
+    sinkhorn_edge_batch_size=4096,
+    problem_num_workers=None,
 ):
     global _dims, _prefix_dims, _sp_dict, _distribution_in, _distribution_out
     global _alpha, _pre_n, _nodes_value, _layers, _edge_value, _model_dims, _upper_bound, _device
 
-    _device = device
+    _device = torch.device(device)
     graph_device = torch.device('cpu')
     _alpha = alpha
     _pre_n = pre_n
@@ -622,6 +710,10 @@ def graph_curvature_main_torch_sinkhorn(
         probability_w = _as_cpu_tensor(probability_w)
 
     batch_size = weights.shape[0]
+    sinkhorn_edge_batch_size = max(1, int(sinkhorn_edge_batch_size))
+    if problem_num_workers is None:
+        problem_num_workers = proc
+    problem_num_workers = max(1, int(problem_num_workers))
     prefix_dims = np.cumsum([0] + dims).tolist()
     _dims = dims
     _prefix_dims = np.array(prefix_dims)
@@ -719,115 +811,51 @@ def graph_curvature_main_torch_sinkhorn(
                 global_dst = prefix_dims[layer + 1] + dst
                 edges.append((b, (global_src, global_dst)))
 
-    if max_compare_edges is not None:
-        if max_compare_edges <= 0:
-            compare_edges = []
-        elif len(edges) <= max_compare_edges:
-            compare_edges = edges
+    if max_edges is not None:
+        if max_edges <= 0:
+            selected_edges = []
+        elif len(edges) <= max_edges:
+            selected_edges = edges
         else:
-            compare_edges = random.sample(edges, max_compare_edges)
+            selected_edges = random.sample(edges, max_edges)
     else:
-        compare_edges = edges
+        selected_edges = edges
         
     del sp_dict
 
     t2 = time.time()
     ricci_results = defaultdict(list)
-    comparison_results = defaultdict(list)
 
-    for b, edge in compare_edges:
-        res = process_edge_compare_gpu(
-            b,
-            edge,
-            compute_exact=compare_with_emd,
-            sinkhorn_reg_scales=sinkhorn_reg_scales,
-        )
-        ricci_results[b].append((res['i'] + _pre_n, res['j'] + _pre_n, res['sinkhorn_curv']))
-        comparison_results[b].append(res)
+    direct_results, grouped_problems = _prepare_edge_problems_parallel(
+        selected_edges,
+        problem_num_workers=problem_num_workers,
+    )
+    
+    print(f'get all the mu needs time = {time.time() - t2} s')
+    
+    t3 = time.time()
+    
+    solved_results = _solve_prepared_problem_groups(
+        grouped_problems,
+        sinkhorn_reg_scales=sinkhorn_reg_scales,
+        sinkhorn_edge_batch_size=sinkhorn_edge_batch_size,
+    )
+    
+    print(f'Calculate all the curvatures needs time = {time.time() - t3} s')
+
+    final_results = direct_results
+    final_results.update(solved_results)
+
+    for idx in range(len(selected_edges)):
+        if idx not in final_results:
+            raise RuntimeError(f"Missing prepared Sinkhorn result for edge index {idx}.")
+        b, i, j, sinkhorn_curv = final_results[idx]
+        ricci_results[b].append((i + _pre_n, j + _pre_n, sinkhorn_curv))
 
     curv_t = time.time() - t2
-
-    if compare_with_emd:
-        all_diffs = []
-        for b in comparison_results:
-            for r in comparison_results[b]:
-                if r['abs_diff'] is not None and np.isfinite(r['abs_diff']):
-                    all_diffs.append(r['abs_diff'])
-        summary = {
-            'num_edges_compared': sum(len(v) for v in comparison_results.values()),
-            'mean_abs_curv_diff': float(np.mean(all_diffs)) if all_diffs else None,
-            'max_abs_curv_diff': float(np.max(all_diffs)) if all_diffs else None,
-        }
-        with open("sinkhorn vs W_alpha05_new.txt", "a+") as ff:
-            for b in comparison_results:
-                for r in comparison_results[b]:
-                    if r['sinkhorn_cost'] is not None:
-                        ff.write(
-                            f"{r['b']}\t{r['i']}\t{r['j']}\t"
-                            f"{r['sinkhorn_cost']}\t{r['emd2_cost']}\t"
-                            f"{r['sinkhorn_curv']}\t{r['emd2_curv']}\t"
-                            f"{r['abs_diff']}\t{r['sp']}\t\n"
-                            # f"{_format_array_for_log(r['mu'])}\n"
-                            # f"{_format_array_for_log(r['nu'])}\n"
-                            # f"{_format_array_for_log(r['C'])}\n"
-                        )
-    else:
-        summary = None
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     gc.collect()
 
     return ricci_results, matrix_t, curv_t
-
-
-if __name__ == '__main__':
-    dims = [9, 8, 2, 1]
-    seed = 29
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
-    model_dims = {
-        1: {"name": "input", "dim": {"channel": 1, "out_size": 3}},
-        2: {"name": "cnn", "dim": {"channel": 2, "kernel": 2, "stride": 1, "out_size": 2}},
-        3: {"name": "fc", "dim": {"out_size": 2}},
-        4: {"name": "fc", "dim": {"out_size": 1}},
-    }
-
-    edge_num = 27
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    weights = torch.rand(1, edge_num, device=device)
-    node = torch.rand(1, edge_num, device=device)
-    node[0, 2] = 0
-    node[0, 12] = 0
-    node[0, 3] = 0
-    node[0, 10] = 0
-    node[0, 14] = 0
-    node[0, 16] = 0
-    node[0, 18] = 0
-
-    ricci_curvature, matrix_t, curv_t = graph_curvature_main_torch_sinkhorn(
-        dims,
-        weights,
-        model_dims=model_dims,
-        device=device,
-        probability_w=node,
-        nodes=node,
-        edge_value=node,
-        compare_with_emd=True,
-        max_compare_edges=20,
-    )
-
-    print('Ricci Curvature Results (Sinkhorn):')
-    for b in range(weights.shape[0]):
-        print(f'\\nBatch {b}:')
-        for (x, y, c) in ricci_curvature[b]:
-            print(x, y, c)
-    print(f'\\nMatrix time: {matrix_t:.4f}s')
-    print(f'Curvature time: {curv_t:.4f}s')

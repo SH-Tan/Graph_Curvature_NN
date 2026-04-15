@@ -1,10 +1,9 @@
 #!/bin/bash
 
 # Set common variables
-model="meta-llama/Meta-Llama-3-8B"
+model="Qwen/Qwen2.5-0.5B"
 sparsity_ratio=0.5
 nsamples=1
-alpha=0.9
 curvature_save_dir="curv_pkl"
 model_device="cuda:0"
 compute_device="cuda:1"
@@ -25,14 +24,13 @@ run_python_command () {
     --nsamples $nsamples \
     --model_device $model_device \
     --compute_device $compute_device \
-    --save_curvature_dir $curvature_save_dir \
-    --alpha $alpha
+    --save_curvature_dir $curvature_save_dir
 }
 
 # llama-7b with magnitude pruning method
 echo "Running with graph curvature pruning method"
-# run_python_command "curvature" 0 "unstructured" "out/llama_8b/unstructured/curvature/"
-run_python_command "curvature" 0.5 "unstructured" "out/llama_8b/unstructured/curvature/"
+run_python_command "curvature" 0 "unstructured" "out/qwen2.5_0.5b/unstructured/curvature/"
+run_python_command "curvature" 0.5 "unstructured" "out/qwen2.5_0.5b/unstructured/curvature/"
 echo "Finished graph curvature pruning method"
 
 

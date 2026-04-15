@@ -8,7 +8,6 @@ import argparse
 from prune import prune_wanda, prune_magnitude, check_sparsity, find_layers, prune_curvature
 from eval import eval_ppl, eval_zero_shot
 
-token = "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"
 
 from huggingface_hub import login
 
@@ -38,7 +37,7 @@ def _is_network_error(exc):
     )
 
 
-safe_hf_login(token)
+safe_hf_login()
 
 print('# of gpus: ', torch.cuda.device_count())
 
@@ -73,8 +72,8 @@ def get_llm(model_name, cache_dir="llm_weights", device = "cpu"):
         # The device map is handled by accelerate under the hood
         print("Model loaded with device_map, but hf_device_map not directly accessible")
 
-    model.seqlen = model.config.max_position_embeddings
-    print(model.seqlen)
+    model.seqlen = 8 # model.config.max_position_embeddings
+    # print(model.seqlen)
     return model
 
 
@@ -95,8 +94,6 @@ def main():
     parser.add_argument('--alpha', type=float, default=0., required=False, help='Alpha used for distribution')
     parser.add_argument('--save_curvature_dir',type=str,default=None,help='Directory to save per-layer curvature pkl files.')
     parser.add_argument('--load_curvature_dir',type=str,default=None,help='Directory to load previously saved per-layer curvature pkl files.')
-    parser.add_argument('--save_layer_input_plots',type=str,default=None,help='Directory to save per-layer operation node plots.')
-    parser.add_argument('--input_plot_rows',type=int,default=20,help='Number of rows to randomly sample for each saved operation plot.')
 
     parser.add_argument("--eval_zero_shot", type=int, default=0, help='evaluate on downsteam zero shot tasks')
     args = parser.parse_args()
