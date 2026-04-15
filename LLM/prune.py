@@ -1,14 +1,13 @@
 import os
 import pickle
 import time 
-import heapq 
 import torch 
 import torch.nn as nn 
 from layerwrapper import WrappedGPT
 from data import get_loaders 
 from layerwrapper_curv import collect_layer_data, _make_lm_head_op
 from cal_curvature import compute_op_curvature, build_layer_cache, build_shortest_path_cache
-from curv_prune_utils import save_layer_op_curves
+from curv_model_utils import _resolve_head_dim
 
 
 def find_layers(module, layers=[nn.Linear], name=''):
@@ -400,7 +399,7 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
     # target_ops = ["prev_down_proj", "q_proj", "k_proj", "v_proj",
     #               "o_proj", "gate_proj", "up_proj", "down_proj"]
     
-    target_ops = ["q_proj", "k_proj"]
+    target_ops = ["v_proj"]
     last_layer_idx = len(layers) - 1
 
     # Store masks and curvature
@@ -417,12 +416,13 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
         return
 
     # ---- cross-layer storage ----
-    prev_layer_outputs = None
+    prev_layer_outputs = [None] * args.nsamples
     layer_cache = {}
     sp_cache = {} 
 
     for i, layer in enumerate(layers):
         print(f"Processing layer {i}")
+        input()
 
         layer_cache = {}
         sp_cache = {}   # overwrite same layer cache when moving to next layer
@@ -435,6 +435,7 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
             for short in target_ops
         }
         modules_items = list(op_modules.items())
+        has_down_proj_target = "down_proj" in op_modules
 
         for short, module in modules_items:
             W = module.weight
@@ -443,172 +444,167 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
             model.removal_mask[i][short] = module.removal_mask
 
         new_inps = torch.empty_like(inps, device="cpu")
+        
+        num_q_heads, num_kv_heads, head_dim, repeat = _resolve_head_dim(model, i)
 
         for j in range(args.nsamples):
             x = inps[j:j+1].to(model_device, non_blocking=True) # [1, seq, hiddensize]
-
-            should_plot_ops = (
-                getattr(args, "save_layer_input_plots", None) is not None
-            )
+            next_layer = layers[i + 1] if i < last_layer_idx else None
 
             with torch.no_grad():
                 x_out, operations = collect_layer_data(
-                    layer, x, attention_mask, position_ids, model, layer_id=i, keep_raw=should_plot_ops
+                    layer,
+                    x,
+                    attention_mask,
+                    position_ids,
+                    model,
+                    next_layer=next_layer,
                 )
 
             x_out = x_out.detach().cpu()
             
-            if should_plot_ops:
-                save_paths = save_layer_op_curves(
-                    operations=operations,
-                    layer_idx=i,
-                    save_dir=args.save_layer_input_plots,
-                    sample_idx=j,
-                    num_rows=getattr(args, "input_plot_rows", 20),
-                    seed=getattr(args, "seed", 0),
-                )
-                print(f"Saved {len(save_paths)} op plots for layer {i}")
-            
             print(f'Finish getting layer data!!!')
 
-            # if prev_layer_outputs is not None:
-            #     for name in ["gate_proj", "up_proj", "down_proj"]:
-            #         if name in prev_layer_outputs:
-            #             operations[f"prev_{name}"] = prev_layer_outputs[name]
+            if prev_layer_outputs[j] is not None:
+                for name in ["o_proj", "gate_up_out", "down_proj"]:
+                    if name in prev_layer_outputs[j]:
+                        operations[f"prev_{name}"] = prev_layer_outputs[j][name]
 
-            # if i == last_layer_idx:
-            #     operations.update(_make_lm_head_op(model, x_out, keep_raw=should_plot_ops))
+            if i == last_layer_idx:
+                operations.update(_make_lm_head_op(model, x_out))
 
+            if j == 0:
+                layer_cache = build_layer_cache(model, operations, i, layer_cache, device=compute_device)
 
-            # if j == 0:
-            #     layer_cache = build_layer_cache(model, operations, i, layer_cache, device=compute_device)
+                for short, _ in modules_items:
+                    build_shortest_path_cache(
+                        operations=operations,
+                        layer_cache=layer_cache,
+                        short_name=short,
+                        sp_cache=sp_cache,
+                        device=compute_device,
+                    )
 
-            #     for short, _ in modules_items:
-            #         build_shortest_path_cache(
-            #             operations=operations,
-            #             layer_cache=layer_cache,
-            #             short_name=short,
-            #             sp_cache=sp_cache,
-            #             device=compute_device,
-            #         )
+                if prev_layer_outputs[j] is not None and has_down_proj_target:
+                    build_shortest_path_cache(
+                        operations=operations,
+                        layer_cache=layer_cache,
+                        short_name="prev_down_proj",
+                        sp_cache=sp_cache,
+                        device=compute_device,
+                    )
 
-            #     if prev_layer_outputs is not None:
-            #         build_shortest_path_cache(
-            #             operations=operations,
-            #             layer_cache=layer_cache,
-            #             short_name="prev_down_proj",
-            #             sp_cache=sp_cache,
-            #             device=compute_device,
-            #         )
+                if i == last_layer_idx:
+                    build_shortest_path_cache(
+                        operations=operations,
+                        layer_cache=layer_cache,
+                        short_name="lm_head",
+                        sp_cache=sp_cache,
+                        device=compute_device,
+                    )
 
-            #     if i == last_layer_idx:
-            #         build_shortest_path_cache(
-            #             operations=operations,
-            #             layer_cache=layer_cache,
-            #             short_name="lm_head",
-            #             sp_cache=sp_cache,
-            #             device=compute_device,
-            #         )
-
-            # for short, module in modules_items:
-            #     if short == "down_proj" and i != last_layer_idx:
-            #         continue
+            for short, module in modules_items:
+                if short == "down_proj" and i != last_layer_idx:
+                    continue
                 
-            #     print(f'Layer {i}, op name = {short}')
+                print(f'Layer {i}, op name = {short}')
 
-            #     curv = compute_op_curvature(
-            #         model=model,
-            #         operations=operations,
-            #         short_name=short,
-            #         layer_id=i,
-            #         layer_cache=layer_cache,
-            #         sp_cache=sp_cache,
-            #         device=compute_device,
-            #         alpha=args.alpha,
-            #     )
+                curv = compute_op_curvature(
+                    operations=operations,
+                    short_name=short,
+                    layer_id=i,
+                    layer_cache=layer_cache,
+                    sp_cache=sp_cache,
+                    device=compute_device,
+                    alpha=args.alpha,
+                    seq_len = model.seqlen,
+                    num_q_heads=num_q_heads, num_kv_heads=num_kv_heads, 
+                    head_dim=head_dim, repeat=repeat
+                )
 
-            #     assert curv is not None, f"{short} curv is None"
+                assert curv is not None, f"{short} curv is None"
 
-            #     param_curv = curv
-            #     assert (
-            #         param_curv.shape == module.weight.shape
-            #         or param_curv.T.shape == module.weight.shape
-            #     ), f"Unexpected curvature shape for {short}: {tuple(param_curv.shape)} vs {tuple(module.weight.shape)}"
+                param_curv = curv
+                assert (
+                    param_curv.shape == module.weight.shape
+                    or param_curv.T.shape == module.weight.shape
+                ), f"Unexpected curvature shape for {short}: {tuple(param_curv.shape)} vs {tuple(module.weight.shape)}"
 
-            #     if param_curv.T.shape == module.weight.shape:
-            #         param_curv = param_curv.T
+                if param_curv.T.shape == module.weight.shape:
+                    param_curv = param_curv.T
 
-            #     torch.minimum(module.min_curvature, param_curv, out=module.min_curvature)
+                torch.minimum(module.min_curvature, param_curv, out=module.min_curvature)
 
-            # if prev_layer_outputs is not None:
-            #     curv = compute_op_curvature(
-            #         model=model,
-            #         operations=operations,
-            #         short_name="prev_down_proj",
-            #         layer_id=i,
-            #         layer_cache=layer_cache,
-            #         sp_cache=sp_cache,
-            #         device=compute_device,
-            #         alpha=args.alpha,
-            #     )
+            if prev_layer_outputs[j] is not None and has_down_proj_target:
+                curv = compute_op_curvature(
+                    operations=operations,
+                    short_name="prev_down_proj",
+                    layer_id=i,
+                    layer_cache=layer_cache,
+                    sp_cache=sp_cache,
+                    device=compute_device,
+                    alpha=args.alpha,
+                    seq_len = model.seqlen,
+                    num_q_heads=num_q_heads, num_kv_heads=num_kv_heads, 
+                    head_dim=head_dim, repeat=repeat
+                )
 
-            #     assert curv is not None, "prev_down_proj curv is None"
+                assert curv is not None, "prev_down_proj curv is None"
 
-            #     prev_i = i - 1
-            #     if prev_i >= 0:
-            #         prev_weight = model.model.layers[prev_i].mlp.down_proj.weight.detach().cpu()
-            #         param_curv = curv
-            #         assert (
-            #             param_curv.shape == prev_weight.shape
-            #             or param_curv.T.shape == prev_weight.shape
-            #         ), f"Unexpected curvature shape for prev down_proj: {tuple(param_curv.shape)} vs {tuple(prev_weight.shape)}"
+                prev_i = i - 1
+                if prev_i >= 0:
+                    prev_weight = model.model.layers[prev_i].mlp.down_proj.weight.detach().cpu()
+                    param_curv = curv
+                    assert (
+                        param_curv.shape == prev_weight.shape
+                        or param_curv.T.shape == prev_weight.shape
+                    ), f"Unexpected curvature shape for prev down_proj: {tuple(param_curv.shape)} vs {tuple(prev_weight.shape)}"
 
-            #         if param_curv.T.shape == prev_weight.shape:
-            #             param_curv = param_curv.T
+                    if param_curv.T.shape == prev_weight.shape:
+                        param_curv = param_curv.T
 
-            #         if "down_proj" not in model.curvature_scores[prev_i]:
-            #             model.curvature_scores[prev_i]["down_proj"] = param_curv
-            #         else:
-            #             torch.minimum(
-            #                 model.curvature_scores[prev_i]["down_proj"],
-            #                 param_curv,
-            #                 out=model.curvature_scores[prev_i]["down_proj"],
-            #             )
+                    if "down_proj" not in model.curvature_scores[prev_i]:
+                        model.curvature_scores[prev_i]["down_proj"] = param_curv
+                    else:
+                        torch.minimum(
+                            model.curvature_scores[prev_i]["down_proj"],
+                            param_curv,
+                            out=model.curvature_scores[prev_i]["down_proj"],
+                        )
 
-            #         save_path = save_layer_curvature_pkl(
-            #             layer_idx=prev_i,
-            #             curvature_scores=model.curvature_scores[prev_i],
-            #             save_dir=curvature_save_dir,
-            #             metadata=curvature_metadata,
-            #         )
-            #         if save_path is not None:
-            #             print(f"Saved curvature pkl: {save_path}")
+                    save_path = save_layer_curvature_pkl(
+                        layer_idx=prev_i,
+                        curvature_scores=model.curvature_scores[prev_i],
+                        save_dir=curvature_save_dir,
+                        metadata=curvature_metadata,
+                    )
+                    if save_path is not None:
+                        print(f"Saved curvature pkl: {save_path}")
 
-            # if i == last_layer_idx:
-            #     lm_curv = compute_op_curvature(
-            #         model=model,
-            #         operations=operations,
-            #         short_name="lm_head",
-            #         layer_id=i,
-            #         layer_cache=layer_cache,
-            #         sp_cache=sp_cache,
-            #         device=compute_device,
-            #         alpha=args.alpha,
-            #     )
-            #     assert lm_curv is not None, "lm_head curv is None"
+            if i == last_layer_idx:
+                lm_curv = compute_op_curvature(
+                    operations=operations,
+                    short_name="lm_head",
+                    layer_id=i,
+                    layer_cache=layer_cache,
+                    sp_cache=sp_cache,
+                    device=compute_device,
+                    alpha=args.alpha,
+                    seq_len = model.seqlen,
+                    num_q_heads=num_q_heads, num_kv_heads=num_kv_heads, 
+                    head_dim=head_dim, repeat=repeat
+                )
+                assert lm_curv is not None, "lm_head curv is None"
 
-            #     if lm_curv.T.shape == model.lm_head.weight.shape:
-            #         lm_curv = lm_curv.T
-            #     model.curvature_scores[i]["lm_head"] = lm_curv
+                if lm_curv.T.shape == model.lm_head.weight.shape:
+                    lm_curv = lm_curv.T
+                model.curvature_scores[i]["lm_head"] = lm_curv
 
-            # prev_layer_outputs = {
-            #     name: {
-            #         "node": operations[name]["node"],
-            #         "extra": operations[name]["extra"],
-            #     }
-            #     for name in ["gate_proj", "up_proj", "down_proj_in", "down_proj"]
-            #     if name in operations
-            # }
+            prev_layer_outputs[j] = {
+                name: operations[name]
+                for name in ["o_proj", "gate_up_out", "down_proj"]
+                if name in operations
+            }
 
             new_inps[j] = x_out.squeeze(0)
 

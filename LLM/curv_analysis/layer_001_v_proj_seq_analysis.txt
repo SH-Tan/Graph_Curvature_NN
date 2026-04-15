@@ -1,0 +1,28 @@
+layer_id: 1
+op_name: v_proj
+curvature_shape: (1024, 4096)
+total_edges_per_seq: 5
+seq_len: 4
+
+Per-sequence curvature change summary
+================================================================================
+cur_dist summary
+================================================================================
+cur_dist_shape=(4096, 1024), entries=4194304, finite_entries=4194280, inf_entries=24, max=inf, finite_min=11.07027054, finite_mean=1566.63122559, finite_max=16777216.00000000
+
+seq 0
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 5, negative_curvatures: 0, zero_curvatures: 0, min_curvature: 10.00000000, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 1
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 5, negative_curvatures: 0, zero_curvatures: 0, min_curvature: 10.00000000, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 2
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 5, negative_curvatures: 0, zero_curvatures: 0, min_curvature: 10.00000000, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 3
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 5, negative_curvatures: 0, zero_curvatures: 0, min_curvature: 10.00000000, max_curvature: 10.00000000
+--------------------------------------------------------------------------------

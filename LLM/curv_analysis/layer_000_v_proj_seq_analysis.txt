@@ -1,0 +1,49 @@
+layer_id: 0
+op_name: v_proj
+curvature_shape: (1024, 4096)
+total_edges_per_seq: 5
+seq_len: 8
+
+Per-sequence curvature change summary
+================================================================================
+cur_dist summary
+================================================================================
+cur_dist_shape=(4096, 1024), entries=4194304, finite_entries=4194269, inf_entries=35, max=inf, finite_min=19.69230843, finite_mean=3264.38134766, finite_max=16777216.00000000
+
+seq 0
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 0, negative_curvatures: 5, zero_curvatures: 0, min_curvature: -47.72660446, max_curvature: -0.46509048
+--------------------------------------------------------------------------------
+seq 1
+changed_params: 4/5, mean_abs_delta: 139.51728821, mean_rel_delta: 5.83838987, min_delta: 16.11834526, max_delta: 332.35595703
+positive_curvatures: 0, negative_curvatures: 5, zero_curvatures: 0, min_curvature: -364.77258301, max_curvature: -0.46509048
+top_changed_params:
+  1. param[out=0, in=0] delta=332.35595703, prev=-32.41661453, new=-364.77258301
+  2. param[out=3, in=0] delta=183.54130554, prev=-18.91956139, new=-202.46086121
+  3. param[out=2, in=0] delta=26.05351639, prev=-47.72660446, new=-73.78012085
+  4. param[out=4, in=0] delta=16.11834526, prev=-5.64785624, new=-21.76620102
+--------------------------------------------------------------------------------
+seq 2
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 0, negative_curvatures: 5, zero_curvatures: 0, min_curvature: -364.77258301, max_curvature: -0.46509048
+--------------------------------------------------------------------------------
+seq 3
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 0, negative_curvatures: 5, zero_curvatures: 0, min_curvature: -364.77258301, max_curvature: -0.46509048
+--------------------------------------------------------------------------------
+seq 4
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 0, negative_curvatures: 5, zero_curvatures: 0, min_curvature: -364.77258301, max_curvature: -0.46509048
+--------------------------------------------------------------------------------
+seq 5
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 0, negative_curvatures: 5, zero_curvatures: 0, min_curvature: -364.77258301, max_curvature: -0.46509048
+--------------------------------------------------------------------------------
+seq 6
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 0, negative_curvatures: 5, zero_curvatures: 0, min_curvature: -364.77258301, max_curvature: -0.46509048
+--------------------------------------------------------------------------------
+seq 7
+changed_params: 0/5, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 0, negative_curvatures: 5, zero_curvatures: 0, min_curvature: -364.77258301, max_curvature: -0.46509048
+--------------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import argparse
 import torch
 from torchvision.datasets.cifar import CIFAR10
 from torch.utils.data import TensorDataset, DataLoader
@@ -14,7 +15,10 @@ import copy
 import pickle
 import time
 import pandas as pd
-from .e2w_utils_new import *
+try:
+    from .e2w_utils_new import *
+except ImportError:
+    from CNN.e2w_utils_new import *
 
 import sys
 sys.path.append("..")
@@ -458,7 +462,7 @@ def community_check_cifar_vgg9(args):
                                     
                                     print(f'Finish distance matrix')
                                      
-                                    for l_key in [1]:  # loop variable is l_key
+                                    for l_key in [0,1,2,3,4,5,6,7,8]:  # loop variable is l_key
                                         print(f'Current label {l} - l_key {l_key}.....')
                                         
                                         # 🔹 reset peak stats for this layer
@@ -496,7 +500,8 @@ def community_check_cifar_vgg9(args):
                                             threshold=0.,
                                             layers_to_process=list(l_key) if isinstance(l_key, list) else [l_key],
                                             # edge_allowed = torch.abs(output1_slice), 
-                                            sp_dict = sp_dict, max_compare_edges = 50,
+                                            sp_dict=sp_dict,
+                                            # max_edges=50,
                                         )
                         
                                         for batch_key, triples in ricci_results.items():
@@ -554,3 +559,4 @@ def community_check_cifar_vgg9(args):
                 total_time = t_end - t_start
 
                 f.write(f"\nTOTAL TIME for 10 EXAMPLES: {total_time:.3f} s\n")
+

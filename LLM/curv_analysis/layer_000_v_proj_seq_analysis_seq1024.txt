@@ -1,0 +1,393 @@
+layer_id: 0
+op_name: v_proj
+curvature_shape: (1024, 4096)
+total_edges_per_seq: 4194269
+seq_len: 1024
+
+Per-sequence curvature change summary
+================================================================================
+cur_dist summary
+================================================================================
+cur_dist_shape=(4096, 1024), entries=4194304, finite_entries=4194269, inf_entries=35, max=inf, finite_min=19.69230843, finite_mean=3264.38134766, finite_max=16777216.00000000
+
+seq 0
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 2621417, negative_curvatures: 1572852, zero_curvatures: 0, min_curvature: -2101.17138672, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 1
+changed_params: 1572852/4194269, mean_abs_delta: 30.59310913, mean_rel_delta: 0.80864555, min_delta: 0.00011357, max_delta: 529.52734375
+positive_curvatures: 2621417, negative_curvatures: 1572852, zero_curvatures: 0, min_curvature: -2202.44262695, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=344, in=2888] delta=529.52734375, prev=-308.50021362, new=-838.02758789
+  2. param[out=344, in=2898] delta=506.16586304, prev=-294.88992310, new=-801.05578613
+  3. param[out=327, in=3051] delta=489.39657593, prev=-285.29623413, new=-774.69281006
+  4. param[out=344, in=3806] delta=469.82574463, prev=-273.71832275, new=-743.54406738
+  5. param[out=287, in=891] delta=468.88256836, prev=-268.51684570, new=-737.39941406
+  6. param[out=344, in=4066] delta=456.84716797, prev=-266.15704346, new=-723.00421143
+  7. param[out=295, in=3623] delta=454.16073608, prev=-266.46932983, new=-720.63006592
+  8. param[out=344, in=3885] delta=446.46429443, prev=-260.10803223, new=-706.57232666
+  9. param[out=344, in=1635] delta=446.46429443, prev=-260.10803223, new=-706.57232666
+  10. param[out=357, in=596] delta=427.26138306, prev=-248.59677124, new=-675.85815430
+--------------------------------------------------------------------------------
+seq 2
+changed_params: 1572854/4194269, mean_abs_delta: 66.51986694, mean_rel_delta: 6.65198660, min_delta: 10.00039959, max_delta: 873.34710693
+positive_curvatures: 1048563, negative_curvatures: 3145706, zero_curvatures: 0, min_curvature: -2202.44262695, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=476, in=4056] delta=873.34710693, prev=10.00000000, new=-863.34710693
+  2. param[out=392, in=3175] delta=848.21594238, prev=10.00000000, new=-838.21594238
+  3. param[out=454, in=929] delta=816.22705078, prev=10.00000000, new=-806.22705078
+  4. param[out=465, in=2176] delta=789.76324463, prev=10.00000000, new=-779.76324463
+  5. param[out=448, in=1080] delta=779.39965820, prev=10.00000000, new=-769.39965820
+  6. param[out=431, in=480] delta=764.94329834, prev=10.00000000, new=-754.94329834
+  7. param[out=415, in=738] delta=752.74481201, prev=10.00000000, new=-742.74481201
+  8. param[out=441, in=3630] delta=743.75866699, prev=10.00000000, new=-733.75866699
+  9. param[out=413, in=3040] delta=740.72436523, prev=10.00000000, new=-730.72436523
+  10. param[out=487, in=2289] delta=731.83947754, prev=10.00000000, new=-721.83947754
+--------------------------------------------------------------------------------
+seq 3
+changed_params: 1572855/4194269, mean_abs_delta: 128.22119141, mean_rel_delta: 2.06506395, min_delta: 0.00030724, max_delta: 2404.56518555
+positive_curvatures: 1048563, negative_curvatures: 3145706, zero_curvatures: 0, min_curvature: -3173.72436523, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=250, in=1681] delta=2404.56518555, prev=-444.46719360, new=-2849.03247070
+  2. param[out=159, in=3137] delta=2361.97021484, prev=-436.80422974, new=-2798.77441406
+  3. param[out=156, in=1197] delta=2301.44458008, prev=-427.91574097, new=-2729.36035156
+  4. param[out=164, in=2738] delta=2199.83569336, prev=-410.46282959, new=-2610.29858398
+  5. param[out=228, in=210] delta=2163.73486328, prev=-401.48623657, new=-2565.22119141
+  6. param[out=181, in=2533] delta=2155.32739258, prev=-399.73934937, new=-2555.06665039
+  7. param[out=168, in=2041] delta=2107.39013672, prev=-393.83605957, new=-2501.22607422
+  8. param[out=207, in=3906] delta=2106.38330078, prev=-391.64624023, new=-2498.02954102
+  9. param[out=131, in=944] delta=2094.66015625, prev=-389.79812622, new=-2484.45825195
+  10. param[out=219, in=1155] delta=2068.75708008, prev=-382.64315796, new=-2451.40014648
+--------------------------------------------------------------------------------
+seq 4
+changed_params: 524280/4194269, mean_abs_delta: 10.70249844, mean_rel_delta: 1.07024992, min_delta: 10.00001049, max_delta: 17.98771667
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -3173.72436523, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=928, in=3081] delta=17.98771667, prev=10.00000000, new=-7.98771667
+  2. param[out=981, in=3512] delta=17.31452751, prev=10.00000000, new=-7.31452799
+  3. param[out=898, in=2019] delta=16.89435959, prev=10.00000000, new=-6.89435959
+  4. param[out=953, in=1352] delta=16.43651199, prev=10.00000000, new=-6.43651199
+  5. param[out=1012, in=632] delta=16.39077759, prev=10.00000000, new=-6.39077759
+  6. param[out=1004, in=3336] delta=16.39046097, prev=10.00000000, new=-6.39046192
+  7. param[out=1013, in=3116] delta=16.35346794, prev=10.00000000, new=-6.35346746
+  8. param[out=932, in=3512] delta=16.27337265, prev=10.00000000, new=-6.27337170
+  9. param[out=987, in=2916] delta=16.26632881, prev=10.00000000, new=-6.26632929
+  10. param[out=986, in=2898] delta=16.26458740, prev=10.00000000, new=-6.26458740
+--------------------------------------------------------------------------------
+seq 5
+changed_params: 524284/4194269, mean_abs_delta: 225.66658020, mean_rel_delta: 0.71305579, min_delta: 0.00260856, max_delta: 2263.92553711
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=590, in=551] delta=2263.92553711, prev=-3173.72436523, new=-5437.64990234
+  2. param[out=587, in=3086] delta=2211.94702148, prev=-3107.36694336, new=-5319.31396484
+  3. param[out=547, in=1983] delta=2202.37133789, prev=-3104.30053711, new=-5306.67187500
+  4. param[out=590, in=3206] delta=2198.62036133, prev=-3082.17456055, new=-5280.79492188
+  5. param[out=549, in=2299] delta=2177.81665039, prev=-3051.52221680, new=-5229.33886719
+  6. param[out=626, in=1453] delta=2158.94042969, prev=-3022.77294922, new=-5181.71337891
+  7. param[out=539, in=1836] delta=2158.51098633, prev=-3037.51782227, new=-5196.02880859
+  8. param[out=626, in=3325] delta=2137.24243164, prev=-2992.39331055, new=-5129.63574219
+  9. param[out=551, in=3997] delta=2100.82983398, prev=-2942.50512695, new=-5043.33496094
+  10. param[out=541, in=1415] delta=2098.04687500, prev=-2935.21582031, new=-5033.26269531
+--------------------------------------------------------------------------------
+seq 6
+changed_params: 524283/4194269, mean_abs_delta: 10.66875172, mean_rel_delta: 0.31314099, min_delta: 0.00012620, max_delta: 103.52627563
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=833, in=180] delta=103.52627563, prev=-329.41485596, new=-432.94113159
+  2. param[out=833, in=2146] delta=97.25195312, prev=-309.45031738, new=-406.70227051
+  3. param[out=795, in=3252] delta=94.13775635, prev=-299.73645020, new=-393.87420654
+  4. param[out=835, in=214] delta=93.41738892, prev=-298.67544556, new=-392.09283447
+  5. param[out=801, in=1599] delta=91.62994385, prev=-291.89837646, new=-383.52832031
+  6. param[out=838, in=2719] delta=90.88284302, prev=-288.52630615, new=-379.40914917
+  7. param[out=884, in=2993] delta=88.97824097, prev=-282.92263794, new=-371.90087891
+  8. param[out=795, in=2241] delta=88.90789795, prev=-283.08441162, new=-371.99230957
+  9. param[out=873, in=539] delta=88.65631104, prev=-281.36035156, new=-370.01666260
+  10. param[out=769, in=3716] delta=87.47683716, prev=-280.26797485, new=-367.74481201
+--------------------------------------------------------------------------------
+seq 7
+changed_params: 524287/4194269, mean_abs_delta: 73.27777100, mean_rel_delta: 0.92569196, min_delta: 0.00086888, max_delta: 790.73925781
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=344, in=2888] delta=790.73925781, prev=-838.02758789, new=-1628.76684570
+  2. param[out=344, in=2898] delta=755.85363770, prev=-801.05578613, new=-1556.90942383
+  3. param[out=327, in=3051] delta=727.34039307, prev=-774.69281006, new=-1502.03320312
+  4. param[out=287, in=891] delta=705.07873535, prev=-737.39941406, new=-1442.47814941
+  5. param[out=344, in=3806] delta=701.58728027, prev=-743.54406738, new=-1445.13134766
+  6. param[out=344, in=4066] delta=682.20635986, prev=-723.00421143, new=-1405.21057129
+  7. param[out=344, in=3885] delta=666.70172119, prev=-706.57232666, new=-1373.27404785
+  8. param[out=344, in=1635] delta=666.70172119, prev=-706.57232666, new=-1373.27404785
+  9. param[out=295, in=3623] delta=660.95733643, prev=-720.63006592, new=-1381.58740234
+  10. param[out=357, in=596] delta=647.77160645, prev=-675.85815430, new=-1323.62976074
+--------------------------------------------------------------------------------
+seq 8
+changed_params: 524281/4194269, mean_abs_delta: 98.26514435, mean_rel_delta: 1.24304831, min_delta: 0.00144444, max_delta: 1055.35888672
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=757, in=2911] delta=1055.35888672, prev=-855.46850586, new=-1910.82739258
+  2. param[out=745, in=3933] delta=921.41784668, prev=-743.73046875, new=-1665.14831543
+  3. param[out=744, in=2514] delta=912.36956787, prev=-733.21759033, new=-1645.58715820
+  4. param[out=728, in=1019] delta=907.31762695, prev=-728.67626953, new=-1635.99389648
+  5. param[out=668, in=2388] delta=891.97869873, prev=-723.20721436, new=-1615.18591309
+  6. param[out=678, in=475] delta=888.58056641, prev=-715.55749512, new=-1604.13806152
+  7. param[out=656, in=3505] delta=880.52642822, prev=-707.88800049, new=-1588.41442871
+  8. param[out=761, in=610] delta=880.26684570, prev=-710.52600098, new=-1590.79284668
+  9. param[out=656, in=1661] delta=874.61682129, prev=-703.13708496, new=-1577.75390625
+  10. param[out=660, in=2757] delta=869.73834229, prev=-699.22259521, new=-1568.96093750
+--------------------------------------------------------------------------------
+seq 9
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 10
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 11
+changed_params: 520191/4194269, mean_abs_delta: 27.19563293, mean_rel_delta: 0.17703286, min_delta: 0.00012855, max_delta: 363.11071777
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=259, in=2014] delta=363.11071777, prev=-1108.69067383, new=-1471.80139160
+  2. param[out=324, in=2505] delta=329.20642090, prev=-1017.87438965, new=-1347.08081055
+  3. param[out=324, in=4024] delta=317.69573975, prev=-982.28436279, new=-1299.98010254
+  4. param[out=345, in=3962] delta=311.12554932, prev=-1017.32550049, new=-1328.45104980
+  5. param[out=259, in=2433] delta=300.96752930, prev=-918.94836426, new=-1219.91589355
+  6. param[out=324, in=4008] delta=288.91894531, prev=-893.30932617, new=-1182.22827148
+  7. param[out=324, in=3922] delta=286.61688232, prev=-886.19134521, new=-1172.80822754
+  8. param[out=324, in=1998] delta=286.61688232, prev=-886.19134521, new=-1172.80822754
+  9. param[out=345, in=1789] delta=283.14672852, prev=-925.83935547, new=-1208.98608398
+  10. param[out=260, in=2400] delta=281.22589111, prev=-944.53106689, new=-1225.75695801
+--------------------------------------------------------------------------------
+seq 12
+changed_params: 524283/4194269, mean_abs_delta: 335.45065308, mean_rel_delta: 7.49794292, min_delta: 0.00396104, max_delta: 3267.63696289
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=833, in=180] delta=3267.63696289, prev=-432.94113159, new=-3700.57812500
+  2. param[out=833, in=2146] delta=3069.59863281, prev=-406.70227051, new=-3476.30078125
+  3. param[out=795, in=3252] delta=2964.65234375, prev=-393.87420654, new=-3358.52661133
+  4. param[out=835, in=214] delta=2942.47875977, prev=-392.09283447, new=-3334.57153320
+  5. param[out=801, in=1599] delta=2865.40063477, prev=-383.52832031, new=-3248.92895508
+  6. param[out=838, in=2719] delta=2822.65405273, prev=-379.40914917, new=-3202.06323242
+  7. param[out=795, in=2241] delta=2799.94970703, prev=-371.99230957, new=-3171.94189453
+  8. param[out=884, in=2993] delta=2773.81811523, prev=-371.90087891, new=-3145.71899414
+  9. param[out=873, in=539] delta=2764.54296875, prev=-370.01666260, new=-3134.55957031
+  10. param[out=769, in=3716] delta=2741.93017578, prev=-367.74481201, new=-3109.67504883
+--------------------------------------------------------------------------------
+seq 13
+changed_params: 524283/4194269, mean_abs_delta: 123.86720276, mean_rel_delta: 0.32581726, min_delta: 0.00146341, max_delta: 1193.97021484
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=833, in=180] delta=1193.97021484, prev=-3700.57812500, new=-4894.54833984
+  2. param[out=833, in=2146] delta=1121.60839844, prev=-3476.30078125, new=-4597.90917969
+  3. param[out=835, in=214] delta=1096.95532227, prev=-3334.57153320, new=-4431.52685547
+  4. param[out=838, in=2719] delta=1083.86303711, prev=-3202.06323242, new=-4285.92626953
+  5. param[out=795, in=3252] delta=1080.46264648, prev=-3358.52661133, new=-4438.98925781
+  6. param[out=801, in=1599] delta=1068.45971680, prev=-3248.92895508, new=-4317.38867188
+  7. param[out=873, in=539] delta=1057.82910156, prev=-3134.55957031, new=-4192.38867188
+  8. param[out=884, in=2993] delta=1037.11596680, prev=-3145.71899414, new=-4182.83496094
+  9. param[out=769, in=3716] delta=1021.63452148, prev=-3109.67504883, new=-4131.30957031
+  10. param[out=795, in=2241] delta=1020.43701172, prev=-3171.94189453, new=-4192.37890625
+--------------------------------------------------------------------------------
+seq 14
+changed_params: 524280/4194269, mean_abs_delta: 0.03859865, mean_rel_delta: 0.05492748, min_delta: 0.00000055, max_delta: 0.44171810
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=928, in=3081] delta=0.44171810, prev=-7.98771667, new=-8.42943478
+  2. param[out=981, in=3512] delta=0.40589333, prev=-7.31452799, new=-7.72042131
+  3. param[out=898, in=2019] delta=0.37478209, prev=-6.89435959, new=-7.26914167
+  4. param[out=1004, in=3336] delta=0.36287451, prev=-6.39046192, new=-6.75333643
+  5. param[out=953, in=1352] delta=0.35985613, prev=-6.43651199, new=-6.79636812
+  6. param[out=986, in=2898] delta=0.34888124, prev=-6.26458740, new=-6.61346865
+  7. param[out=1004, in=3219] delta=0.34855032, prev=-6.13820696, new=-6.48675728
+  8. param[out=1013, in=3116] delta=0.34450531, prev=-6.35346746, new=-6.69797277
+  9. param[out=1012, in=632] delta=0.34305096, prev=-6.39077759, new=-6.73382854
+  10. param[out=932, in=3512] delta=0.34133482, prev=-6.27337170, new=-6.61470652
+--------------------------------------------------------------------------------
+seq 15
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 16
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 17
+changed_params: 4096/4194269, mean_abs_delta: 3.05491900, mean_rel_delta: 0.03115798, min_delta: 0.00114506, max_delta: 19.41204834
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=334, in=908] delta=19.41204834, prev=-623.02130127, new=-642.43334961
+  2. param[out=334, in=3690] delta=16.67614746, prev=-535.21295166, new=-551.88909912
+  3. param[out=334, in=3903] delta=16.15502930, prev=-518.48754883, new=-534.64257812
+  4. param[out=334, in=100] delta=15.50360107, prev=-497.58074951, new=-513.08435059
+  5. param[out=334, in=1135] delta=15.43847656, prev=-495.49011230, new=-510.92858887
+  6. param[out=334, in=1040] delta=14.91732788, prev=-478.76467896, new=-493.68200684
+  7. param[out=334, in=1433] delta=14.85220337, prev=-476.67401123, new=-491.52621460
+  8. param[out=334, in=2433] delta=14.85220337, prev=-476.67401123, new=-491.52621460
+  9. param[out=334, in=868] delta=14.46136475, prev=-464.12994385, new=-478.59130859
+  10. param[out=334, in=3278] delta=14.26593018, prev=-457.85794067, new=-472.12387085
+--------------------------------------------------------------------------------
+seq 18
+changed_params: 16384/4194269, mean_abs_delta: 4.84807491, mean_rel_delta: 0.04086908, min_delta: 0.00006031, max_delta: 44.22277832
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=334, in=908] delta=44.22277832, prev=-642.43334961, new=-686.65612793
+  2. param[out=334, in=3690] delta=37.98999023, prev=-551.88909912, new=-589.87908936
+  3. param[out=334, in=3903] delta=36.80279541, prev=-534.64257812, new=-571.44537354
+  4. param[out=334, in=100] delta=35.31884766, prev=-513.08435059, new=-548.40319824
+  5. param[out=334, in=1135] delta=35.17041016, prev=-510.92858887, new=-546.09899902
+  6. param[out=334, in=1040] delta=33.98327637, prev=-493.68200684, new=-527.66528320
+  7. param[out=334, in=1433] delta=33.83486938, prev=-491.52621460, new=-525.36108398
+  8. param[out=334, in=2433] delta=33.83486938, prev=-491.52621460, new=-525.36108398
+  9. param[out=334, in=868] delta=32.94445801, prev=-478.59130859, new=-511.53576660
+  10. param[out=334, in=3278] delta=32.49926758, prev=-472.12387085, new=-504.62313843
+--------------------------------------------------------------------------------
+seq 19
+changed_params: 524287/4194269, mean_abs_delta: 75.13541412, mean_rel_delta: 0.42078322, min_delta: 0.00082847, max_delta: 843.06616211
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=344, in=2888] delta=843.06616211, prev=-1891.70092773, new=-2734.76708984
+  2. param[out=287, in=891] delta=815.06591797, prev=-1610.47167969, new=-2425.53759766
+  3. param[out=344, in=2898] delta=805.87194824, prev=-1808.24353027, new=-2614.11547852
+  4. param[out=327, in=3051] delta=767.36645508, prev=-1749.18896484, new=-2516.55541992
+  5. param[out=344, in=3806] delta=748.01440430, prev=-1678.42089844, new=-2426.43530273
+  6. param[out=344, in=4066] delta=727.35107422, prev=-1632.05566406, new=-2359.40673828
+  7. param[out=344, in=3885] delta=710.82031250, prev=-1594.96362305, new=-2305.78393555
+  8. param[out=344, in=1635] delta=710.82031250, prev=-1594.96362305, new=-2305.78393555
+  9. param[out=357, in=596] delta=706.92077637, prev=-1516.39270020, new=-2223.31347656
+  10. param[out=313, in=3843] delta=695.98791504, prev=-1513.98156738, new=-2209.96948242
+--------------------------------------------------------------------------------
+seq 20
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 21
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 22
+changed_params: 524286/4194269, mean_abs_delta: 100.68294525, mean_rel_delta: 0.33191785, min_delta: 0.00111436, max_delta: 941.30151367
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=156, in=1197] delta=941.30151367, prev=-2729.36035156, new=-3670.66186523
+  2. param[out=219, in=1155] delta=921.51342773, prev=-2451.40014648, new=-3372.91357422
+  3. param[out=159, in=3137] delta=912.85595703, prev=-2798.77441406, new=-3711.63037109
+  4. param[out=250, in=1681] delta=909.47021484, prev=-2849.03247070, new=-3758.50268555
+  5. param[out=168, in=2041] delta=899.29882812, prev=-2501.22607422, new=-3400.52490234
+  6. param[out=164, in=2738] delta=855.26855469, prev=-2610.29858398, new=-3465.56713867
+  7. param[out=207, in=3906] delta=854.27050781, prev=-2498.02954102, new=-3352.30004883
+  8. param[out=175, in=2991] delta=851.53125000, prev=-2364.44458008, new=-3215.97583008
+  9. param[out=181, in=2533] delta=844.67651367, prev=-2555.06665039, new=-3399.74316406
+  10. param[out=236, in=3823] delta=830.86914062, prev=-2408.44970703, new=-3239.31884766
+--------------------------------------------------------------------------------
+seq 23
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 24
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 25
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 26
+changed_params: 1048572/4194269, mean_abs_delta: 126.12875366, mean_rel_delta: 0.57395405, min_delta: 0.00026741, max_delta: 2302.80126953
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=344, in=2888] delta=2302.80126953, prev=-2734.76708984, new=-5037.56835938
+  2. param[out=344, in=2898] delta=2201.20727539, prev=-2614.11547852, new=-4815.32275391
+  3. param[out=327, in=3051] delta=2106.42163086, prev=-2516.55541992, new=-4622.97705078
+  4. param[out=344, in=3806] delta=2043.17163086, prev=-2426.43530273, new=-4469.60693359
+  5. param[out=287, in=891] delta=1991.49804688, prev=-2425.53759766, new=-4417.03564453
+  6. param[out=344, in=4066] delta=1986.73046875, prev=-2359.40673828, new=-4346.13720703
+  7. param[out=259, in=2014] delta=1964.20178223, prev=-1869.06945801, new=-3833.27124023
+  8. param[out=295, in=3623] delta=1955.07812500, prev=-2297.81347656, new=-4252.89160156
+  9. param[out=344, in=3885] delta=1941.57788086, prev=-2305.78393555, new=-4247.36181641
+  10. param[out=344, in=1635] delta=1941.57788086, prev=-2305.78393555, new=-4247.36181641
+--------------------------------------------------------------------------------
+seq 27
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 28
+changed_params: 524286/4194269, mean_abs_delta: 121.54002380, mean_rel_delta: 0.30081490, min_delta: 0.00138476, max_delta: 1133.26098633
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=164, in=2738] delta=1133.26098633, prev=-3465.56713867, new=-4598.82812500
+  2. param[out=250, in=1681] delta=1113.70141602, prev=-3758.50268555, new=-4872.20410156
+  3. param[out=159, in=3137] delta=1089.63916016, prev=-3711.63037109, new=-4801.26953125
+  4. param[out=156, in=1197] delta=1069.27221680, prev=-3670.66186523, new=-4739.93408203
+  5. param[out=139, in=1155] delta=1049.27050781, prev=-3180.16796875, new=-4229.43847656
+  6. param[out=228, in=210] delta=1027.70654297, prev=-3395.78466797, new=-4423.49121094
+  7. param[out=168, in=2041] delta=1027.30175781, prev=-3400.52490234, new=-4427.82666016
+  8. param[out=181, in=2533] delta=997.12109375, prev=-3399.74316406, new=-4396.86425781
+  9. param[out=219, in=1155] delta=993.22998047, prev=-3372.91357422, new=-4366.14355469
+  10. param[out=222, in=2455] delta=972.49536133, prev=-3196.31323242, new=-4168.80859375
+--------------------------------------------------------------------------------
+seq 29
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 30
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 31
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -5437.64990234, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 32
+changed_params: 1048568/4194269, mean_abs_delta: 134.96659851, mean_rel_delta: 0.29108885, min_delta: 0.00003353, max_delta: 2755.32421875
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+top_changed_params:
+  1. param[out=344, in=2888] delta=2755.32421875, prev=-5037.56835938, new=-7792.89257812
+  2. param[out=344, in=2898] delta=2633.76562500, prev=-4815.32275391, new=-7449.08837891
+  3. param[out=327, in=3051] delta=2551.39599609, prev=-4622.97705078, new=-7174.37304688
+  4. param[out=324, in=2505] delta=2550.61279297, prev=-3029.41650391, new=-5580.02929688
+  5. param[out=370, in=1993] delta=2519.57495117, prev=-3529.28002930, new=-6048.85498047
+  6. param[out=324, in=4024] delta=2461.43066406, prev=-2923.49267578, new=-5384.92333984
+  7. param[out=344, in=3806] delta=2444.67529297, prev=-4469.60693359, new=-6914.28222656
+  8. param[out=295, in=3623] delta=2419.60498047, prev=-4252.89160156, new=-6672.49658203
+  9. param[out=344, in=4066] delta=2377.14257812, prev=-4346.13720703, new=-6723.27978516
+  10. param[out=370, in=474] delta=2345.26464844, prev=-3285.11572266, new=-5630.38037109
+--------------------------------------------------------------------------------
+seq 33
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 34
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 35
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 36
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 37
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 38
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 39
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 40
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 41
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
+seq 42
+changed_params: 0/4194269, mean_abs_delta: 0.00000000, mean_rel_delta: 0.00000000, min_delta: 0.00000000, max_delta: 0.00000000
+positive_curvatures: 524283, negative_curvatures: 3669986, zero_curvatures: 0, min_curvature: -7792.89257812, max_curvature: 10.00000000
+--------------------------------------------------------------------------------
