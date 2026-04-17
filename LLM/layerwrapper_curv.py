@@ -197,7 +197,7 @@ def collect_layer_data(layer, x, attention_mask, position_ids, model, next_layer
         if next_layer is not None and hasattr(next_layer, "input_layernorm"):
             del next_input, next_input_norm
 
-    return x_out, operations
+    return x_out, operations, num_heads, num_kv_heads, num_kv_groups, head_dim
 
 
 def _make_lm_head_op(model, final_hidden):

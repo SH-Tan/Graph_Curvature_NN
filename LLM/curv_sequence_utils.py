@@ -1,5 +1,7 @@
 import torch
 
+from curv_distribution_utils import _build_node_distribution
+
 
 def _build_vproj_to_att_out_value_map(
     out_node,       # [batch, seq, hidden_size]
@@ -144,3 +146,50 @@ def masked_oproj_value_map_for_seq(value_map, s, seq_len):
     mask = torch.ones(seq_len, device=value_map.device, dtype=value_map.dtype)
     mask[s + 1:] = 0
     return value_map * mask.unsqueeze(0)
+
+
+def _safe_inverse_abs(arr):
+    arr = torch.as_tensor(arr, dtype=torch.float32)
+    arr = arr.abs()
+    inv = torch.full_like(arr, float("inf"))
+    inv = torch.where(arr != 0, 1.0 / arr, inv)
+    return inv.detach().cpu().numpy().astype("float32", copy=False)
+
+
+def _precompute_vproj_next_distributions(value_map, seq_len, repeat, node_name, alpha, flatten_order):
+    out = []
+    for s in range(seq_len):
+        masked = masked_value_map_for_seq(
+            value_map, s, seq_len, repeat, flatten_order=flatten_order
+        )
+        out.append(_build_node_distribution(masked, node_name, alpha))
+    return out
+
+
+def _precompute_oproj_prev_distributions(value_map, seq_len, node_name, alpha):
+    out = []
+    for s in range(seq_len):
+        masked = masked_oproj_value_map_for_seq(value_map, s, seq_len)
+        out.append(_build_node_distribution(masked, node_name, alpha))
+    return out
+
+
+def _build_vproj_to_att_out_cost(a, seq_len, s_in, v_idx, head_dim, repeat, flatten_order="by_out_then_seq"):
+    kv_head = v_idx // head_dim
+    q_start = kv_head * repeat
+    q_end = (kv_head + 1) * repeat
+
+    block = _safe_inverse_abs(a[0, q_start:q_end, :seq_len, s_in])
+    if flatten_order == "by_out_then_seq":
+        return block.reshape(-1)
+    if flatten_order == "by_seq_then_out":
+        return block.transpose(1, 0).reshape(-1)
+    raise ValueError(f"Unknown flatten_order: {flatten_order}")
+
+
+def _build_att_out_to_o_cost(a, s_out, out_idx, head_dim):
+    q_head = out_idx // head_dim
+    block = _safe_inverse_abs(a[0, q_head, s_out, :])
+    return block.reshape(-1)
+
+

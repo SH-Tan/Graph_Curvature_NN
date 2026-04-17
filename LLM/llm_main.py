@@ -8,7 +8,6 @@ import argparse
 from prune import prune_wanda, prune_magnitude, check_sparsity, find_layers, prune_curvature
 from eval import eval_ppl, eval_zero_shot
 
-
 from huggingface_hub import login
 
 

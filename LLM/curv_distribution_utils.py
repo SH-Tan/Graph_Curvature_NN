@@ -55,3 +55,33 @@ def _min_reduce_blocks(blocks):
     if len(blocks) == 1:
         return np.asarray(blocks[0], dtype=np.float64)
     return np.minimum.reduce([np.asarray(b, dtype=np.float64) for b in blocks])
+
+
+def _build_node_distribution(node_tensor, node_name, alpha, eps=1e-7):
+    if node_tensor is None or node_tensor.numel() == 0:
+        return None
+
+    node_tensor = node_tensor.to(dtype=torch.float32)
+    if node_tensor.dim() == 3:
+        if node_tensor.shape[0] != 1:
+            raise ValueError(
+                f"Expected batch size 1 for node tensor, got shape {tuple(node_tensor.shape)}"
+            )
+        node_tensor = node_tensor.squeeze(0)
+
+    node_tensor = _normalize_node_value_per_sequence(node_tensor, node_name)
+    valid_mask = torch.isfinite(node_tensor) & (node_tensor != 0)
+    weights = torch.exp(-(node_tensor ** 2)) * valid_mask
+
+    sum_weights = weights.sum(dim=-1, keepdim=True)
+    dist = torch.where(
+        sum_weights > eps,
+        ((1.0 - alpha) * weights) / sum_weights,
+        torch.zeros_like(weights),
+    )
+
+    empty_mask = (sum_weights <= eps).expand_as(valid_mask)
+    dist = torch.where(empty_mask & valid_mask, torch.full_like(dist, -1.0), dist)
+
+    dist = dist * valid_mask
+    return dist.detach().cpu().numpy().astype(np.float32, copy=False)
