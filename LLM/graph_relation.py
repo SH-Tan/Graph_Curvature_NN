@@ -2,6 +2,8 @@ from curv_distribution_utils import _resolve_node_name
 
 GRAPH = {
     "prev_down_proj": {"layer": 0, "prev": ["prev_up_proj", "prev_gate_proj"], "next": ["v_proj"], "prev_in": ["prev_o_proj"], "next_out": ["v_proj"]},
+    "q_proj": {"layer": 1, "prev": ["prev_down_proj"], "next": ["k_proj"], "prev_in": ["prev_gate_up_out"], "next_out": ["A"]},
+    "k_proj": {"layer": 1, "prev": ["prev_down_proj"], "next": ["q_proj"], "prev_in": ["prev_gate_up_out"], "next_out": ["A"]},
     "v_proj": {"layer": 1, "prev": ["prev_down_proj"], "next": ["A"], "prev_in": ["prev_gate_up_out"], "next_out": ["Att_out"]},
     "A": {"layer": 2, "prev": [], "next": ["v_proj"], "prev_in": [], "next_out": ["v_proj"]},
     "o_proj": {"layer": 3, "prev": ["A"], "next": ["gate_proj", "up_proj"], "prev_in": ["v_proj"], "next_out": ["gate_up_out"]},

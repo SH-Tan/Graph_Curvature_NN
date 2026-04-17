@@ -2,26 +2,27 @@ import numpy as np
 import torch
 import ot
 
-from graph_relation import _resolve_graph_sets
 import curv_analysis_utils as analysis_utils
 from curv_distribution_utils import (
+    _build_node_distribution,
     _edge_distribution,
     _min_reduce_blocks,
-    _normalize_node_value_per_sequence,
 )
-from curv_model_utils import _operation_distance_matrix_torch
+
 from curv_sequence_utils import (
+    _build_att_out_to_o_cost,
     _build_oproj_to_att_in_value_map,
+    _build_vproj_to_att_out_cost,
     _build_vproj_to_att_out_value_map,
-    masked_oproj_value_map_for_seq,
-    masked_value_map_for_seq,
+    _precompute_oproj_prev_distributions,
+    _precompute_vproj_next_distributions,
 )
-from curv_shared_utils import _from_shared_numpy, _to_shared_numpy
-from curv_tensor_utils import _all_cost_matrices, _get_matrix_torch, adaptive_chunksize
+from curv_shortest_path_utils import build_shortest_path_cache
+from curv_shared_utils import _from_shared_numpy, _to_shared_numpy, _load_worker_seq_distribution, _to_shared_seq_metas
+from curv_tensor_utils import _build_v_to_att_out_template, _build_x_to_out_cost
+
 from multiprocessing import get_context
-from functools import partial
 import multiprocessing as mp
-import ctypes
 import time
 
 import warnings
@@ -29,100 +30,31 @@ import warnings
 # Ignore all warnings
 warnings.filterwarnings("ignore")
 
-EPSILON = 1e-7
 proc = mp.cpu_count()
 
-# Cache structure:
-# SP_CACHE[layer_id][short_name] = {
-#     "curr_dist": np.ndarray,
-#     "prev_to_curr_out_all": dict[str, np.ndarray],
-#     "curr_in_to_next_all": dict[str, np.ndarray],
-#     "prev_to_next_all": dict[str, np.ndarray],
-# }
-SP_CACHE = {}
-
-# ---- multiprocessing shared globals ----
 _SHARED_CURR_DIST = None
 _SHARED_PREV_IN = None
 _SHARED_NEXT_OUT = None
 _SHARED_SP = None
 _SHARED_ALPHA = 0.0
 _A = None
+_Q_to_A = None
+_V_COST = None
+_SPK = None
 
 _SHARED_SHORT_NAME = None
 _SHARED_MODEL_META = None
-_SHARED_SEQ = None
 _SHARED_SEQ_LEN = 1
 _FLATTEN_ORDER = "by_out_then_seq"
-_SHARED_DYNAMIC_NEXT = None
-_SHARED_DYNAMIC_PREV = None
 _WORKER_CURR_DIST_SHM = None
 _WORKER_PREV_IN_SHM = None
 _WORKER_NEXT_OUT_SHM = None
-
-
-def _safe_inverse_abs(arr):
-    arr = np.asarray(arr, dtype=np.float32)
-    arr = np.abs(arr)
-    inv = np.full(arr.shape, np.inf, dtype=np.float32)
-    np.divide(1.0, arr, out=inv, where=(arr != 0))
-    return inv
-
-
-def _min_plus_torch(a, b, chunk_k=256, chunk_p=256):
-    if a.numel() == 0 or b.numel() == 0:
-        return torch.empty((a.shape[0], b.shape[1]), dtype=torch.float32, device=a.device)
-
-    m, n = a.shape
-    n2, p = b.shape
-    assert n == n2, f"Dimension mismatch: {a.shape} vs {b.shape}"
-
-    result = torch.full((m, p), float("inf"), dtype=torch.float32, device=a.device)
-
-    for start_k in range(0, n, chunk_k):
-        end_k = min(start_k + chunk_k, n)
-        a_chunk = a[:, start_k:end_k]
-        b_chunk = b[start_k:end_k, :]
-
-        for start_p in range(0, p, chunk_p):
-            end_p = min(start_p + chunk_p, p)
-            b_sub = b_chunk[:, start_p:end_p]
-            partial = (a_chunk.unsqueeze(2) + b_sub.unsqueeze(0)).min(dim=1).values
-            result[:, start_p:end_p] = torch.minimum(result[:, start_p:end_p], partial)
-
-    return result
-
-
-
-def _build_node_distribution(node_tensor, node_name, alpha, eps=EPSILON):
-    if node_tensor is None or node_tensor.numel() == 0:
-        return None
-
-    node_tensor = node_tensor.to(dtype=torch.float32)
-    if node_tensor.dim() == 3:
-        if node_tensor.shape[0] != 1:
-            raise ValueError(
-                f"Expected batch size 1 for node tensor, got shape {tuple(node_tensor.shape)}"
-            )
-        node_tensor = node_tensor.squeeze(0)
-        
-    node_tensor = _normalize_node_value_per_sequence(node_tensor, node_name)
-    valid_mask = torch.isfinite(node_tensor) & (node_tensor != 0)
-    weights = torch.exp(-(node_tensor ** 2)) * valid_mask
-
-    sum_weights = weights.sum(dim=-1, keepdim=True)
-
-    dist = torch.where(
-        sum_weights > eps,
-        ((1.0 - alpha) * weights) / sum_weights,
-        torch.zeros_like(weights),
-    )
-
-    empty_mask = (sum_weights <= eps).expand_as(valid_mask)
-    dist = torch.where(empty_mask & valid_mask, torch.full_like(dist, -1.0), dist)
-
-    dist = dist * valid_mask
-    return dist.numpy().astype(np.float32, copy=False)
+_WORKER_PREV_SEQ_METAS = None
+_WORKER_NEXT_SEQ_METAS = None
+_WORKER_PREV_SEQ_SHMS = {}
+_WORKER_NEXT_SEQ_SHMS = {}
+_WORKER_PREV_SEQ_CACHE = {}
+_WORKER_NEXT_SEQ_CACHE = {}
 
 
 def _edge_cost_matrix_base(u_idx, v_idx, prev_active, next_active, sp_uv):
@@ -167,71 +99,45 @@ def _edge_cost_matrix_base(u_idx, v_idx, prev_active, next_active, sp_uv):
     return cost
 
 
+def _get_min_QK_A_cost(v_idx, s, prev_active):
+    head_dim = _SHARED_MODEL_META["head_dim"]
+    repeat = _SHARED_MODEL_META["repeat"]
 
+    prev_active = torch.as_tensor(prev_active, device=_Q_to_A.device, dtype=torch.long)
 
-def _precompute_vproj_next_distributions(value_map, seq_len, repeat, node_name, alpha, flatten_order):
-    out = []
-    for s in range(seq_len):
-        masked = masked_value_map_for_seq(
-            value_map, s, seq_len, repeat, flatten_order=flatten_order
-        )
-        dist = _build_node_distribution(masked, node_name, alpha)
-        out.append(dist)
-    return out
-
-
-def _build_vproj_to_att_out_cost(
-    s_in,
-    v_idx,
-    head_dim,
-    repeat,
-    flatten_order="by_out_then_seq",
-):
-    assert _A is not None
-
+    d = v_idx % head_dim
     kv_head = v_idx // head_dim
     q_start = kv_head * repeat
     q_end = (kv_head + 1) * repeat
 
-    # A has shape [batch, num_q_heads, seq_len, seq_len]; use the single active batch.
-    block = _safe_inverse_abs(_A[0, q_start:q_end, :_SHARED_SEQ_LEN, s_in].abs())
+    shared_q_heads = torch.arange(q_start, q_end, device=_Q_to_A.device)
+    shared_out_idx = shared_q_heads * head_dim + d
 
-    if flatten_order == "by_out_then_seq":
-        return block.reshape(-1)
-    elif flatten_order == "by_seq_then_out":
-        return block.transpose(1, 0).reshape(-1)
-    else:
-        raise ValueError(f"Unknown flatten_order: {flatten_order}")
-    
+    # Q cost only exists on shared_out_idx, only for current seq
+    q_cost = _Q_to_A[prev_active][:, shared_out_idx]
 
+    # K cost
+    k_down = _V_COST[q_start:q_end, s, d]
+    if _SPK.ndim == 2:
+        seq_len = _SHARED_SEQ_LEN
+        base = kv_head * seq_len
+        r_idx = torch.arange(repeat - 1, device=_Q_to_A.device)
+        k_block_idx = base + r_idx * seq_len
+        k_prefix = _SPK[prev_active][k_block_idx]
 
+    k_cost = k_prefix + k_down[None, :]
 
-def _precompute_oproj_prev_distributions(value_map, seq_len, node_name, alpha):
-    out = []
-    for s in range(seq_len):
-        masked = masked_oproj_value_map_for_seq(value_map, s, seq_len)
-        dist = _build_node_distribution(masked, node_name, alpha)
-        out.append(dist)
-    return out
+    # Q only overlaps K on out_seq = s
+    shared_start = s * repeat
+    shared_end = (s + 1) * repeat
 
+    merged_cost = k_cost.clone()
+    merged_cost[:, shared_start:shared_end] = torch.minimum(
+        q_cost,
+        merged_cost[:, shared_start:shared_end]
+    )
 
-
-def _build_att_out_to_o_cost(
-    s_out,
-    out_idx,
-    head_dim,
-):
-    if _A is None:
-        return np.empty((0,), dtype=np.float64)
-
-    q_head = out_idx // head_dim
-    
-    # A has shape [batch, num_q_heads, seq_len, seq_len]; use the single active batch.
-    block = _safe_inverse_abs(_A[0, q_head, s_out, :].abs())
-    return block.reshape(-1)
-
-
-
+    return merged_cost
 
 def _edge_cost_matrix_seq_aware(u_idx, v_idx, prev_active, next_active, sp_uv, seq = 0):
     short_name = _SHARED_SHORT_NAME
@@ -279,12 +185,14 @@ def _edge_cost_matrix_seq_aware(u_idx, v_idx, prev_active, next_active, sp_uv, s
     # Dynamic attention-coupled part
     if short_name == "v_proj" and next_count > 0:
         dynamic_next = _build_vproj_to_att_out_cost(
-                    s_in=seq,
-                    v_idx=v_idx,
-                    head_dim=head_dim,
-                    repeat=repeat,
-                    flatten_order=_FLATTEN_ORDER,
-                )
+            a=A,
+            seq_len=_SHARED_SEQ_LEN,
+            s_in=seq,
+            v_idx=v_idx,
+            head_dim=head_dim,
+            repeat=repeat,
+            flatten_order=_FLATTEN_ORDER,
+        )
         
         # if next_active is a subset, select aligned entries first
         if dynamic_next.shape[0] != next_count:
@@ -299,10 +207,11 @@ def _edge_cost_matrix_seq_aware(u_idx, v_idx, prev_active, next_active, sp_uv, s
 
     elif short_name == "o_proj" and prev_count > 0:
         dynamic_prev = _build_att_out_to_o_cost(
-                    s_out=seq,
-                    out_idx=u_idx,
-                    head_dim=head_dim,
-                )
+            a=A,
+            s_out=seq,
+            out_idx=u_idx,
+            head_dim=head_dim,
+        )
         
         # if prev_active is a subset, select aligned entries first
         if dynamic_prev.shape[0] != prev_count:
@@ -318,105 +227,22 @@ def _edge_cost_matrix_seq_aware(u_idx, v_idx, prev_active, next_active, sp_uv, s
     return cost
 
 
-def build_layer_cache(model, operations, layer_id, cache=None, device="cuda"):
-    """
-    Build or update the layer cache with distance matrices.
-    Keep this once per layer/model state, then reuse across samples.
-    """
-    if cache is None:
-        cache = {}
-        
-
-    for name in operations.keys():
-        if name.startswith("prev_"):
-            name = name.replace("prev_", "")
-        if name in {"layer_input", "A", "Att_out", "gate_up_out"}:
-            continue
-   
-        dist_matrix = _operation_distance_matrix_torch(model, operations, name, layer_id, device)
-        cache[f"{name}__dist"] = dist_matrix # 1/|w.T| cpu tensor
-
-    return cache
-
-
-def build_shortest_path_cache(
-    operations,
-    layer_cache,
-    short_name,
-    sp_cache=None,
-    device="cuda",
-    graph_data =  None
-):
-    """
-    Cache is flat: sp_cache[short_name] = ...
-    If you want to rebuild for the next layer, clear sp_cache at the layer boundary.
-    """
-    if sp_cache is None:
-        sp_cache = SP_CACHE
-        
-    if graph_data is None:
-        graph_data = _resolve_graph_sets(operations, short_name)
-
-    if short_name in sp_cache:
-        return sp_cache[short_name], graph_data
-
-    curr_dist = _get_matrix_torch(layer_cache, short_name, device=device)
-    if curr_dist is None:
-        return None, graph_data
-
-    prev_dists = _all_cost_matrices(layer_cache, graph_data["prev_cost_names"], device=device)
-    next_dists = _all_cost_matrices(layer_cache, graph_data["next_cost_names"], device=device)
-
-    chunk_k, chunk_p = adaptive_chunksize()
-
-    prev_to_curr_out_all = {}
-    curr_in_to_next_all = {}
-    prev_to_next_all = {}
-
-    for name, prev_matrix in prev_dists.items():
-        prev_to_curr_out_all[name] = _min_plus_torch(prev_matrix, curr_dist, chunk_k=chunk_k, chunk_p=chunk_p)
-
-    for name, next_matrix in next_dists.items():
-        curr_in_to_next_all[name] = _min_plus_torch(curr_dist, next_matrix, chunk_k=chunk_k, chunk_p=chunk_p)
-
-    for prev_name, prev_to_curr_out in prev_to_curr_out_all.items():
-        for next_name, next_matrix in next_dists.items():
-            key = f"{prev_name}->{next_name}"
-            prev_to_next_all[key] = (
-                _min_plus_torch(prev_to_curr_out, next_matrix, chunk_k=chunk_k, chunk_p=chunk_p)
-                if (prev_to_curr_out.numel() and next_matrix.numel())
-                else torch.empty((prev_to_curr_out.shape[0], next_matrix.shape[1]), dtype=torch.float32, device=device)
-            )
-
-    sp = {
-        "curr_dist": curr_dist.cpu().contiguous().numpy(),
-        "prev_to_curr_out_all": {k: v.cpu().contiguous().numpy() for k, v in prev_to_curr_out_all.items()},
-        "curr_in_to_next_all": {k: v.cpu().contiguous().numpy() for k, v in curr_in_to_next_all.items()},
-        "prev_to_next_all": {k: v.cpu().contiguous().numpy() for k, v in prev_to_next_all.items()},
-    }
-    del prev_dists, next_dists, prev_to_curr_out_all, curr_in_to_next_all, prev_to_next_all
-    del curr_dist
-
-    sp_cache[short_name] = sp
-    return sp, graph_data
-
 
 def _compute_single_edge_seq_global(edge_info, seq_info):
     u_idx, v_idx = edge_info
 
     sp_uv = float(_SHARED_CURR_DIST[u_idx, v_idx])
-    seq_idx = _SHARED_SEQ
 
     # For seq-aware nodes, pick the row for this sequence
-    if _SHARED_SHORT_NAME in {"v_proj"}:
+    if _SHARED_SHORT_NAME == "v_proj":
         next_row = None if _SHARED_NEXT_OUT is None else _SHARED_NEXT_OUT[v_idx]
     else:
-        next_row = None if _SHARED_NEXT_OUT is None else _SHARED_NEXT_OUT[seq_idx]
+        next_row = None if _SHARED_NEXT_OUT is None else _SHARED_NEXT_OUT[seq_info]
     
-    if _SHARED_SHORT_NAME in {"o_proj"}:
+    if _SHARED_SHORT_NAME == "o_proj":
         prev_row = None if _SHARED_PREV_IN is None else _SHARED_PREV_IN[u_idx]
     else:
-        prev_row = None if _SHARED_PREV_IN is None else _SHARED_PREV_IN[seq_idx]
+        prev_row = None if _SHARED_PREV_IN is None else _SHARED_PREV_IN[seq_info]
     
     mu, prev_active = _edge_distribution(prev_row, _SHARED_ALPHA)
     nu, next_active = _edge_distribution(next_row, _SHARED_ALPHA)
@@ -443,9 +269,15 @@ def _compute_single_edge_seq_global(edge_info, seq_info):
     return (v_idx, u_idx, np.float32(curv))
 
 
-def _init_worker(curr_dist_meta, prev_meta, next_meta):
+
+
+
+def _init_worker(curr_dist_meta, prev_meta, next_meta, prev_seq_metas=None, next_seq_metas=None):
     global _SHARED_CURR_DIST, _SHARED_PREV_IN, _SHARED_NEXT_OUT
     global _WORKER_CURR_DIST_SHM, _WORKER_PREV_IN_SHM, _WORKER_NEXT_OUT_SHM
+    global _WORKER_PREV_SEQ_METAS, _WORKER_NEXT_SEQ_METAS
+    global _WORKER_PREV_SEQ_SHMS, _WORKER_NEXT_SEQ_SHMS
+    global _WORKER_PREV_SEQ_CACHE, _WORKER_NEXT_SEQ_CACHE
 
     _WORKER_CURR_DIST_SHM, _SHARED_CURR_DIST = _from_shared_numpy(curr_dist_meta)
 
@@ -458,25 +290,37 @@ def _init_worker(curr_dist_meta, prev_meta, next_meta):
     _SHARED_NEXT_OUT = None
     if next_meta is not None:
         _WORKER_NEXT_OUT_SHM, _SHARED_NEXT_OUT = _from_shared_numpy(next_meta)
-        
 
-def _compute_edge_chunk_with_seq(task):
-    seq_idx, edge_chunk, prev_meta, next_meta = task
+    _WORKER_PREV_SEQ_METAS = prev_seq_metas
+    _WORKER_NEXT_SEQ_METAS = next_seq_metas
+    _WORKER_PREV_SEQ_SHMS = {}
+    _WORKER_NEXT_SEQ_SHMS = {}
+    _WORKER_PREV_SEQ_CACHE = {}
+    _WORKER_NEXT_SEQ_CACHE = {}
 
-    global _SHARED_SEQ, _SHARED_PREV_IN, _SHARED_NEXT_OUT
 
-    _SHARED_SEQ = seq_idx
+def _compute_edge_with_seq(task):
+    seq_idx, edge = task
+
+    global _SHARED_PREV_IN, _SHARED_NEXT_OUT
 
     prev_in_distribution = _SHARED_PREV_IN
     next_out_distribution = _SHARED_NEXT_OUT
 
-    local_prev_shm = None
-    local_next_shm = None
-
-    if prev_meta is not None:
-        local_prev_shm, prev_in_distribution = _from_shared_numpy(prev_meta)
-    if next_meta is not None:
-        local_next_shm, next_out_distribution = _from_shared_numpy(next_meta)
+    if _SHARED_SHORT_NAME == "o_proj":
+        prev_in_distribution = _load_worker_seq_distribution(
+            seq_idx,
+            _WORKER_PREV_SEQ_METAS,
+            _WORKER_PREV_SEQ_SHMS,
+            _WORKER_PREV_SEQ_CACHE,
+        )
+    elif _SHARED_SHORT_NAME == "v_proj":
+        next_out_distribution = _load_worker_seq_distribution(
+            seq_idx,
+            _WORKER_NEXT_SEQ_METAS,
+            _WORKER_NEXT_SEQ_SHMS,
+            _WORKER_NEXT_SEQ_CACHE,
+        )
 
     old_prev = _SHARED_PREV_IN
     old_next = _SHARED_NEXT_OUT
@@ -484,21 +328,49 @@ def _compute_edge_chunk_with_seq(task):
     _SHARED_NEXT_OUT = next_out_distribution
 
     try:
-        out = []
-        append = out.append
-        for edge in edge_chunk:
-            append(_compute_single_edge_seq_global(edge, seq_idx))
-        return out
+        return _compute_single_edge_seq_global(edge, seq_idx)
     finally:
         _SHARED_PREV_IN = old_prev
         _SHARED_NEXT_OUT = old_next
 
-        if local_prev_shm is not None:
-            local_prev_shm.close()
-        if local_next_shm is not None:
-            local_next_shm.close()
+
+def _reset_shared_state():
+    global _SHARED_CURR_DIST, _SHARED_PREV_IN, _SHARED_NEXT_OUT
+    global _SHARED_SP, _SHARED_ALPHA, _A, _Q_to_A, _V_COST, _SPK
+    global _SHARED_SHORT_NAME, _SHARED_MODEL_META, _SHARED_SEQ_LEN
+
+    _SHARED_CURR_DIST = None
+    _SHARED_PREV_IN = None
+    _SHARED_NEXT_OUT = None
+    _SHARED_SP = None
+    _SHARED_ALPHA = 0.0
+    _A = None
+    _Q_to_A = None
+    _V_COST = None
+    _SPK = None
+    _SHARED_SHORT_NAME = None
+    _SHARED_MODEL_META = None
+    _SHARED_SEQ_LEN = 1
 
 
+def _get_vproj_aux_shortest_paths(operations, layer_cache, sp_cache, device):
+    sp_q, _ = build_shortest_path_cache(
+        operations=operations,
+        layer_cache=layer_cache,
+        short_name="q_proj",
+        sp_cache=sp_cache,
+        device=device,
+        model_meta=_SHARED_MODEL_META,
+    )
+    sp_k, _ = build_shortest_path_cache(
+        operations=operations,
+        layer_cache=layer_cache,
+        short_name="k_proj",
+        sp_cache=sp_cache,
+        device=device,
+        model_meta=_SHARED_MODEL_META,
+    )
+    return sp_q, sp_k
 
 def compute_op_curvature(
     operations,
@@ -513,8 +385,7 @@ def compute_op_curvature(
     flatten_order="by_seq_then_out"
 ):
     global _SHARED_CURR_DIST, _SHARED_PREV_IN, _SHARED_NEXT_OUT
-    global _SHARED_SP, _SHARED_ALPHA, _A, _FLATTEN_ORDER
-    global _SHARED_DYNAMIC_NEXT, _SHARED_DYNAMIC_PREV
+    global _SHARED_SP, _SHARED_ALPHA, _A, _Q_to_A, _V_COST, _FLATTEN_ORDER, _SPK
     global _SHARED_SHORT_NAME, _SHARED_MODEL_META, _SHARED_SEQ_LEN
     
     _FLATTEN_ORDER = flatten_order
@@ -522,48 +393,7 @@ def compute_op_curvature(
     if operations is None or layer_cache is None:
         return None
 
-    if sp_cache is None:
-        sp_cache = SP_CACHE
-
-    sp, graph_data = build_shortest_path_cache(
-        operations=operations,
-        layer_cache=layer_cache,
-        short_name=short_name,
-        sp_cache=sp_cache,
-        device=device,
-    )
-    if sp is None:
-        return None
-    
-    curr_dist = sp["curr_dist"]
-    in_dim, out_dim = curr_dist.shape
-    
-    prev_in_distribution = None
-    next_out_distribution = None
-     
-    if ("A" not in graph_data["prev_cost_names"]):
-        if graph_data["prev_in"] is not None:
-            prev_in_distribution = _build_node_distribution(
-                graph_data["prev_in"],
-                graph_data["prev_in_name"],
-                alpha,
-            )
-            
-    if ("A" not in graph_data["next_cost_names"]):
-        if graph_data["next_out"] is not None:
-            next_out_distribution = _build_node_distribution(
-                graph_data["next_out"],
-                graph_data["next_out_name"],
-                alpha,
-            ) # [batch, seq, hidden size]
-    
-
-    _SHARED_CURR_DIST = curr_dist
-    _SHARED_SP = sp
-    _SHARED_ALPHA = alpha
-    _SHARED_SHORT_NAME = short_name
-    _SHARED_SEQ_LEN = seq_len
-    
+    _reset_shared_state()
     _SHARED_MODEL_META = {
         "num_q_heads": num_q_heads,
         "num_kv_heads": num_kv_heads,
@@ -571,24 +401,69 @@ def compute_op_curvature(
         "repeat": repeat,
     }
 
+    sp, graph_data = build_shortest_path_cache(
+        operations=operations,
+        layer_cache=layer_cache,
+        short_name=short_name,
+        sp_cache=sp_cache,
+        device=device,
+        model_meta=_SHARED_MODEL_META,
+    )
+    if sp is None:
+        return None
+
+    if short_name == "v_proj":
+        sp_q, sp_k = _get_vproj_aux_shortest_paths(
+            operations=operations,
+            layer_cache=layer_cache,
+            sp_cache=sp_cache,
+            device=device,
+        )
+        if sp_q is None or sp_k is None:
+            raise ValueError("q_proj and k_proj shortest-path caches are required for v_proj")
+        
+        _SPK = (
+            next(iter(sp_k["prev_to_next_all"].values()))
+            if sp_k["prev_to_next_all"]
+            else sp_k["curr_in_to_next_all"]["q_proj"]
+        ) # [input, seq * q_head]
+
+    curr_dist = sp["curr_dist"]
+    in_dim, out_dim = curr_dist.shape
+    
+    prev_in_distribution = None
+    next_out_distribution = None
+    
+    # if is o_proj, prev is A
+    if (short_name not in ["o_proj"]) and graph_data["prev_in"] is not None:
+        prev_in_distribution = _build_node_distribution(
+            graph_data["prev_in"],
+            graph_data["prev_in_name"],
+            alpha,
+        )
+    
+    # if is q, k, v, the next is A or attention out     
+    if (short_name not in ["q_proj", "k_proj", "v_proj"]) and graph_data["next_out"] is not None:
+        next_out_distribution = _build_node_distribution(
+            graph_data["next_out"],
+            graph_data["next_out_name"],
+            alpha,
+        ) # [batch, seq, hidden size]
+
+    _SHARED_CURR_DIST = curr_dist
+    _SHARED_SP = sp
+    _SHARED_ALPHA = alpha
+    _SHARED_SHORT_NAME = short_name
+    _SHARED_SEQ_LEN = seq_len
+
     _SHARED_PREV_IN = prev_in_distribution
     _SHARED_NEXT_OUT = next_out_distribution
     
     curvature = torch.full((out_dim, in_dim), float("inf"), dtype=torch.float32)
 
-    # compute curvature for all parameters oer seq
-    if torch.is_tensor(curr_dist):
-        curr_dist_np = curr_dist.detach().cpu().numpy().astype(np.float32, copy=False)
-        finite_edges = np.argwhere(np.isfinite(curr_dist_np) & (curr_dist_np > 0))
-    else:
-        curr_dist_np = np.asarray(curr_dist, dtype=np.float32)
-        finite_edges = np.argwhere(np.isfinite(curr_dist_np) & (curr_dist_np > 0))
+    curr_dist_np = np.asarray(curr_dist, dtype=np.float32)
+    finite_edges = np.argwhere(np.isfinite(curr_dist_np) & (curr_dist_np > 0))
         
-    finite_edges = finite_edges[:5]
-
-    edge_chunk_size = 4096
-    edge_chunks = [finite_edges[i:i + edge_chunk_size] for i in range(0, len(finite_edges), edge_chunk_size)]
-    
     print(f'op = {short_name}, seq = {seq_len}, total edges = {len(finite_edges)} per seq, cur dist shape = {curr_dist.shape}')
     
     analysis_path = analysis_utils.start_curvature_analysis(
@@ -607,19 +482,32 @@ def compute_op_curvature(
     precomputed_next_dists = None
     
     
-    if ("A" in graph_data["next_cost_names"]) or ("A" in graph_data["prev_cost_names"]):
+    if short_name in {"v_proj", "o_proj"}:
         _A = operations.get("A", None)
         
-        if short_name in {"v_proj"}:
+        if short_name == "v_proj":
             value_map = _build_vproj_to_att_out_value_map(
                 graph_data["next_out"], out_dim, seq_len, head_dim, repeat,
                 flatten_order=flatten_order
             )
+            
+            # node distribution for all seq
             precomputed_next_dists = _precompute_vproj_next_distributions(
                 value_map, seq_len, repeat, graph_data["next_out_name"], alpha, flatten_order=flatten_order
             )
-            
-        elif short_name in {"o_proj"}:
+
+            # x -> Q -> A -> out
+            v_cost = operations.get("v_proj", None)
+            if v_cost is not None:
+                _V_COST = _build_v_to_att_out_template(v_cost, _SHARED_MODEL_META)
+                _Q_to_A = _build_x_to_out_cost(
+                    _V_COST,
+                    sp_q,
+                    _SHARED_MODEL_META,
+                    device,
+                )
+                
+        elif short_name == "o_proj":
             value_map = _build_oproj_to_att_in_value_map(
                 graph_data["prev_in"], in_dim, seq_len, head_dim, repeat
             )
@@ -643,81 +531,66 @@ def compute_op_curvature(
     if _SHARED_NEXT_OUT is not None:
         shm, base_next_meta = _to_shared_numpy(np.asarray(_SHARED_NEXT_OUT, dtype=np.float32))
         base_owned_shms.append(shm)
-        
+
+    seq_prev_metas, prev_seq_shms = _to_shared_seq_metas(precomputed_prev_dists)
+    seq_next_metas, next_seq_shms = _to_shared_seq_metas(precomputed_next_dists)
+    seq_owned_shms = prev_seq_shms + next_seq_shms
+
     print(f'Start creating Pool....')
     
-    with ctx.Pool(processes=proc, initializer=_init_worker,
-        initargs=(curr_meta, base_prev_meta, base_next_meta),) as pool:
-        for s in range(seq_len):
-            t1 = time.time()
+    try:
+        with ctx.Pool(processes=proc, initializer=_init_worker,
+            initargs=(curr_meta, base_prev_meta, base_next_meta, seq_prev_metas, seq_next_metas),) as pool:
+            for s in range(seq_len):
+                t1 = time.time()
 
-            prev_meta = None
-            next_meta = None
-            seq_owned_shms = []
-
-            if short_name == "v_proj":
-                shm, next_meta = _to_shared_numpy(
-                    np.asarray(precomputed_next_dists[s], dtype=np.float32)
+                task_iter = (
+                    (s, edge)
+                    for edge in finite_edges
                 )
-                seq_owned_shms.append(shm)
+                
+                seq_v_parts = []
+                seq_u_parts = []
+                seq_curv_parts = []
 
-            elif short_name == "o_proj":
-                shm, prev_meta = _to_shared_numpy(
-                    np.asarray(precomputed_prev_dists[s], dtype=np.float32)
-                )
-                seq_owned_shms.append(shm)
+                for edge_res in pool.imap_unordered(_compute_edge_with_seq, task_iter, chunksize=1):
+                    if not edge_res:
+                        continue
 
-            task_iter = (
-                (s, edge_chunk, prev_meta, next_meta)
-                for edge_chunk in edge_chunks
-            )
-            
-            seq_v_parts = []
-            seq_u_parts = []
-            seq_curv_parts = []
+                    v_idx, u_idx, curv = edge_res
+                    seq_v_parts.append(v_idx)
+                    seq_u_parts.append(u_idx)
+                    seq_curv_parts.append(curv)
 
-            for chunk_res in pool.imap_unordered(_compute_edge_chunk_with_seq, task_iter, chunksize=8):
-                if not chunk_res:
-                    continue
+                print(f"seq = {s}, time = {time.time() - t1} s, ")
 
-                for v, u, c in chunk_res:
-                    seq_v_parts.append(v)
-                    seq_u_parts.append(u)
-                    seq_curv_parts.append(c)
+                if seq_v_parts:
+                    seq_v_idx = torch.tensor(seq_v_parts, dtype=torch.long)
+                    seq_u_idx = torch.tensor(seq_u_parts, dtype=torch.long)
+                    seq_curv_vals = torch.tensor(seq_curv_parts, dtype=torch.float32)
 
-            for shm in seq_owned_shms:
-                shm.close()
-                shm.unlink()
+                    prev_vals = curvature[seq_v_idx, seq_u_idx].clone()
+                    new_vals = torch.minimum(prev_vals, seq_curv_vals)
+                    curvature[seq_v_idx, seq_u_idx] = new_vals
 
-            print(f"seq = {s}, time = {time.time() - t1} s, ")
-            input()
+                    analysis_utils.append_seq_curvature_analysis(
+                        analysis_path=analysis_path,
+                        seq_idx=s,
+                        prev_vals=prev_vals,
+                        new_vals=new_vals,
+                        v_idx=seq_v_idx,
+                        u_idx=seq_u_idx,
+                    )
+    finally:
+        for shm in seq_owned_shms:
+            shm.close()
+            shm.unlink()
 
-            if seq_v_parts:
-                seq_v_idx = torch.tensor(seq_v_parts, dtype=torch.long)
-                seq_u_idx = torch.tensor(seq_u_parts, dtype=torch.long)
-                seq_curv_vals = torch.tensor(seq_curv_parts, dtype=torch.float32)
+        for shm in base_owned_shms:
+            shm.close()
+            shm.unlink()
 
-                prev_vals = curvature[seq_v_idx, seq_u_idx].clone()
-                new_vals = torch.minimum(prev_vals, seq_curv_vals)
-                curvature[seq_v_idx, seq_u_idx] = new_vals
-
-                analysis_utils.append_seq_curvature_analysis(
-                    analysis_path=analysis_path,
-                    seq_idx=s,
-                    prev_vals=prev_vals,
-                    new_vals=new_vals,
-                    v_idx=seq_v_idx,
-                    u_idx=seq_u_idx,
-                )
-
-    _SHARED_CURR_DIST = None
-    _SHARED_PREV_IN = None
-    _SHARED_NEXT_OUT = None
-    _SHARED_SP = None
-    _SHARED_ALPHA = 0.0
-    _A = None
-    _SHARED_SHORT_NAME = None
-    _SHARED_MODEL_META = None
+    _reset_shared_state()
 
     # curvature = _merge_gqa_curvature(curvature, model, layer_id, short_name)
     return curvature

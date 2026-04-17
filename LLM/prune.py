@@ -6,8 +6,9 @@ import torch.nn as nn
 from layerwrapper import WrappedGPT
 from data import get_loaders 
 from layerwrapper_curv import collect_layer_data, _make_lm_head_op
-from cal_curvature import compute_op_curvature, build_layer_cache, build_shortest_path_cache
-from curv_model_utils import _resolve_head_dim
+from cal_curvature import compute_op_curvature
+from curv_tensor_utils import build_layer_cache
+from curv_shortest_path_utils import build_shortest_path_cache
 
 
 def find_layers(module, layers=[nn.Linear], name=''):
@@ -381,6 +382,8 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
         tokenizer=tokenizer,
     )
     print("dataset loading complete")
+    
+    model.eval()
 
     with torch.no_grad():
         inps, _, attention_mask, position_ids = prepare_calibration_input(
@@ -444,15 +447,13 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
             model.removal_mask[i][short] = module.removal_mask
 
         new_inps = torch.empty_like(inps, device="cpu")
-        
-        num_q_heads, num_kv_heads, head_dim, repeat = _resolve_head_dim(model, i)
 
         for j in range(args.nsamples):
             x = inps[j:j+1].to(model_device, non_blocking=True) # [1, seq, hiddensize]
             next_layer = layers[i + 1] if i < last_layer_idx else None
 
             with torch.no_grad():
-                x_out, operations = collect_layer_data(
+                x_out, operations, num_q_heads, num_kv_heads, repeat, head_dim = collect_layer_data(
                     layer,
                     x,
                     attention_mask,

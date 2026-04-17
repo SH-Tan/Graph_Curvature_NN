@@ -19,3 +19,30 @@ def _from_shared_numpy(meta):
     shm = shared_memory.SharedMemory(name=name)
     arr = np.ndarray(shape, dtype=np.dtype(dtype), buffer=shm.buf)
     return shm, arr
+
+
+
+def _load_worker_seq_distribution(seq_idx, seq_metas, shm_map, cache_map):
+    if seq_metas is None:
+        return None
+    cached = cache_map.get(seq_idx)
+    if cached is not None:
+        return cached
+
+    shm, arr = _from_shared_numpy(seq_metas[seq_idx])
+    shm_map[seq_idx] = shm
+    cache_map[seq_idx] = arr
+    return arr
+
+
+def _to_shared_seq_metas(seq_distributions):
+    if seq_distributions is None:
+        return None, []
+
+    metas = []
+    owned_shms = []
+    for seq_dist in seq_distributions:
+        shm, meta = _to_shared_numpy(np.asarray(seq_dist, dtype=np.float32))
+        owned_shms.append(shm)
+        metas.append(meta)
+    return metas, owned_shms

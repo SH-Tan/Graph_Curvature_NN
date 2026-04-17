@@ -272,3 +272,6 @@ llm_weights/
 LLM/*.txt
 CNN/*.txt
 Lidar/*.txt
+curv_analysis/
+*.txt
+*.ipynb
