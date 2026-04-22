@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn 
 from layerwrapper import WrappedGPT
 from data import get_loaders 
+from data_c4 import get_loaders_c4
 from layerwrapper_curv import collect_layer_data, _make_lm_head_op
 from cal_curvature import compute_op_curvature
 from curv_tensor_utils import build_layer_cache
@@ -221,7 +222,6 @@ def _curvature_save_metadata(args):
     }
 
 
-
 def return_given_alpha(alpha, sort_res, W_metric, tmp_metric, sum_before):
     thres_cumsum = sum_before * alpha 
     sort_mask = tmp_metric <= thres_cumsum.reshape((-1,1))
@@ -374,8 +374,8 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
     compute_device = args.compute_device  # cuda:1
 
     print("loading calibration data")
-    dataloader, _ = get_loaders(
-        "c4",
+    dataloader, _ = get_loaders_c4(
+        args.calib_data,
         nsamples=args.nsamples,
         seed=args.seed,
         seqlen=model.seqlen,
@@ -425,8 +425,7 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
 
     for i, layer in enumerate(layers):
         print(f"Processing layer {i}")
-        input()
-
+        
         layer_cache = {}
         sp_cache = {}   # overwrite same layer cache when moving to next layer
 
@@ -514,13 +513,16 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
                     operations=operations,
                     short_name=short,
                     layer_id=i,
+                    sample_idx=j,
                     layer_cache=layer_cache,
                     sp_cache=sp_cache,
                     device=compute_device,
                     alpha=args.alpha,
                     seq_len = model.seqlen,
                     num_q_heads=num_q_heads, num_kv_heads=num_kv_heads, 
-                    head_dim=head_dim, repeat=repeat
+                    head_dim=head_dim, repeat=repeat,
+                    sample_edge_num=args.sample_edge_num,
+                    dataset_name=args.calib_data,
                 )
 
                 assert curv is not None, f"{short} curv is None"
@@ -541,13 +543,16 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
                     operations=operations,
                     short_name="prev_down_proj",
                     layer_id=i,
+                    sample_idx=j,
                     layer_cache=layer_cache,
                     sp_cache=sp_cache,
                     device=compute_device,
                     alpha=args.alpha,
                     seq_len = model.seqlen,
                     num_q_heads=num_q_heads, num_kv_heads=num_kv_heads, 
-                    head_dim=head_dim, repeat=repeat
+                    head_dim=head_dim, repeat=repeat,
+                    sample_edge_num=args.sample_edge_num,
+                    dataset_name=args.calib_data,
                 )
 
                 assert curv is not None, "prev_down_proj curv is None"
@@ -587,13 +592,16 @@ def prune_curvature(args, model, tokenizer, device="cuda:0", prune_n=0, prune_m=
                     operations=operations,
                     short_name="lm_head",
                     layer_id=i,
+                    sample_idx=j,
                     layer_cache=layer_cache,
                     sp_cache=sp_cache,
                     device=compute_device,
                     alpha=args.alpha,
                     seq_len = model.seqlen,
                     num_q_heads=num_q_heads, num_kv_heads=num_kv_heads, 
-                    head_dim=head_dim, repeat=repeat
+                    head_dim=head_dim, repeat=repeat,
+                    sample_edge_num=args.sample_edge_num,
+                    dataset_name=args.calib_data,
                 )
                 assert lm_curv is not None, "lm_head curv is None"
 

@@ -3,11 +3,13 @@
 # Set common variables
 model="meta-llama/Meta-Llama-3-8B"
 sparsity_ratio=0.5
-nsamples=1
+nsamples=5
 alpha=0.9
 curvature_save_dir="curv_pkl"
 model_device="cuda:0"
 compute_device="cuda:1"
+seq_len=512
+sample_edge_num=1
 # cuda_device=0
 cuda_device=$(nvidia-smi --query-gpu=index --format=csv,noheader | paste -sd "," -)
 
@@ -26,13 +28,17 @@ run_python_command () {
     --model_device $model_device \
     --compute_device $compute_device \
     --save_curvature_dir $curvature_save_dir \
-    --alpha $alpha
+    --alpha $alpha \
+    --calib_data $5 \
+    --sample_edge_num $sample_edge_num \
+    --seqlen $seq_len
 }
 
 # llama-7b with magnitude pruning method
 echo "Running with graph curvature pruning method"
-# run_python_command "curvature" 0 "unstructured" "out/llama_8b/unstructured/curvature/"
-run_python_command "curvature" 0.5 "unstructured" "out/llama_8b/unstructured/curvature/"
+run_python_command "curvature" 0 "unstructured" "out/llama_8b/unstructured/curvature/" "c4_independent" 1
+run_python_command "curvature" 0.5 "unstructured" "out/llama_8b/unstructured/curvature/" "c4_independent" 1
+run_python_command "curvature" 0.5 "unstructured" "out/llama_8b/unstructured/curvature/" "c4_dependent" 1
 echo "Finished graph curvature pruning method"
 
 

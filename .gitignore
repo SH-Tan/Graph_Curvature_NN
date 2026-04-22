@@ -273,5 +273,7 @@ LLM/*.txt
 CNN/*.txt
 Lidar/*.txt
 curv_analysis/
+curv_pkl/
 *.txt
 *.ipynb
+out/

@@ -2,20 +2,31 @@ import numpy as np
 import torch
 
 
-def minmax_per_batch(x, eps=1e-12):
-    x_min = x.min(dim=-1, keepdim=True).values
-    x_max = x.max(dim=-1, keepdim=True).values
-    denom = (x_max - x_min).clamp_min(eps)
-    normalized = (x - x_min) / denom
-    has_zero = (x == 0).any(dim=-1, keepdim=True)
-    return normalized + (~has_zero).to(x.dtype) * eps
+def minmax_per_batch_nonzero_nozero(x, eps=1e-4):
+    mask = x != 0
+
+    xmin = x.masked_fill(~mask, float("inf")).amin(dim=-1, keepdim=True)
+    xmax = x.masked_fill(~mask, float("-inf")).amax(dim=-1, keepdim=True)
+
+    has_nonzero = mask.any(dim=-1, keepdim=True)
+    xmin = torch.where(has_nonzero, xmin, torch.zeros_like(xmin))
+    xmax = torch.where(has_nonzero, xmax, torch.ones_like(xmax))
+
+    denom = (xmax - xmin).clamp_min(eps)
+
+    # normalize nonzero values
+    norm = torch.zeros_like(x)
+    norm = torch.where(mask, (x - xmin) / denom, norm)
+
+    # push nonzero zeros upward a little so smallest nonzero won't be 0
+    norm = torch.where(mask & (norm == 0), torch.full_like(norm, eps), norm)
+    return norm
 
 
-def _normalize_node_value_per_sequence(node_val, name,):
+def _normalize_node_value_per_sequence(node_val):
     node_val = node_val.abs()
-    node_norm = minmax_per_batch(node_val)
-
-    return 1./node_norm
+    node_norm = minmax_per_batch_nonzero_nozero(node_val)
+    return 1.0 / node_norm
 
 
 def _resolve_node_name(operations, names):
@@ -61,7 +72,7 @@ def _build_node_distribution(node_tensor, node_name, alpha, eps=1e-7):
     if node_tensor is None or node_tensor.numel() == 0:
         return None
 
-    node_tensor = node_tensor.to(dtype=torch.float32)
+    node_tensor = node_tensor.to(dtype=torch.float64)
     if node_tensor.dim() == 3:
         if node_tensor.shape[0] != 1:
             raise ValueError(
@@ -69,8 +80,10 @@ def _build_node_distribution(node_tensor, node_name, alpha, eps=1e-7):
             )
         node_tensor = node_tensor.squeeze(0)
 
-    node_tensor = _normalize_node_value_per_sequence(node_tensor, node_name)
+    node_tensor = _normalize_node_value_per_sequence(node_tensor)
+    
     valid_mask = torch.isfinite(node_tensor) & (node_tensor != 0)
+    # weights = torch.exp(-(node_tensor)) * valid_mask
     weights = torch.exp(-(node_tensor ** 2)) * valid_mask
 
     sum_weights = weights.sum(dim=-1, keepdim=True)
@@ -84,4 +97,5 @@ def _build_node_distribution(node_tensor, node_name, alpha, eps=1e-7):
     dist = torch.where(empty_mask & valid_mask, torch.full_like(dist, -1.0), dist)
 
     dist = dist * valid_mask
+    
     return dist.detach().cpu().numpy().astype(np.float32, copy=False)

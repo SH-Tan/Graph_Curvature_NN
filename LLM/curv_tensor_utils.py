@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import torch
 from layerwrapper_curv import (
     _reshape_for_heads,
@@ -6,6 +7,17 @@ from layerwrapper_curv import (
 )
 
 from curv_model_utils import _operation_distance_matrix_torch
+
+
+_DEBUG_LOG_DIR = os.path.join(os.path.dirname(__file__), "cost_inf_debug")
+
+
+def _append_debug_log(lines, log_name):
+    os.makedirs(_DEBUG_LOG_DIR, exist_ok=True)
+    log_path = os.path.join(_DEBUG_LOG_DIR, log_name)
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+        f.write("\n" + "=" * 80 + "\n")
 
 
 def adaptive_chunksize(max_chunk=512):
@@ -90,13 +102,15 @@ def build_layer_cache(model, operations, layer_id, cache=None, device="cuda"):
     """
     if cache is None:
         cache = {}
-        
 
     for name in operations.keys():
-        if name.startswith("prev_"):
-            name = name.replace("prev_", "")
         if name in {"layer_input", "A", "Att_out", "gate_up_out"}:
             continue
+        
+        if name.startswith("prev_"):
+            real_name = name.replace("prev_", "")
+            if real_name in {"layer_input", "A", "Att_out", "gate_up_out"}:
+                continue
    
         dist_matrix = _operation_distance_matrix_torch(model, operations, name, layer_id, device)
         cache[f"{name}__dist"] = dist_matrix # 1/|w.T| device tensor
@@ -195,14 +209,17 @@ def _build_v_to_att_out_template(cost, meta, reduce_batch=True):
     num_q_heads = meta["num_q_heads"]
     num_kv_heads = meta["num_kv_heads"]
     repeat = meta["repeat"]
+    
+    cost = cost.to(torch.float64)
 
     b, seq, d = cost.shape
     assert d == num_kv_heads * head_dim
 
     vh = _reshape_for_heads(cost, num_kv_heads, head_dim)   # [B, kv_heads, S, D]
     vh_rep = _repeat_kv(vh, repeat)                         # [B, q_heads, S, D]
+    vh_abs = vh_rep.abs()
 
-    template = 1.0 / vh_rep.abs()            # [B, q_heads, S, D]
+    template = 1.0 / vh_abs                  # [B, q_heads, S, D]
 
     if reduce_batch:
         template = template.mean(dim=0)                     # [q_heads, S, D]
@@ -214,8 +231,6 @@ def _build_v_to_att_out_template(cost, meta, reduce_batch=True):
 def _build_x_to_out_cost(v, sp_q, meta, device):
     head_dim = meta["head_dim"]
     num_q_heads = meta["num_q_heads"]
-    
-    v = v[0]
 
     assert v.ndim == 3, f"Expected v shape [q_heads, seq, head_dim], got {v.shape}"
     qh, seq, d = v.shape
@@ -223,15 +238,7 @@ def _build_x_to_out_cost(v, sp_q, meta, device):
     assert d == head_dim
 
     dtype = v.dtype
-
-    a = sp_q["prev_to_next_all"].values() if sp_q["prev_to_next_all"] is not None \
-                                else sp_q["curr_in_to_next_all"].values()
-
-    if not torch.is_tensor(a):
-        a = torch.as_tensor(a, device=device)
-    else:
-        a = a.to(device)
-
+    
     if not torch.is_tensor(v):
         v = torch.as_tensor(v, device=device)
     else:
@@ -254,9 +261,35 @@ def _build_x_to_out_cost(v, sp_q, meta, device):
         # v[h]: [seq, head_dim]
         out[r0:r1, c0:c1] = v[h]
 
+    cost = {}
+    
+    # input to A
+    if sp_q["prev_to_next_all"]:
+        a = next(iter(sp_q["prev_to_next_all"].values()))
+        
+        if not torch.is_tensor(a):
+            a = torch.as_tensor(a, device=device)
+        else:
+            a = a.to(device)
+            
+        chunk_k, chunk_p = adaptive_chunksize()
+        res = _min_plus_torch(a, out, chunk_k=chunk_k, chunk_p=chunk_p)
+        
+        cost["prev_to_next_all"] = res.cpu().contiguous().numpy()
+    
+        
+    a = sp_q["curr_in_to_next_all"]["k_proj"]
+    
+    if not torch.is_tensor(a):
+        a = torch.as_tensor(a, device=device)
+    else:
+        a = a.to(device)
+        
     chunk_k, chunk_p = adaptive_chunksize()
     res = _min_plus_torch(a, out, chunk_k=chunk_k, chunk_p=chunk_p)
+    
+    cost["curr_in_to_next_all"] = res.cpu().contiguous().numpy()
 
-    return res.cpu().contiguous().numpy()
+    return cost
     
         

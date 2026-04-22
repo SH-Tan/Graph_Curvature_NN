@@ -201,10 +201,16 @@ def collect_layer_data(layer, x, attention_mask, position_ids, model, next_layer
 
 
 def _make_lm_head_op(model, final_hidden):
+    # The pruning loop keeps the cached final hidden state on CPU to save GPU memory.
+    # Move it onto the norm/lm_head device just for this forward, then return CPU probs.
     if hasattr(model.model, "norm") and model.model.norm is not None:
+        norm_device = model.model.norm.weight.device
+        final_hidden = final_hidden.to(norm_device, non_blocking=True)
         final_hidden = model.model.norm(final_hidden)
 
+    lm_head_device = model.lm_head.weight.device
+    final_hidden = final_hidden.to(lm_head_device, non_blocking=True)
     logits = model.lm_head(final_hidden)
-    probs = torch.softmax(logits.float(), dim=-1)
+    probs = torch.softmax(logits.float(), dim=-1).detach().cpu()
 
     return {"lm_head": probs}

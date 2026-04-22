@@ -10,7 +10,6 @@ def _build_vproj_to_att_out_value_map(
     head_dim,
     repeat,
     batch_idx=0,
-    flatten_order="by_out_then_seq",
 ):
     """
     Build a CPU tensor map from v_proj local input index -> reachable Att_out node values.
@@ -35,22 +34,12 @@ def _build_vproj_to_att_out_value_map(
 
     # [seq, hidden]
     out_slice = out_node[batch_idx]
-
-    # [r0_s0, r0_s1, ..., r0_sN, r1_s0, r1_s1, ..., r1_sN, ...]
-    if flatten_order == "by_out_then_seq":
-        # gather -> [seq, v_in, repeat]
-        gathered = out_slice[:, outj_map]
-        value_map = gathered.permute(1, 2, 0).contiguous()
-        value_map = value_map.view(v_in, repeat * seq_len)
+    # gather -> [seq, v_in, repeat]
+    gathered = out_slice[:, outj_map]
 
     # [s0_r0, s0_r1, ..., s0_rM,s1_r0, s1_r1, ..., s1_rM, ...]
-    elif flatten_order == "by_seq_then_out":
-        gathered = out_slice[:, outj_map]
-        value_map = gathered.permute(1, 0, 2).contiguous()
-        value_map = value_map.view(v_in, seq_len * repeat)
-
-    else:
-        raise ValueError(f"Unknown flatten_order: {flatten_order}")
+    value_map = gathered.permute(1, 0, 2).contiguous()
+    value_map = value_map.view(v_in, seq_len * repeat)
 
     return value_map
 
@@ -100,42 +89,25 @@ def masked_value_map_for_seq(
     s,
     seq_len,
     repeat,
-    flatten_order="by_out_then_seq"
 ):
     """
     Keep same shape, mask invalid nodes to 0.
 
     value_map:
-        [v_in, repeat * seq_len]   if by_out_then_seq
         [v_in, seq_len * repeat]   if by_seq_then_out
     """
     v_in = value_map.shape[0]
 
-    if flatten_order == "by_out_then_seq":
-        # reshape to [v_in, repeat, seq_len]
-        x = value_map.view(v_in, repeat, seq_len)
+    # reshape to [v_in, seq_len, repeat]
+    x = value_map.view(v_in, seq_len, repeat)
 
-        # clone to avoid modifying original
-        x_masked = x.clone()
+    x_masked = x.clone()
 
-        # zero out invalid positions (t < s)
-        x_masked[:, :, :s] = 0
+    # zero out invalid positions
+    x_masked[:, :s, :] = 0
 
-        return x_masked.view(v_in, repeat * seq_len)
+    return x_masked.view(v_in, seq_len * repeat)
 
-    elif flatten_order == "by_seq_then_out":
-        # reshape to [v_in, seq_len, repeat]
-        x = value_map.view(v_in, seq_len, repeat)
-
-        x_masked = x.clone()
-
-        # zero out invalid positions
-        x_masked[:, :s, :] = 0
-
-        return x_masked.view(v_in, seq_len * repeat)
-
-    else:
-        raise ValueError(f"Unknown flatten_order: {flatten_order}")
 
 
 def masked_oproj_value_map_for_seq(value_map, s, seq_len):
@@ -156,12 +128,13 @@ def _safe_inverse_abs(arr):
     return inv.detach().cpu().numpy().astype("float32", copy=False)
 
 
-def _precompute_vproj_next_distributions(value_map, seq_len, repeat, node_name, alpha, flatten_order):
+def _precompute_vproj_next_distributions(value_map, seq_len, repeat, node_name, alpha):
     out = []
     for s in range(seq_len):
         masked = masked_value_map_for_seq(
-            value_map, s, seq_len, repeat, flatten_order=flatten_order
-        )
+            value_map, s, seq_len, repeat
+        ) # [v dim, repeat * seq len]
+        
         out.append(_build_node_distribution(masked, node_name, alpha))
     return out
 
@@ -174,17 +147,13 @@ def _precompute_oproj_prev_distributions(value_map, seq_len, node_name, alpha):
     return out
 
 
-def _build_vproj_to_att_out_cost(a, seq_len, s_in, v_idx, head_dim, repeat, flatten_order="by_out_then_seq"):
+def _build_vproj_to_att_out_cost(a, seq_len, s_in, v_idx, head_dim, repeat):
     kv_head = v_idx // head_dim
     q_start = kv_head * repeat
     q_end = (kv_head + 1) * repeat
 
     block = _safe_inverse_abs(a[0, q_start:q_end, :seq_len, s_in])
-    if flatten_order == "by_out_then_seq":
-        return block.reshape(-1)
-    if flatten_order == "by_seq_then_out":
-        return block.transpose(1, 0).reshape(-1)
-    raise ValueError(f"Unknown flatten_order: {flatten_order}")
+    return block.T.reshape(-1)
 
 
 def _build_att_out_to_o_cost(a, s_out, out_idx, head_dim):
