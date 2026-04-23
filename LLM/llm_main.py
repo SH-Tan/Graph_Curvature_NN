@@ -157,9 +157,10 @@ def main():
     ppl_test = eval_ppl(args, model, tokenizer, model_device)
     print(f"wikitext perplexity {ppl_test}")
 
-    if not os.path.exists(args.save):
-        os.makedirs(args.save)
-    save_filepath = os.path.join(args.save, f"log_{args.prune_method}.txt")
+    save_dir = os.path.join(args.save, f"seq_len_{args.seqlen}", args.calib_data)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    save_filepath = os.path.join(save_dir, f"log_{args.prune_method}.txt")
     with open(save_filepath, "a+") as f:
         print(f"{'method':<15}{'target_sparsity':<18}{'actual_sparsity':<18}{'calib_data':<20}{'seq_len':<12}{'ppl_test':<12}", file=f, flush=True)
         print(f"{args.prune_method:<15}{args.sparsity_ratio:<18.4f}{sparsity_ratio:<18.4f}{args.calib_data:<20}{args.seqlen:<12.4f}{ppl_test:<12.4f}", file=f, flush=True)

@@ -5,7 +5,12 @@ import torch
 
 
 def _analysis_file_path(layer_id, short_name, sample_idx, seq_len, dataset_name):
-    analysis_dir = os.path.join(os.path.dirname(__file__), "curv_analysis")
+    analysis_dir = os.path.join(
+        os.path.dirname(__file__),
+        "curv_analysis",
+        f"seq_len_{int(seq_len)}",
+        str(dataset_name),
+    )
     os.makedirs(analysis_dir, exist_ok=True)
     safe_dataset_name = str(dataset_name).replace("/", "_").replace(" ", "_")
     return os.path.join(

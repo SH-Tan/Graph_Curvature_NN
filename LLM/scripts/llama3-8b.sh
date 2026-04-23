@@ -36,7 +36,7 @@ run_python_command () {
 
 # llama-7b with magnitude pruning method
 echo "Running with graph curvature pruning method"
-run_python_command "curvature" 0 "unstructured" "out/llama_8b/unstructured/curvature/" "c4_independent" 1
+# run_python_command "curvature" 0 "unstructured" "out/llama_8b/unstructured/curvature/" "c4_independent" 1
 run_python_command "curvature" 0.5 "unstructured" "out/llama_8b/unstructured/curvature/" "c4_independent" 1
 run_python_command "curvature" 0.5 "unstructured" "out/llama_8b/unstructured/curvature/" "c4_dependent" 1
 echo "Finished graph curvature pruning method"

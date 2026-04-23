@@ -139,6 +139,12 @@ def _precompute_vproj_next_distributions(value_map, seq_len, repeat, node_name, 
     return out
 
 
+def _precompute_vproj_next_distributions(value_map, node_name, alpha):
+    out = _build_node_distribution(value_map, node_name, alpha)
+    return out
+
+
+
 def _precompute_oproj_prev_distributions(value_map, seq_len, node_name, alpha):
     out = []
     for s in range(seq_len):

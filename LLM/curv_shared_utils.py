@@ -25,19 +25,24 @@ def _from_shared_numpy(meta):
 def _load_worker_seq_distribution(seq_idx, seq_metas, shm_map, cache_map):
     if seq_metas is None:
         return None
+    if type(seq_metas) is not list:
+        return seq_metas
     cached = cache_map.get(seq_idx)
     if cached is not None:
         return cached
 
-    shm, arr = _from_shared_numpy(seq_metas[seq_idx])
-    shm_map[seq_idx] = shm
-    cache_map[seq_idx] = arr
+    if (type(seq_metas) is list):
+        shm, arr = _from_shared_numpy(seq_metas[seq_idx])
+        shm_map[seq_idx] = shm
+        cache_map[seq_idx] = arr
     return arr
 
 
 def _to_shared_seq_metas(seq_distributions):
     if seq_distributions is None:
         return None, []
+    if type(seq_distributions) is not list:
+        return seq_distributions, []
 
     metas = []
     owned_shms = []

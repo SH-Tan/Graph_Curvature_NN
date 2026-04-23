@@ -600,11 +600,14 @@ def compute_op_curvature(
                 graph_data["next_out"], out_dim, seq_len, head_dim, repeat
             )
             
-            # node distribution for all seq
-            precomputed_next_dists = _precompute_vproj_next_distributions(
-                value_map, seq_len, repeat, graph_data["next_out_name"], alpha
-            )
+            # # node distribution for all seq w/ mask
+            # precomputed_next_dists = _precompute_vproj_next_distributions(
+            #     value_map, seq_len, repeat, graph_data["next_out_name"], alpha
+            # )
             
+            # node distribution for all seq w/o mask
+            precomputed_next_dists = _precompute_vproj_next_distributions(value_map, graph_data["next_out_name"], alpha)
+      
             # x -> Q -> A -> out
             v_cost = operations.get("v_proj", None)
             if v_cost is not None:                
