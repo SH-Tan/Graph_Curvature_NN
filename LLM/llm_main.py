@@ -12,7 +12,6 @@ from curv_prune_utils import prune_global_curvature
 
 from huggingface_hub import login
 
-
 def enable_hf_offline_mode():
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -38,7 +37,7 @@ def _is_network_error(exc):
     )
 
 
-safe_hf_login()
+safe_hf_login(token)
 
 print('# of gpus: ', torch.cuda.device_count())
 
